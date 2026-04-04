@@ -1,74 +1,69 @@
-# Contas & Gastos
+# Conta de Gastos
 
-Sistema minimalista para ingestão de extratos bancários e faturas de cartão de crédito, transformando documentos CSV e PDF em uma tabela estruturada de lançamentos.
+Sistema de linha de comando para organização de finanças pessoais. Ingere extratos bancários e faturas de cartão (PDF/CSV), classifica lançamentos automaticamente e gera minutas no Google Sheets para revisão.
 
-## Motivação
-
-Organizar finanças pessoais exige um trabalho braçal recorrente: abrir extratos, abrir faturas, copiar lançamento por lançamento e montar uma planilha consolidada. Este projeto joga essa parte para a máquina.
-
-## Visão geral do projeto
-
-O sistema é dividido em 4 etapas:
-
-| Etapa | Descrição | Status |
-|-------|-----------|--------|
-| I — Ingestão de fontes | Importar PDF/CSV e estruturar lançamentos | Implementada |
-| II — Criar Minuta | Copiar modelo do Google Sheets, salvar no Drive, preencher | Pendente |
-| III — Dicionário | SQLite com mapeamento nome feio → nome bonito + natureza | Pendente |
-| IV — Classificar lançamentos | Usar dicionário para preencher natureza e descrição | Pendente |
-
-## Fontes de entrada
-
-Arquivos colocados em `input/`:
-
-| Fonte | Formato | Exemplo |
-|-------|---------|---------|
-| Extrato Nubank | CSV | `NU_XXXXXXXX_01MAR2026_31MAR2026.csv` |
-| Fatura Nubank (CC) | CSV | `Nubank_2026-03-10.csv` |
-| Extrato Itaú | PDF | `extrato-itau_DD_MM_AAAA_HH-MM.pdf` |
-| Fatura Itaú (CC) | PDF | `<uuid>.pdf` |
-
-O tipo de cada arquivo é detectado automaticamente pelo conteúdo (header do CSV ou texto do PDF).
-
-## Saída
-
-Um CSV em `output/lancamentos.csv` com 5 colunas, separador `;`, formato numérico brasileiro e encoding UTF-8 BOM:
-
-| Coluna | Descrição |
-|--------|-----------|
-| `fonte` | Origem do dado (`extrato_itau`, `extrato_nubank`, `fatura_itau_cc_9572`, `fatura_nubank_cc`, etc.) |
-| `natureza` | Natureza do lançamento — vazio por enquanto (Etapa IV) |
-| `descricao` | Nome bonito — vazio por enquanto (Etapa IV) |
-| `valor` | Positivo = entrada, negativo = saída. Formato: `1.234,56` |
-| `registro` | Texto cru coletado diretamente do extrato/fatura |
-
-### Ordenação
-
-Os lançamentos são agrupados por fonte (extrato Itaú → extrato Nubank → fatura Itaú CC → fatura Nubank CC) e ordenados por data dentro de cada grupo, da mais antiga para a mais recente.
-
-## Regras de negócio
-
-- Manter a ordem original do extrato dentro de cada grupo
-- Pagamento de fatura de CC no extrato bancário é mantido; os lançamentos individuais da fatura são expandidos à parte
-- Lançamentos de cartão de crédito são sempre negativos (representam saída)
-- Linhas de marcação de saldo no extrato Itaú (`SALDO TOTAL DISPONÍVEL DIA`, `SALDO ANTERIOR`) são ignoradas
-- Linha "Pagamento recebido" da fatura Nubank é excluída (já aparece como débito no extrato)
-- Cartões Itaú com finais diferentes geram fontes separadas (ex: `fatura_itau_cc_9572`, `fatura_itau_cc_2555`)
-- Seção "Compras parceladas - próximas faturas" da fatura Itaú é excluída (são parcelas futuras)
-
-## Como usar
+## Instalação
 
 ```bash
-# Colocar arquivos CSV/PDF em input/
-# Executar:
-uv run python -m gastos.main
-
-# Resultado em output/lancamentos.csv
+curl -sSf https://raw.githubusercontent.com/efas-dev/conta_de_gastos/main/install.sh | bash
 ```
 
-## Dependências
+O script instala o [uv](https://docs.astral.sh/uv/) (se necessário) e disponibiliza o comando `cg` no terminal.
 
-- Python >= 3.12
-- [pdfplumber](https://github.com/jsvine/pdfplumber) — extração de texto de PDFs
+Funciona em **Linux**, **macOS** e **Windows via WSL**.
 
-Gerenciado exclusivamente com `uv`.
+## Primeiros passos
+
+Após instalar, execute `cg` e selecione **Configurar**. O wizard guia você por:
+
+1. **Autenticação Google** — passo a passo para criar credenciais OAuth no Google Cloud Console
+2. **Iniciais** — usadas no nome de cada minuta (ex: "2026-04 - AB")
+3. **Pasta do Google Drive** — onde as minutas serão salvas
+4. **Nome para Pix** — identifica transferências entre suas próprias contas
+
+## Como funciona
+
+```
+Extratos/Faturas (PDF, CSV)
+    ↓
+cg → Parseia → Classifica → Gera minuta no Google Sheets
+                                  ↓
+                    Você preenche Natureza e Descrição
+                                  ↓
+                    cg → Aprende → Dicionário SQLite
+                                  ↓
+                    Próxima vez classifica automaticamente
+```
+
+1. **Arraste** seus arquivos de extrato/fatura para o terminal
+2. O sistema **detecta** o tipo automaticamente (Nubank CSV, Itaú PDF, etc.)
+3. Uma **minuta** é criada no Google Sheets com todos os lançamentos
+4. Você preenche **Natureza** e **Descrição** na planilha
+5. O sistema **aprende** e classifica automaticamente nas próximas vezes
+
+## Bancos suportados
+
+| Fonte | Formato |
+|-------|---------|
+| Extrato Nubank | CSV |
+| Fatura Nubank (CC) | CSV |
+| Extrato Itaú | PDF |
+| Fatura Itaú (CC) | PDF |
+
+Novos bancos podem ser adicionados implementando um parser.
+
+## Comandos
+
+```bash
+cg                 # Abre a interface interativa
+cg --uninstall     # Desinstala
+```
+
+## Atualização
+
+O sistema verifica automaticamente (1x por dia) se há nova versão disponível. Também é possível verificar manualmente pelo menu **Verificar atualização**.
+
+## Requisitos
+
+- Linux, macOS ou WSL
+- O instalador cuida do resto (uv, Python 3.12+, dependências)
