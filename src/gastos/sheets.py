@@ -10,7 +10,6 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
-from gastos.config import get_env
 from gastos.formatacao import parse_brasileiro
 from gastos.modelos import Lancamento
 
@@ -20,10 +19,11 @@ SCOPES = [
 ]
 
 TEMPLATE_GID = 672560374
+TEMPLATE_ID = "1dMHpWV1ugw6V2tEO4oGNyF_-nttg6T7uv2ZJ5tFnMSE"
 
 
 def _template_id() -> str:
-    return get_env("GOOGLE_TEMPLATE_ID")
+    return TEMPLATE_ID
 
 
 def _pasta_destino_id() -> str:
