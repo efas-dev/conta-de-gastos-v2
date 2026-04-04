@@ -1,0 +1,30 @@
+[project]
+name = "gastos"
+version = "0.1.0"
+description = "Ingestão de extratos e faturas bancárias"
+readme = "README.md"
+authors = [
+    { name = "Eduardo Santos", email = "eduardoalves.fs@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pdfplumber>=0.11.9",
+    "google-api-python-client>=2.0",
+    "google-auth>=2.0",
+    "google-auth-oauthlib>=1.3.1",
+    "rich>=14.3.3",
+    "simple-term-menu>=1.6.6",
+]
+
+[project.scripts]
+cg = "gastos.tui:executar"
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["uv_build>=0.10.2,<0.11.0"]
+build-backend = "uv_build"
