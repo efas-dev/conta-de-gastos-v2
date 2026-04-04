@@ -41,6 +41,17 @@ def _menu(titulo: str, opcoes: list[str]) -> int | None:
     return menu.show()
 
 
+def _converter_caminho_wsl(raw: str) -> str:
+    """Converte caminho Windows (C:\\...) para WSL (/mnt/c/...) se necessário."""
+    import re
+    m = re.match(r"^([A-Za-z]):[\\\/]", raw)
+    if m:
+        drive = m.group(1).lower()
+        resto = raw[3:].replace("\\", "/")
+        return f"/mnt/{drive}/{resto}"
+    return raw
+
+
 def _validar_arquivos(caminhos_raw: list[str]) -> list[Path]:
     """Valida e filtra caminhos de arquivos, retornando os válidos."""
     validos: list[Path] = []
@@ -48,6 +59,7 @@ def _validar_arquivos(caminhos_raw: list[str]) -> list[Path]:
         raw = raw.strip().strip("'\"")
         if not raw:
             continue
+        raw = _converter_caminho_wsl(raw)
         caminho = Path(raw)
         if not caminho.exists():
             console.print(f"  [red]✗[/] Arquivo não encontrado: {caminho}")
@@ -97,7 +109,7 @@ def _tela_arquivos() -> list[Path] | None:
             return None
 
         try:
-            partes = shlex.split(linha)
+            partes = shlex.split(linha, posix=False)
         except ValueError:
             partes = [linha]
 
