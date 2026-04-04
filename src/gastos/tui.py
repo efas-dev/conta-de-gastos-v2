@@ -1,6 +1,5 @@
 """Interface de terminal interativa para o Gastos."""
 
-import os
 import shlex
 import sys
 from pathlib import Path
@@ -21,7 +20,7 @@ TITULO = "[bold]Conta de gastos[/]"
 
 def _tela(conteudo: str | None = None) -> None:
     """Limpa o terminal e exibe o cabeçalho da aplicação."""
-    os.system("clear")
+    print("\033[H\033[2J", end="", flush=True)
     console.print()
     console.print(f"{_MARGEM}{TITULO}")
     console.print(f"{_MARGEM}[blue]─[/]" * len("Conta de gastos"))

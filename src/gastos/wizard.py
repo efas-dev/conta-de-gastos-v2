@@ -1,6 +1,5 @@
 """Wizard interativo de configuração inicial."""
 
-import os
 import re
 import shlex
 from pathlib import Path
@@ -30,7 +29,7 @@ console = Console()
 # ---------------------------------------------------------------------------
 
 def _limpar_e_titulo(titulo: str | None = None) -> None:
-    os.system("clear")
+    print("\033[H\033[2J", end="", flush=True)
     console.print()
     console.print(f"{_MARGEM}[bold]Conta de gastos[/] — Configuração")
     console.print(f"{_MARGEM}[blue]─[/]" * 35)
@@ -83,7 +82,10 @@ _PASSOS_OAUTH = [
             "1. Acesse a URL acima (faça login se necessário)\n"
             "2. Em [bold]Nome do projeto[/], digite qualquer nome\n"
             "   (ex: \"Contas Gastos\")\n"
-            "3. Clique em [bold]Criar[/]"
+            "3. O campo [bold]Organização[/] pode ficar como\n"
+            "   \"Nenhuma organização\"\n"
+            "4. Clique em [bold]Criar[/]\n\n"
+            "[dim]Quando o projeto estiver criado, avance.[/]"
         ),
     },
     {
@@ -91,8 +93,7 @@ _PASSOS_OAUTH = [
         "url": "https://console.cloud.google.com/apis/library/drive.googleapis.com",
         "corpo": (
             "1. Acesse a URL acima\n"
-            "2. Verifique se o projeto correto está selecionado\n"
-            "   no topo da página\n"
+            "2. Verifique se o projeto correto está selecionado no topo da página\n"
             "3. Clique em [bold]Ativar[/]"
         ),
     },
@@ -109,16 +110,13 @@ _PASSOS_OAUTH = [
         "url": "https://console.cloud.google.com/apis/credentials/consent",
         "corpo": (
             "1. Acesse a URL acima\n"
-            "2. Selecione [bold]Externo[/] e clique em [bold]Criar[/]\n"
-            "3. Preencha:\n"
+            "2. Clique em [bold]Vamos começar[/]\n"
+            "3. Na seção [bold]Informações do app[/], preencha:\n"
             "   • Nome do app: qualquer (ex: \"Contas Gastos\")\n"
-            "   • E-mail de suporte: seu e-mail\n"
-            "   • E-mails do desenvolvedor: seu e-mail\n"
-            "4. Clique em [bold]Salvar e continuar[/]\n"
-            "5. Na tela de Escopos, apenas clique em\n"
-            "   [bold]Salvar e continuar[/]\n"
-            "6. Na tela de Resumo, clique em\n"
-            "   [bold]Voltar para o painel[/]"
+            "   • E-mail de suporte do usuário: seu e-mail\n"
+            "4. As seções [bold]Público[/] e [bold]Dados de contato[/]\n"
+            "   podem ficar com os valores padrão\n"
+            "5. Clique em [bold]Criar[/]"
         ),
     },
     {
@@ -580,8 +578,10 @@ def executar_wizard() -> None:
 
         if escolha == 0:
             _wizard_completa()
+            return
         elif escolha == 1:
             _wizard_backup()
+            return
         elif escolha == 2:
             _wizard_especificas()
         else:
