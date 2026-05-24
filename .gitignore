@@ -23,9 +23,6 @@ output/
 # Banco local
 *.db
 
-# Claude Code
-.claude/
-
 # Cache de testes
 .pytest_cache/
 
