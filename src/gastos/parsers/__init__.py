@@ -36,6 +36,7 @@ def detectar(caminho: Path) -> Parser | None:
 
 def _registrar_builtin() -> None:
     from gastos.parsers.extrato_itau import ExtratoItau
+    from gastos.parsers.extrato_itau_txt import ExtratoItauTxt
     from gastos.parsers.extrato_nubank import ExtratoNubank
     from gastos.parsers.fatura_itau import FaturaItau
     from gastos.parsers.fatura_nubank import FaturaNubank
@@ -43,6 +44,7 @@ def _registrar_builtin() -> None:
     registrar(ExtratoNubank())
     registrar(FaturaNubank())
     registrar(ExtratoItau())
+    registrar(ExtratoItauTxt())
     registrar(FaturaItau())
 
 
