@@ -1,6 +1,8 @@
 """Operações com Google Sheets e Drive para criação de minutas."""
 
+from dataclasses import dataclass
 from datetime import datetime
+from difflib import get_close_matches
 from itertools import groupby
 from pathlib import Path
 
@@ -154,8 +156,38 @@ def preencher_minuta(
         ).execute()
 
 
-def ler_planilha(spreadsheet_id: str, credenciais_path: Path) -> list[Lancamento]:
-    """Lê lançamentos preenchidos de volta do Google Sheets."""
+@dataclass
+class LinhaInvalida:
+    linha: int           # número real na planilha (A5 = 5)
+    motivo: str
+    conteudo: list
+
+
+class ErroLeituraPlanilha(Exception):
+    """Linhas com fonte conhecida mas dados inválidos (data/valor) impedem a leitura."""
+
+    def __init__(self, invalidas: list[LinhaInvalida]):
+        self.invalidas = invalidas
+        super().__init__(f"{len(invalidas)} linha(s) inválida(s) na planilha")
+
+
+@dataclass
+class LeituraPlanilha:
+    lancamentos: list[Lancamento]
+    puladas: list[LinhaInvalida]  # fonte desconhecida — silenciosamente puladas com aviso
+
+
+def ler_planilha(
+    spreadsheet_id: str,
+    credenciais_path: Path,
+    fontes_conhecidas: set[str] | None = None,
+) -> LeituraPlanilha:
+    """Lê lançamentos preenchidos de volta do Google Sheets.
+
+    Se `fontes_conhecidas` for fornecido, linhas cuja fonte não esteja no conjunto
+    são puladas e retornadas em `puladas` (não impedem a leitura). Linhas com fonte
+    conhecida mas data/valor inválidos levantam `ErroLeituraPlanilha`.
+    """
     creds = _autenticar(credenciais_path)
     sheets = build("sheets", "v4", credentials=creds)
     aba = _obter_nome_aba(sheets, spreadsheet_id)
@@ -165,21 +197,44 @@ def ler_planilha(spreadsheet_id: str, credenciais_path: Path) -> list[Lancamento
         range=f"'{aba}'!A5:F500",
     ).execute()
 
-    lancamentos = []
-    for row in result.get("values", []):
+    lancamentos: list[Lancamento] = []
+    invalidas: list[LinhaInvalida] = []
+    puladas: list[LinhaInvalida] = []
+
+    rows = result.get("values", [])
+    for offset, row in enumerate(rows):
+        linha_real = offset + 5  # A5 é a primeira linha de dados
+
         if not row or not row[0]:
             continue  # linha em branco entre blocos
 
-        # Colunas: Fonte, Data, Natureza, Descrição, Transcrição, Valor
-        fonte = row[0] if len(row) > 0 else ""
+        fonte = row[0]
         data_str = row[1] if len(row) > 1 else ""
         natureza = row[2] if len(row) > 2 else ""
         descricao = row[3] if len(row) > 3 else ""
         registro = row[4] if len(row) > 4 else ""
-        valor_str = row[5] if len(row) > 5 else "0"
+        valor_str = row[5] if len(row) > 5 else ""
 
-        dt = datetime.strptime(data_str, "%d/%m/%Y").date()
-        valor = parse_brasileiro(valor_str)
+        if fontes_conhecidas is not None and fonte not in fontes_conhecidas:
+            sugestao = get_close_matches(fonte, fontes_conhecidas, n=1, cutoff=0.6)
+            motivo = "fonte desconhecida"
+            if sugestao:
+                motivo += f" — quis dizer '{sugestao[0]}'?"
+            puladas.append(LinhaInvalida(linha_real, motivo, row))
+            continue
+
+        try:
+            dt = datetime.strptime(data_str, "%d/%m/%Y").date()
+        except ValueError:
+            motivo = "data ausente" if not data_str else f"data inválida ('{data_str}')"
+            invalidas.append(LinhaInvalida(linha_real, motivo, row))
+            continue
+
+        try:
+            valor = parse_brasileiro(valor_str) if valor_str else 0.0
+        except ValueError:
+            invalidas.append(LinhaInvalida(linha_real, f"valor inválido ('{valor_str}')", row))
+            continue
 
         lancamentos.append(
             Lancamento(
@@ -192,7 +247,10 @@ def ler_planilha(spreadsheet_id: str, credenciais_path: Path) -> list[Lancamento
             )
         )
 
-    return lancamentos
+    if invalidas:
+        raise ErroLeituraPlanilha(invalidas)
+
+    return LeituraPlanilha(lancamentos=lancamentos, puladas=puladas)
 
 
 def criar_minuta(

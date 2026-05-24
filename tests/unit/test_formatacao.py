@@ -30,3 +30,10 @@ class TestParseBrasileiro:
 
     def test_espacos(self):
         assert parse_brasileiro("  1.000,00  ") == 1000.0
+
+    def test_espaco_interno_negativo(self):
+        # Google Sheets pode formatar moeda com espaço entre o sinal e o número
+        assert parse_brasileiro("- 715,51 ") == -715.51
+
+    def test_espacos_internos_em_milhar(self):
+        assert parse_brasileiro("1 234,56") == 1234.56

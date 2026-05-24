@@ -14,6 +14,10 @@ def formatar_brasileiro(valor: float) -> str:
 
 
 def parse_brasileiro(texto: str) -> float:
-    """Converte formato brasileiro para float: '1.234,56' -> 1234.56"""
-    texto = texto.strip().replace(".", "").replace(",", ".")
+    """Converte formato brasileiro para float: '1.234,56' -> 1234.56
+
+    Tolera espaços internos ('- 715,51 ') que o Google Sheets pode introduzir
+    em células formatadas como moeda.
+    """
+    texto = texto.replace(" ", "").replace(".", "").replace(",", ".")
     return float(texto)

@@ -251,3 +251,37 @@ def marcar_minuta_aprendida(spreadsheet_id: str) -> None:
     )
     conn.commit()
     conn.close()
+
+
+def listar_minutas(limite: int = 20) -> list[dict]:
+    """Retorna as minutas mais recentes (para o menu 'aprender existente')."""
+    conn = _conn()
+    rows = conn.execute(
+        "SELECT id, mes_referencia, spreadsheet_id, url, criada_em, aprendida_em "
+        "FROM minutas ORDER BY datetime(criada_em) DESC LIMIT ?",
+        (limite,),
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+# Prefixos builtin garantem que, mesmo com banco vazio, fontes válidas sejam
+# reconhecidas na primeira leitura de uma planilha.
+_PREFIXOS_BUILTIN = ("extrato_itau", "extrato_nubank", "fatura_itau_cc", "fatura_nubank_cc")
+
+
+def fontes_conhecidas() -> set[str]:
+    """Conjunto de fontes vistas no banco (lançamentos + dicionário) + prefixos builtin.
+
+    Inclui também os prefixos builtin literais para que faturas/extratos novos
+    (ainda não importados) sejam aceitos numa primeira leitura.
+    """
+    conn = _conn()
+    rows = conn.execute(
+        "SELECT DISTINCT fonte FROM lancamentos "
+        "UNION SELECT DISTINCT fonte FROM dicionario"
+    ).fetchall()
+    conn.close()
+    fontes = {r["fonte"] for r in rows}
+    fontes.update(_PREFIXOS_BUILTIN)
+    return fontes

@@ -81,6 +81,7 @@ def _tela_principal() -> str:
     _tela()
     escolha = _menu("\nUse ↑↓ para navegar, Enter para selecionar\n", [
         "Iniciar processamento",
+        "Aprender de minuta existente",
         "Configurar",
         "Verificar atualização",
         "Sair",
@@ -88,8 +89,10 @@ def _tela_principal() -> str:
     if escolha == 0:
         return "iniciar"
     if escolha == 1:
-        return "configurar"
+        return "aprender_existente"
     if escolha == 2:
+        return "configurar"
+    if escolha == 3:
         return "atualizar"
     return "sair"
 
@@ -209,28 +212,135 @@ def _processar_arquivos(caminhos: list[Path]) -> list:
 
 
 def _aprender_planilha(url: str, credenciais) -> None:
-    """Lê planilha preenchida e atualiza dicionário."""
+    """Lê planilha preenchida e atualiza dicionário.
+
+    Captura erros de leitura para que a TUI não morra: mostra mensagem
+    acionável e volta ao menu principal.
+    """
     from gastos.classificador import preparar_aprendizado
-    from gastos.db import DB_PATH, salvar_dicionario
-    from gastos.sheets import backup_sqlite_para_drive, ler_planilha
+    from gastos.db import (
+        DB_PATH,
+        atualizar_lancamentos_aprendidos,
+        fontes_conhecidas,
+        marcar_minuta_aprendida,
+        salvar_dicionario,
+    )
+    from gastos.main import _detectar_mes
+    from gastos.sheets import ErroLeituraPlanilha, backup_sqlite_para_drive, ler_planilha
 
     spreadsheet_id = url.split("/d/")[1].split("/")[0] if "/d/" in url else url
     _tela("Lendo planilha preenchida...")
-    lancamentos_planilha = ler_planilha(spreadsheet_id, credenciais)
+
+    try:
+        leitura = ler_planilha(spreadsheet_id, credenciais, fontes_conhecidas())
+    except ErroLeituraPlanilha as e:
+        _tela_erro_leitura(url, e.invalidas)
+        return
+    except Exception as e:
+        _tela_erro_generico(url, e)
+        return
+
+    lancamentos_planilha = leitura.lancamentos
+
+    if leitura.puladas:
+        console.print()
+        console.print(f"  [yellow]Aviso:[/] {len(leitura.puladas)} linha(s) ignorada(s):")
+        for p in leitura.puladas:
+            console.print(f"    Linha {p.linha}: {p.motivo}")
+            console.print(f"      [dim]{p.conteudo}[/]")
+        console.print()
 
     registros = preparar_aprendizado(lancamentos_planilha)
     salvos, atualizados, ambiguos = salvar_dicionario(registros)
     console.print(f"  Dicionário: {salvos} novos, {atualizados} reforçados, {ambiguos} ambíguos")
 
+    # Atualiza lançamentos persistidos com a classificação verificada e marca a minuta.
+    if lancamentos_planilha:
+        mes = _detectar_mes(lancamentos_planilha)
+        atualizados_lc = atualizar_lancamentos_aprendidos(
+            [lc.to_dict() for lc in lancamentos_planilha], mes,
+        )
+        if atualizados_lc:
+            console.print(f"  Lançamentos: {atualizados_lc} marcados como verificados")
+    marcar_minuta_aprendida(spreadsheet_id)
+
     backup_sqlite_para_drive(DB_PATH, credenciais)
     _tela_aprender_resultado(len(lancamentos_planilha))
 
 
+def _tela_erro_leitura(url: str, invalidas: list) -> None:
+    """Tela de erro: linhas inválidas impedem a leitura."""
+    _tela()
+    linhas_txt = "\n".join(
+        f"  Linha {inv.linha}: {inv.motivo}\n    [dim]{inv.conteudo}[/]"
+        for inv in invalidas
+    )
+    console.print(Padding(
+        Panel(
+            f"[bold red]Não consegui ler a planilha.[/]\n\n"
+            f"Corrija as linhas abaixo e tente aprender de novo:\n\n"
+            f"{linhas_txt}\n\n"
+            f"[link={url}]{url}[/link]",
+            border_style="red",
+            title="Erro de leitura",
+        ),
+        (0, 0, 0, len(_MARGEM)),
+    ))
+    console.print()
+    _menu("", ["Ok"])
+
+
+def _tela_erro_generico(url: str, erro: Exception) -> None:
+    """Tela de erro: falha inesperada."""
+    _tela()
+    console.print(Padding(
+        Panel(
+            f"[bold red]Erro ao processar a planilha:[/]\n\n"
+            f"{type(erro).__name__}: {erro}\n\n"
+            f"[link={url}]{url}[/link]",
+            border_style="red",
+            title="Erro",
+        ),
+        (0, 0, 0, len(_MARGEM)),
+    ))
+    console.print()
+    _menu("", ["Ok"])
+
+
+def _criar_e_persistir_minuta(todos_lancamentos: list, credenciais) -> str:
+    """Persiste lançamentos, cria a minuta no Sheets, persiste e vincula a minuta.
+
+    Retorna a URL da minuta criada. Centraliza o que o CLI antigo (main.py)
+    já fazia para que a TUI tenha o mesmo comportamento de persistência.
+    """
+    from gastos.configuracao import obter_iniciais
+    from gastos.db import (
+        DB_PATH,
+        limpar_lancamentos_nao_classificados,
+        salvar_lancamentos,
+        salvar_minuta,
+        vincular_lancamentos_minuta,
+    )
+    from gastos.main import _detectar_mes
+    from gastos.sheets import backup_sqlite_para_drive, criar_minuta
+
+    mes = _detectar_mes(todos_lancamentos)
+    limpar_lancamentos_nao_classificados(mes)
+    salvar_lancamentos([lc.to_dict() for lc in todos_lancamentos], mes)
+
+    nome = f"{mes} - {obter_iniciais()}"
+    url = criar_minuta(todos_lancamentos, nome, credenciais)
+    spreadsheet_id = url.split("/d/")[1].split("/")[0]
+    minuta_id = salvar_minuta(mes, spreadsheet_id, url)
+    vincular_lancamentos_minuta(mes, minuta_id)
+
+    backup_sqlite_para_drive(DB_PATH, credenciais)
+    return url
+
+
 def _fluxo_iniciar() -> None:
     """Orquestra as telas do fluxo de ingestão com navegação voltar/avançar."""
-    from gastos.db import DB_PATH
-    from gastos.main import _credenciais_google, _detectar_mes
-    from gastos.sheets import backup_sqlite_para_drive, criar_minuta
+    from gastos.main import _credenciais_google
 
     caminhos = _tela_arquivos()
     if caminhos is None:
@@ -255,15 +365,47 @@ def _fluxo_iniciar() -> None:
         return
 
     credenciais = _credenciais_google()
-    mes = _detectar_mes(todos_lancamentos)
-    from gastos.configuracao import obter_iniciais
-    nome = f"{mes} - {obter_iniciais()}"
-    url = criar_minuta(todos_lancamentos, nome, credenciais)
-    backup_sqlite_para_drive(DB_PATH, credenciais)
+    url = _criar_e_persistir_minuta(todos_lancamentos, credenciais)
 
     escolha = _tela_pos_processamento(url)
     if escolha == "aprender":
         _aprender_planilha(url, credenciais)
+
+
+def _fluxo_aprender_existente() -> None:
+    """Menu para escolher uma minuta já criada (do banco) ou colar URL avulsa."""
+    from gastos.db import listar_minutas
+    from gastos.main import _credenciais_google
+
+    minutas = listar_minutas()
+
+    opcoes: list[str] = []
+    for m in minutas:
+        status = "[aprendida]" if m["aprendida_em"] else "[pendente]"
+        criada = m["criada_em"][:10]
+        opcoes.append(f"{m['mes_referencia']} {status}  criada em {criada}")
+    opcoes.append("Colar URL manualmente")
+    opcoes.append("← Voltar")
+
+    _tela("Selecione a minuta a aprender")
+    console.print()
+    escolha = _menu("", opcoes)
+
+    if escolha is None or escolha == len(opcoes) - 1:
+        return  # voltar
+
+    if escolha == len(opcoes) - 2:
+        # colar URL manual
+        _tela("Cole a URL da planilha (ou só o spreadsheet_id) e pressione Enter")
+        console.print()
+        url = input(f"{_MARGEM}> ").strip()
+        if not url:
+            return
+    else:
+        url = minutas[escolha]["url"]
+
+    credenciais = _credenciais_google()
+    _aprender_planilha(url, credenciais)
 
 
 def _desinstalar() -> None:
@@ -296,9 +438,7 @@ def executar() -> None:
     args = sys.argv[1:]
 
     if args:
-        from gastos.db import DB_PATH
-        from gastos.main import _credenciais_google, _detectar_mes
-        from gastos.sheets import backup_sqlite_para_drive, criar_minuta
+        from gastos.main import _credenciais_google
 
         console.print()
         caminhos = _validar_arquivos(args)
@@ -317,10 +457,7 @@ def executar() -> None:
             return
 
         credenciais = _credenciais_google()
-        mes = _detectar_mes(todos_lancamentos)
-        from gastos.configuracao import obter_iniciais
-        url = criar_minuta(todos_lancamentos, f"{mes} - {obter_iniciais()}", credenciais)
-        backup_sqlite_para_drive(DB_PATH, credenciais)
+        url = _criar_e_persistir_minuta(todos_lancamentos, credenciais)
 
         escolha = _tela_pos_processamento(url)
         if escolha == "aprender":
@@ -359,6 +496,8 @@ def executar() -> None:
 
             if acao == "iniciar":
                 _fluxo_iniciar()
+            elif acao == "aprender_existente":
+                _fluxo_aprender_existente()
             elif acao == "configurar":
                 from gastos.wizard import executar_wizard
                 executar_wizard()

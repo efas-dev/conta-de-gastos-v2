@@ -104,12 +104,27 @@ def main() -> None:
     # Modo aprender: lê planilha e salva no dicionário
     if args.aprender:
         from gastos.classificador import preparar_aprendizado
-        from gastos.db import DB_PATH, atualizar_lancamentos_aprendidos, marcar_minuta_aprendida, salvar_dicionario
-        from gastos.sheets import backup_sqlite_para_drive, ler_planilha
+        from gastos.db import (
+            DB_PATH,
+            atualizar_lancamentos_aprendidos,
+            fontes_conhecidas,
+            marcar_minuta_aprendida,
+            salvar_dicionario,
+        )
+        from gastos.sheets import ErroLeituraPlanilha, backup_sqlite_para_drive, ler_planilha
 
         credenciais = _credenciais_google()
         print(f"  Lendo planilha {args.aprender}...")
-        lancamentos = ler_planilha(args.aprender, credenciais)
+        try:
+            leitura = ler_planilha(args.aprender, credenciais, fontes_conhecidas())
+        except ErroLeituraPlanilha as e:
+            print("  Não consegui ler a planilha. Corrija as linhas abaixo:")
+            for inv in e.invalidas:
+                print(f"    Linha {inv.linha}: {inv.motivo} — {inv.conteudo}")
+            sys.exit(1)
+        lancamentos = leitura.lancamentos
+        for p in leitura.puladas:
+            print(f"  Aviso: linha {p.linha} pulada ({p.motivo}) — {p.conteudo}")
         print(f"  {len(lancamentos)} lançamentos lidos da planilha")
 
         registros = preparar_aprendizado(lancamentos)
