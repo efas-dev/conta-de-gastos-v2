@@ -429,6 +429,85 @@ def _desinstalar() -> None:
     console.print()
 
 
+def _executar_atualizacao(local: str, remota: str) -> bool:
+    """Roda `uv tool install --upgrade`. Retorna True se sucesso."""
+    from gastos.atualizacao import atualizar
+
+    console.print()
+    console.print(f"  Atualizando {local} → [bold green]{remota}[/]...")
+    ok, msg = atualizar()
+    if ok:
+        console.print("  [bold green]Atualizado![/] Reinicie o [bold]cg[/] para usar a nova versão.")
+        console.print()
+        _menu("", ["Ok"])
+        return True
+    console.print(f"  [red]Falha na atualização:[/]")
+    for linha in msg.splitlines()[-5:]:
+        console.print(f"  [dim]{linha}[/]")
+    console.print()
+    _menu("", ["Ok"])
+    return False
+
+
+def _verificar_atualizacao_no_startup() -> None:
+    """Check silencioso ao abrir a TUI. 1x por dia. Erros são ignorados."""
+    try:
+        from gastos.atualizacao import verificar_atualizacao
+        resultado = verificar_atualizacao()
+    except Exception:
+        return
+
+    if not resultado:
+        return
+
+    local, remota = resultado
+    _tela()
+    console.print(
+        f"  [bold yellow]Nova versão disponível:[/] "
+        f"{local} → [bold green]{remota}[/]"
+    )
+    console.print()
+    escolha = _menu("", ["Atualizar agora", "Pular"])
+    if escolha == 0:
+        _executar_atualizacao(local, remota)
+
+
+def _verificar_atualizacao_menu() -> bool:
+    """Check manual a partir do menu. Retorna True se atualizou (deve sair)."""
+    from gastos.atualizacao import _versao_instalada, verificar_atualizacao
+
+    _tela("Verificando atualização...")
+    local = _versao_instalada()
+    try:
+        resultado = verificar_atualizacao(forcar=True)
+    except Exception as e:
+        console.print(f"  [red]Erro ao verificar:[/] {type(e).__name__}: {e}")
+        console.print()
+        _menu("", ["Ok"])
+        return False
+
+    if resultado is None:
+        # Pode ser "já está atualizado" OU falha de rede. Diferencia.
+        from gastos.atualizacao import _versao_remota
+        if _versao_remota() is None:
+            console.print("  [yellow]Não foi possível consultar o GitHub.[/] Verifique sua conexão.")
+        else:
+            console.print(f"  [green]Você está na versão mais recente ({local}).[/]")
+        console.print()
+        _menu("", ["Ok"])
+        return False
+
+    local, remota = resultado
+    console.print(
+        f"  [bold yellow]Nova versão:[/] {local} → [bold green]{remota}[/]"
+    )
+    console.print()
+    escolha = _menu("", ["Atualizar agora", "← Voltar"])
+    if escolha == 0:
+        return _executar_atualizacao(local, remota)
+    return False
+
+
 def executar() -> None:
     """Ponto de entrada da TUI."""
     if "--uninstall" in sys.argv:
@@ -464,31 +543,7 @@ def executar() -> None:
             _aprender_planilha(url, credenciais)
         return
 
-    # Verificação de atualização (1x por dia, silencia erros)
-    try:
-        from gastos.atualizacao import atualizar, verificar_atualizacao
-        resultado = verificar_atualizacao()
-        if resultado:
-            local, remota = resultado
-            _tela()
-            console.print(
-                f"  [bold yellow]Nova versão disponível:[/] "
-                f"{local} → [bold green]{remota}[/]"
-            )
-            console.print()
-            escolha = _menu("", ["Atualizar agora", "Pular"])
-            if escolha == 0:
-                console.print()
-                console.print("  Atualizando...")
-                if atualizar():
-                    console.print("  [bold green]Atualizado![/] Reinicie o cg.")
-                    console.print()
-                    return
-                else:
-                    console.print("  [red]Falha na atualização.[/]")
-                    _menu("", ["Ok"])
-    except Exception:
-        pass
+    _verificar_atualizacao_no_startup()
 
     try:
         while True:
@@ -502,37 +557,8 @@ def executar() -> None:
                 from gastos.wizard import executar_wizard
                 executar_wizard()
             elif acao == "atualizar":
-                from gastos.atualizacao import atualizar, verificar_atualizacao
-                _tela("Verificando atualização...")
-                from gastos.atualizacao import (
-                    _registrar_checagem,
-                    _versao_instalada,
-                    _versao_remota,
-                    _comparar_versoes,
-                )
-                remota = _versao_remota()
-                local = _versao_instalada()
-                if remota and _comparar_versoes(local, remota):
-                    console.print(
-                        f"  [bold yellow]Nova versão:[/] {local} → "
-                        f"[bold green]{remota}[/]"
-                    )
-                    console.print()
-                    escolha = _menu("", ["Atualizar agora", "← Voltar"])
-                    if escolha == 0:
-                        console.print()
-                        console.print("  Atualizando...")
-                        if atualizar():
-                            console.print("  [bold green]Atualizado![/] Reinicie o cg.")
-                            console.print()
-                            return
-                        else:
-                            console.print("  [red]Falha na atualização.[/]")
-                            _menu("", ["Ok"])
-                else:
-                    console.print(f"  [green]Você está na versão mais recente ({local}).[/]")
-                    console.print()
-                    _menu("", ["Ok"])
+                if _verificar_atualizacao_menu():
+                    return
             else:
                 _tela()
                 console.print("  [dim]Até logo![/]")
