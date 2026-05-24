@@ -210,16 +210,21 @@ def atualizar_lancamentos_aprendidos(
     for r in registros:
         if not r.get("natureza") and not r.get("descricao"):
             continue
+        # UPDATE ... LIMIT exige SQLite compilado com SQLITE_ENABLE_UPDATE_DELETE_LIMIT
+        # (não é o padrão no macOS). Usamos subquery em rowid para garantir 1 linha.
         cursor = conn.execute(
             """UPDATE lancamentos
                SET natureza = ?, descricao = ?, classificado = 1
-               WHERE mes_referencia = ?
-                 AND fonte = ?
-                 AND registro = ?
-                 AND data = ?
-                 AND valor = ?
-                 AND classificado = 0
-               LIMIT 1""",
+               WHERE rowid = (
+                   SELECT rowid FROM lancamentos
+                   WHERE mes_referencia = ?
+                     AND fonte = ?
+                     AND registro = ?
+                     AND data = ?
+                     AND valor = ?
+                     AND classificado = 0
+                   LIMIT 1
+               )""",
             (
                 r["natureza"],
                 r["descricao"],
