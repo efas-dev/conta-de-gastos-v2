@@ -1,13 +1,34 @@
 """Backend SQLite para dicionário, lançamentos e minutas."""
 
+import os
+import shutil
 import sqlite3
 from datetime import datetime
 from pathlib import Path
 
 from gastos.config import RAIZ
 
-DB_PATH = RAIZ / "gastos.db"
-_OLD_DB_PATH = RAIZ / "dicionario.db"
+
+def _data_dir() -> Path:
+    """Diretório persistente para dados (segue XDG_DATA_HOME).
+
+    Importante: NÃO usar o diretório de instalação do tool — `uv tool install
+    --reinstall` recria essa pasta e apaga o banco.
+    """
+    xdg = os.environ.get("XDG_DATA_HOME")
+    base = Path(xdg) if xdg else Path.home() / ".local" / "share"
+    d = base / "contas-gastos"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+DB_PATH = _data_dir() / "gastos.db"
+
+# Caminhos legados — migrados para DB_PATH na primeira execução pós-upgrade.
+_LEGACY_DB_PATHS = [
+    RAIZ / "gastos.db",       # antigo (instalação local / dev)
+    RAIZ / "dicionario.db",   # ancestral, antes do rename
+]
 
 _CREATE_TABLES = """
 CREATE TABLE IF NOT EXISTS dicionario (
@@ -48,9 +69,13 @@ CREATE TABLE IF NOT EXISTS lancamentos (
 
 
 def _migrar_db() -> None:
-    """Renomeia dicionario.db → gastos.db se necessário."""
-    if _OLD_DB_PATH.exists() and not DB_PATH.exists():
-        _OLD_DB_PATH.rename(DB_PATH)
+    """Migra DBs de caminhos legados para DB_PATH (uma vez)."""
+    if DB_PATH.exists():
+        return
+    for legado in _LEGACY_DB_PATHS:
+        if legado.exists():
+            shutil.move(str(legado), str(DB_PATH))
+            return
 
 
 def _conn() -> sqlite3.Connection:
