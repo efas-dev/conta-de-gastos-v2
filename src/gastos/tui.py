@@ -64,7 +64,7 @@ def _validar_arquivos(caminhos_raw: list[str]) -> list[Path]:
         if not caminho.exists():
             console.print(f"  [red]✗[/] Arquivo não encontrado: {caminho}")
             continue
-        if caminho.suffix.lower() not in (".csv", ".pdf"):
+        if caminho.suffix.lower() not in (".csv", ".pdf", ".txt"):
             console.print(f"  [red]✗[/] Formato não suportado: {caminho.name}")
             continue
         validos.append(caminho)

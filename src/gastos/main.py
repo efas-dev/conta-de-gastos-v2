@@ -30,7 +30,7 @@ def _ingerir(input_dir: Path) -> list[Lancamento]:
         sys.exit(1)
 
     arquivos = sorted(
-        p for p in input_dir.iterdir() if p.is_file() and p.suffix.lower() in (".csv", ".pdf")
+        p for p in input_dir.iterdir() if p.is_file() and p.suffix.lower() in (".csv", ".pdf", ".txt")
     )
 
     if not arquivos:
