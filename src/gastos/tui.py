@@ -112,7 +112,7 @@ def _tela_arquivos() -> list[Path] | None:
             return None
 
         try:
-            partes = shlex.split(linha, posix=False)
+            partes = shlex.split(linha, posix=True)
         except ValueError:
             partes = [linha]
 

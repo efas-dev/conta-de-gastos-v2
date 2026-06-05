@@ -6,6 +6,7 @@ from difflib import get_close_matches
 from itertools import groupby
 from pathlib import Path
 
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -43,9 +44,14 @@ def _autenticar(credenciais_path: Path) -> Credentials:
         creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
 
     if not creds or not creds.valid:
+        refreshed = False
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+                refreshed = True
+            except RefreshError:
+                creds = None
+        if not refreshed:
             flow = InstalledAppFlow.from_client_secrets_file(str(credenciais_path), SCOPES)
             creds = flow.run_local_server(port=0)
         token_path.write_text(creds.to_json())
