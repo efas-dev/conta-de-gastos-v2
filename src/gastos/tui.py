@@ -101,7 +101,7 @@ def _tela_arquivos() -> list[Path] | None:
     """Tela 2: entrada de arquivos. Retorna lista de Paths ou None para voltar."""
     while True:
         _tela(
-            "Arraste os arquivos de extrato e fatura (PDF/CSV) para o terminal\n"
+            "Arraste os arquivos de extrato e fatura (PDF/CSV/TXT) para o terminal\n"
             "e pressione [bold cyan]Enter[/].\n\n"
             "Para voltar, deixe vazio e pressione [bold cyan]Enter[/]."
         )

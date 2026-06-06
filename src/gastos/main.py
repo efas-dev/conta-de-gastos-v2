@@ -34,7 +34,7 @@ def _ingerir(input_dir: Path) -> list[Lancamento]:
     )
 
     if not arquivos:
-        print("Nenhum arquivo CSV ou PDF encontrado em", input_dir)
+        print("Nenhum arquivo CSV, PDF ou TXT encontrado em", input_dir)
         sys.exit(1)
 
     todos_lancamentos = []

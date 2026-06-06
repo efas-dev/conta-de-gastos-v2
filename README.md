@@ -1,6 +1,6 @@
 # Conta de Gastos
 
-Sistema de linha de comando para organização de finanças pessoais. Ingere extratos bancários e faturas de cartão (PDF/CSV), classifica lançamentos automaticamente e gera minutas no Google Sheets para revisão.
+Sistema de linha de comando para organização de finanças pessoais. Ingere extratos bancários e faturas de cartão (PDF/CSV/TXT), classifica lançamentos automaticamente e gera minutas no Google Sheets para revisão.
 
 ## Instalação
 
@@ -8,9 +8,26 @@ Sistema de linha de comando para organização de finanças pessoais. Ingere ext
 curl -sSf https://raw.githubusercontent.com/efas-dev/conta_de_gastos/main/install.sh | bash
 ```
 
-O script instala o [uv](https://docs.astral.sh/uv/) (se necessário) e disponibiliza o comando `cg` no terminal.
+O script detecta seu ambiente (Linux, macOS ou WSL), verifica os pré-requisitos, instala o [uv](https://docs.astral.sh/uv/) (se necessário) e disponibiliza o comando `cg` no terminal. Você **não precisa** ter Python instalado — o uv baixa e gerencia a versão correta sozinho.
 
 Funciona em **Linux**, **macOS** e **Windows via WSL**.
+
+### Instalando no WSL (Windows)
+
+Se você ainda não tem o WSL, abra o **PowerShell como administrador** e rode:
+
+```powershell
+wsl --install
+```
+
+Depois reinicie e abra o **Ubuntu** (ou a distro escolhida). Em instalações novas de WSL, geralmente faltam pacotes básicos como `curl`. O instalador detecta isso e mostra exatamente o que rodar. Se preferir já preparar antes:
+
+```bash
+sudo apt-get update && sudo apt-get install -y curl ca-certificates
+curl -sSf https://raw.githubusercontent.com/efas-dev/conta_de_gastos/main/install.sh | bash
+```
+
+Nenhum Python é necessário previamente — o uv cuida disso.
 
 ## Primeiros passos
 
@@ -24,7 +41,7 @@ Após instalar, execute `cg` e selecione **Configurar**. O wizard guia você por
 ## Como funciona
 
 ```
-Extratos/Faturas (PDF, CSV)
+Extratos/Faturas (PDF, CSV, TXT)
     ↓
 cg → Parseia → Classifica → Gera minuta no Google Sheets
                                   ↓
@@ -47,7 +64,7 @@ cg → Parseia → Classifica → Gera minuta no Google Sheets
 |-------|---------|
 | Extrato Nubank | CSV |
 | Fatura Nubank (CC) | CSV |
-| Extrato Itaú | PDF |
+| Extrato Itaú | PDF, TXT |
 | Fatura Itaú (CC) | PDF |
 
 Novos bancos podem ser adicionados implementando um parser.
@@ -66,4 +83,5 @@ O sistema verifica automaticamente (1x por dia) se há nova versão disponível.
 ## Requisitos
 
 - Linux, macOS ou WSL
+- `curl` (em WSL/Linux mínimo, o instalador avisa se faltar e mostra como instalar)
 - O instalador cuida do resto (uv, Python 3.12+, dependências)
