@@ -2,6 +2,7 @@ import csv
 from datetime import datetime
 from pathlib import Path
 
+from gastos.formatacao import parse_valor
 from gastos.modelos import Lancamento
 
 
@@ -22,7 +23,7 @@ class FaturaNubank:
                 if titulo.lower() == "pagamento recebido":
                     continue
                 dt = datetime.strptime(linha["date"], "%Y-%m-%d").date()
-                valor = -float(linha["amount"])
+                valor = -parse_valor(linha["amount"])
                 lancamentos.append(
                     Lancamento(
                         fonte="fatura_nubank_cc",

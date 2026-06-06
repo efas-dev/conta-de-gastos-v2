@@ -2,6 +2,7 @@ import csv
 from datetime import datetime
 from pathlib import Path
 
+from gastos.formatacao import parse_valor
 from gastos.modelos import Lancamento
 
 
@@ -24,7 +25,7 @@ class ExtratoNubank:
                         fonte="extrato_nubank",
                         natureza="",
                         descricao="",
-                        valor=float(linha["Valor"]),
+                        valor=parse_valor(linha["Valor"]),
                         registro=linha["Descrição"],
                         data=dt,
                     )

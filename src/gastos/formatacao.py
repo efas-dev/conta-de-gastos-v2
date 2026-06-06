@@ -21,3 +21,23 @@ def parse_brasileiro(texto: str) -> float:
     """
     texto = texto.replace(" ", "").replace(".", "").replace(",", ".")
     return float(texto)
+
+
+def parse_valor(texto: str) -> float:
+    """Converte texto numérico para float aceitando formato US ('20.97',
+    '1234.56') ou BR ('20,97', '1.234,56').
+
+    Heurística: o separador decimal é o que aparecer mais à direita; o outro,
+    se presente, é tratado como separador de milhar e removido.
+    """
+    texto = texto.strip().replace(" ", "")
+    tem_virgula = "," in texto
+    tem_ponto = "." in texto
+    if tem_virgula and tem_ponto:
+        if texto.rfind(",") > texto.rfind("."):
+            texto = texto.replace(".", "").replace(",", ".")
+        else:
+            texto = texto.replace(",", "")
+    elif tem_virgula:
+        texto = texto.replace(",", ".")
+    return float(texto)

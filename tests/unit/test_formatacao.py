@@ -1,4 +1,4 @@
-from gastos.formatacao import formatar_brasileiro, parse_brasileiro
+from gastos.formatacao import formatar_brasileiro, parse_brasileiro, parse_valor
 
 
 class TestFormatarBrasileiro:
@@ -37,3 +37,26 @@ class TestParseBrasileiro:
 
     def test_espacos_internos_em_milhar(self):
         assert parse_brasileiro("1 234,56") == 1234.56
+
+
+class TestParseValor:
+    def test_us_decimal_ponto(self):
+        assert parse_valor("20.97") == 20.97
+
+    def test_br_decimal_virgula(self):
+        assert parse_valor("20,97") == 20.97
+
+    def test_us_milhar_e_decimal(self):
+        assert parse_valor("1,234.56") == 1234.56
+
+    def test_br_milhar_e_decimal(self):
+        assert parse_valor("1.234,56") == 1234.56
+
+    def test_inteiro(self):
+        assert parse_valor("100") == 100.0
+
+    def test_negativo_br(self):
+        assert parse_valor("-99,90") == -99.90
+
+    def test_espacos(self):
+        assert parse_valor("  20,97  ") == 20.97
