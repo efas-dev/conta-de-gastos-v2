@@ -25,6 +25,75 @@ TEMPLATE_GID = 672560374
 TEMPLATE_ID = "1dMHpWV1ugw6V2tEO4oGNyF_-nttg6T7uv2ZJ5tFnMSE"
 
 
+def _is_wsl() -> bool:
+    try:
+        with open("/proc/version") as f:
+            return "microsoft" in f.read().lower()
+    except OSError:
+        return False
+
+
+def _abrir_no_windows(url: str) -> bool:
+    """Tenta abrir uma URL no navegador padrão do Windows a partir do WSL."""
+    import shutil
+    import subprocess
+
+    for cmd in (["wslview", url], ["cmd.exe", "/c", "start", "", url]):
+        if not shutil.which(cmd[0]):
+            continue
+        try:
+            subprocess.run(
+                cmd, check=True, timeout=8,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            return True
+        except (subprocess.SubprocessError, OSError):
+            continue
+    return False
+
+
+def executar_flow_oauth(flow: InstalledAppFlow) -> Credentials:
+    """Executa o fluxo OAuth. No WSL, usa fluxo manual de colar-URL para
+    contornar o servidor de loopback (que não é acessível pelo navegador do Windows)."""
+    if not _is_wsl():
+        return flow.run_local_server(port=0)
+
+    from rich.console import Console
+    console = Console()
+
+    flow.redirect_uri = "http://localhost:8080/"
+    auth_url, _ = flow.authorization_url(access_type="offline", prompt="consent")
+
+    console.print()
+    console.print("  [yellow]WSL detectado — usando fluxo manual de autenticação.[/]")
+    console.print()
+    if _abrir_no_windows(auth_url):
+        console.print("  Abri o navegador do Windows com a página de autorização.")
+    else:
+        console.print("  Não consegui abrir o navegador automaticamente.")
+        console.print("  Copie e cole a URL abaixo no seu navegador do Windows:")
+        console.print()
+        console.print(f"  [link]{auth_url}[/link]")
+    console.print()
+    console.print("  Depois de autorizar, o navegador vai redirecionar para uma página")
+    console.print("  com [dim]\"Não é possível acessar esse site\"[/] — isso é [bold]esperado[/].")
+    console.print()
+    console.print("  [bold]Copie a URL completa da barra de endereços[/] e cole aqui:")
+
+    while True:
+        resp = input("  > ").strip()
+        if not resp:
+            raise RuntimeError("Autenticação cancelada (nenhuma URL informada).")
+        if resp.startswith("localhost"):
+            resp = "http://" + resp
+        try:
+            flow.fetch_token(authorization_response=resp)
+            return flow.credentials
+        except Exception as e:
+            console.print(f"  [red]URL inválida: {e}[/]")
+            console.print("  Cole a URL completa que apareceu na barra de endereços (começa com http://localhost):")
+
+
 def _template_id() -> str:
     return TEMPLATE_ID
 
@@ -53,7 +122,7 @@ def _autenticar(credenciais_path: Path) -> Credentials:
                 creds = None
         if not refreshed:
             flow = InstalledAppFlow.from_client_secrets_file(str(credenciais_path), SCOPES)
-            creds = flow.run_local_server(port=0)
+            creds = executar_flow_oauth(flow)
         token_path.write_text(creds.to_json())
 
     return creds

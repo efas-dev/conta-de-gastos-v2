@@ -161,7 +161,17 @@ _PASSOS_OAUTH = [
             "6. Clique em [bold]Criar[/]\n\n"
             "Na próxima tela você verá o\n"
             "[bold]Client ID[/] e [bold]Client Secret[/].\n"
-            "Copie-os ou baixe o JSON."
+            "Copie-os ou baixe o JSON.\n\n"
+            "[bold yellow]⚠ Atenção com essas credenciais![/]\n"
+            "• [bold]Não compartilhe[/] o Client Secret nem o\n"
+            "  JSON com ninguém (não cole em chat, e-mail,\n"
+            "  repositório público, etc.).\n"
+            "• [bold]Guarde o JSON em local seguro[/] (ex: gerenciador\n"
+            "  de senhas). Se precisar reinstalar em outra\n"
+            "  máquina, você vai precisar dele novamente.\n"
+            "• [bold]Não apague o projeto no Google Cloud[/] depois\n"
+            "  de configurar — se apagar, o app para de\n"
+            "  funcionar e será preciso refazer tudo."
         ),
     },
 ]
@@ -316,8 +326,9 @@ def _testar_autenticacao() -> bool:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
             else:
+                from gastos.sheets import executar_flow_oauth
                 flow = InstalledAppFlow.from_client_secrets_file(str(cred_path), SCOPES)
-                creds = flow.run_local_server(port=0)
+                creds = executar_flow_oauth(flow)
             token_path.write_text(creds.to_json())
 
         return True
