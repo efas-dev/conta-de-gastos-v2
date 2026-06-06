@@ -34,13 +34,29 @@ def _is_wsl() -> bool:
 
 
 def _abrir_no_windows(url: str) -> bool:
-    """Tenta abrir uma URL no navegador padrão do Windows a partir do WSL."""
+    """Tenta abrir uma URL no navegador padrão do Windows a partir do WSL.
+
+    Evita `cmd.exe /c start`, que trunca a URL no primeiro `&` mesmo com aspas
+    (interpretado como separador de comando antes do quoting), o que quebra
+    URLs de OAuth (que sempre têm vários `&`).
+    """
     import shutil
     import subprocess
 
-    for cmd in (["wslview", url], ["cmd.exe", "/c", "start", "", url]):
-        if not shutil.which(cmd[0]):
-            continue
+    tentativas: list[list[str]] = []
+    if shutil.which("wslview"):
+        tentativas.append(["wslview", url])
+    if shutil.which("powershell.exe"):
+        # Start-Process com a URL como argumento único — sem parsing de cmd.exe
+        escaped = url.replace("'", "''")
+        tentativas.append([
+            "powershell.exe", "-NoProfile", "-NonInteractive",
+            "-Command", f"Start-Process '{escaped}'",
+        ])
+    if shutil.which("rundll32.exe"):
+        tentativas.append(["rundll32.exe", "url.dll,FileProtocolHandler", url])
+
+    for cmd in tentativas:
         try:
             subprocess.run(
                 cmd, check=True, timeout=8,
@@ -67,13 +83,16 @@ def executar_flow_oauth(flow: InstalledAppFlow) -> Credentials:
     console.print()
     console.print("  [yellow]WSL detectado — usando fluxo manual de autenticação.[/]")
     console.print()
-    if _abrir_no_windows(auth_url):
-        console.print("  Abri o navegador do Windows com a página de autorização.")
+    abriu = _abrir_no_windows(auth_url)
+    if abriu:
+        console.print("  Tentei abrir o navegador do Windows com a página de autorização.")
+        console.print("  [dim]Se a página exibir \"Acesso bloqueado / Missing required parameter\",[/]")
+        console.print("  [dim]use a URL abaixo manualmente:[/]")
     else:
         console.print("  Não consegui abrir o navegador automaticamente.")
-        console.print("  Copie e cole a URL abaixo no seu navegador do Windows:")
-        console.print()
-        console.print(f"  [link]{auth_url}[/link]")
+        console.print("  Cole a URL abaixo no seu navegador do Windows:")
+    console.print()
+    console.print(f"  [cyan]{auth_url}[/cyan]")
     console.print()
     console.print("  Depois de autorizar, o navegador vai redirecionar para uma página")
     console.print("  com [dim]\"Não é possível acessar esse site\"[/] — isso é [bold]esperado[/].")

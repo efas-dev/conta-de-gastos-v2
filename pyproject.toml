@@ -1,6 +1,6 @@
 [project]
 name = "gastos"
-version = "0.5.6"
+version = "0.5.7"
 description = "Ingestão de extratos e faturas bancárias"
 readme = "README.md"
 authors = [
