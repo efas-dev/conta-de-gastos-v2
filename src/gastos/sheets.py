@@ -74,8 +74,14 @@ def executar_flow_oauth(flow: InstalledAppFlow) -> Credentials:
     if not _is_wsl():
         return flow.run_local_server(port=0)
 
+    import os
     from rich.console import Console
     console = Console()
+
+    # O redirect_uri é http://localhost (loopback local — não trafega na rede).
+    # Sem essa variável, oauthlib rejeita a troca do code com
+    # "(insecure_transport) OAuth 2 MUST utilize https".
+    os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 
     flow.redirect_uri = "http://localhost:8080/"
     auth_url, _ = flow.authorization_url(access_type="offline", prompt="consent")
@@ -99,17 +105,61 @@ def executar_flow_oauth(flow: InstalledAppFlow) -> Credentials:
     console.print()
     console.print("  [bold]Copie a URL completa da barra de endereços[/] e cole aqui:")
 
+    import re
+    # Remove sequências de escape ANSI (setas/edição) que terminais às vezes
+    # injetam na entrada quando o usuário navega numa linha colada longa.
+    _ansi = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+    def _limpar(s: str) -> str:
+        s = _ansi.sub("", s).strip()
+        # Se a colagem concatenou duas URLs (acontece ao colar duas vezes sem
+        # apagar a anterior), fica só com a última ocorrência.
+        marcadores = ["http://localhost", "https://localhost", "localhost"]
+        for m in marcadores:
+            idx = s.rfind(m)
+            if idx > 0:
+                s = s[idx:]
+                break
+        if s.startswith("localhost"):
+            s = "http://" + s
+        # Normaliza https→http no redirect (alguns navegadores forçam HSTS no
+        # localhost). O code só vale uma vez; o esquema do redirect é só
+        # informativo para o fetch_token.
+        if s.startswith("https://localhost"):
+            s = "http://" + s[len("https://"):]
+        return s
+
     while True:
-        resp = input("  > ").strip()
+        try:
+            bruto = input("  > ")
+        except EOFError:
+            raise RuntimeError("Autenticação cancelada (entrada encerrada).")
+        resp = _limpar(bruto)
         if not resp:
             raise RuntimeError("Autenticação cancelada (nenhuma URL informada).")
-        if resp.startswith("localhost"):
-            resp = "http://" + resp
         try:
             flow.fetch_token(authorization_response=resp)
             return flow.credentials
         except Exception as e:
-            console.print(f"  [red]URL inválida: {e}[/]")
+            msg = str(e)
+            if "insecure_transport" in msg.lower():
+                # Última rede de segurança: força o env var e tenta de novo
+                # no mesmo input antes de pedir outro.
+                os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
+                try:
+                    flow.fetch_token(authorization_response=resp)
+                    return flow.credentials
+                except Exception as e2:
+                    e = e2
+                    msg = str(e2)
+            if "invalid_grant" in msg.lower() or "bad request" in msg.lower():
+                console.print(f"  [red]O código dessa URL já expirou ou foi usado.[/]")
+                console.print("  [yellow]Abra novamente a URL de autorização acima e gere uma URL nova.[/]")
+            elif "missing" in msg.lower() and "code" in msg.lower():
+                console.print(f"  [red]A URL colada não contém o parâmetro 'code'.[/]")
+                console.print("  [dim]Confira se você copiou a URL DEPOIS de autorizar (deve conter '?state=...&code=...').[/]")
+            else:
+                console.print(f"  [red]URL inválida: {e}[/]")
             console.print("  Cole a URL completa que apareceu na barra de endereços (começa com http://localhost):")
 
 
