@@ -1,0 +1,30 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Credenciais e secrets (OAuth, tokens, env)
+client_secret_*.json
+token.json
+credentials.json
+.env
+.env.*
+
+# Dados de entrada e saída (extratos, faturas, CSVs pessoais)
+input/
+output/
+
+# Banco local
+*.db
+
+# Cache de testes
+.pytest_cache/
+
+# Notas pessoais
+todo.md

@@ -1,30 +1,13 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
+# Otimização do Claude Code (harness, agentes, skills, hooks, docs gerados)
+# CLAUDE.md NÃO é ignorado — é versionado normalmente.
+.claude/
+.harness/
+Docs/
+spec/
 
-# Virtual environments
-.venv
+# Legado: versiona o código antigo, mas não o ambiente virtual nem caches
+legado/.venv/
+legado/.pytest_cache/
 
-# Credenciais e secrets (OAuth, tokens, env)
-client_secret_*.json
-token.json
-credentials.json
-.env
-.env.*
-
-# Dados de entrada e saída (extratos, faturas, CSVs pessoais)
-input/
-output/
-
-# Banco local
-*.db
-
-# Cache de testes
-.pytest_cache/
-
-# Notas pessoais
-todo.md
+# macOS
+.DS_Store
