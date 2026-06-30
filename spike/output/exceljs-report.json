@@ -1,0 +1,15 @@
+{
+  "candidata": "exceljs",
+  "C1": "fail",
+  "C2": "pendente-manual",
+  "C3": "fail",
+  "C4": "fail",
+  "C5": "fail",
+  "C6": "fail",
+  "C7": "fail",
+  "C8": "fail",
+  "C9": "pass",
+  "bundleSizeBytes": 21825509,
+  "tempoMedioMs": 490.01,
+  "erroC1": "TypeError: Cannot read properties of undefined (reading '0')"
+}

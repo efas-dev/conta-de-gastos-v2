@@ -11,3 +11,16 @@ legado/.pytest_cache/
 
 # macOS
 .DS_Store
+
+# Dados pessoais e modelo de verificação manual (spike) — nunca versionar
+gastos.db
+Modelo_preenchido.xlsx
+extrato_maio.tsv
+dicionario.tsv
+
+# Spike de geração .xlsx — preservamos o código, mas nunca os dados pessoais
+# (lançamentos reais) nem os artefatos pesados/gerados.
+spike/node_modules/
+spike/fixtures/dataset.json
+spike/output/*.xlsx
+spike-outputs/
