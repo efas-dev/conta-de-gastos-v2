@@ -1,9 +1,9 @@
 # Otimização do Claude Code (harness, agentes, skills, hooks, docs gerados)
-# CLAUDE.md NÃO é ignorado — é versionado normalmente.
 .claude/
 .harness/
 Docs/
 spec/
+CLAUDE.md
 
 # Legado: versiona o código antigo, mas não o ambiente virtual nem caches
 legado/.venv/
