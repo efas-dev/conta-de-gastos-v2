@@ -5,6 +5,10 @@ Docs/
 spec/
 CLAUDE.md
 
+# Build artifacts e dependências do app
+node_modules/
+dist/
+
 # Legado: versiona o código antigo, mas não o ambiente virtual nem caches
 legado/.venv/
 legado/.pytest_cache/
