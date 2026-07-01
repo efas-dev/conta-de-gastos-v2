@@ -158,7 +158,11 @@ export async function executarPipeline(
   const xlsxBytes = gerarXlsx(modeloBytes, iniciais, lancamentosEnriquecidos, dicEntries)
 
   // 5. Entrega do resultado via callback (sem persistência — zero-retenção)
-  const blob = new Blob([xlsxBytes], {
+  // `.slice()` materializa um Uint8Array<ArrayBuffer> puro a partir do Uint8Array<ArrayBufferLike>
+  // retornado pelo fflate — necessário porque BlobPart exige ArrayBufferView<ArrayBuffer> no
+  // lib DOM do TS >= 5.7, e ArrayBufferLike (que inclui SharedArrayBuffer) não é atribuível.
+  // O comportamento em runtime é idêntico: fflate nunca usa SharedArrayBuffer neste contexto.
+  const blob = new Blob([xlsxBytes.slice()], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   })
   const nome = computarNomeArquivo(lancamentosEnriquecidos, iniciais)

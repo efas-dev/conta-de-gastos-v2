@@ -10,7 +10,7 @@
     "test": "vitest run",
     "test:ui": "vitest --ui",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -b",
     "lint": "echo 'lint: sem linter configurado'"
   },
   "dependencies": {
