@@ -1,0 +1,15 @@
+// ADR: see spec/mvp-vertical-nubank.adr.md
+/// <reference types="vitest" />
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test-setup.ts'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    exclude: ['spike/**', 'legado/**', 'node_modules/**'],
+  },
+})
