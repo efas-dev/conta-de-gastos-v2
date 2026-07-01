@@ -1,0 +1,5 @@
+Data,Valor,Identificador,Descrição
+01/03/2026,"-150,50",abc001,Transferência enviada pelo Pix - Maria
+05/03/2026,"3500,00",abc002,Transferência recebida pelo Pix - Salário Março
+10/03/2026,"-22,50",abc003,PAG BOLETO AGUA
+INVALIDA,NÃO-NÚMERO,abc004,Linha inválida com data ruim
