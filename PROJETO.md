@@ -14,9 +14,12 @@ open source prontas e **não reinventar a roda**. Só abstrair o que realmente v
 - **CSV:** PapaParse. **PDF:** `pdf.js` (lazy load — só baixa quando há PDF; caminho best-effort).
 - **Grid de revisão:** **Glide Data Grid** (canvas, virtualizado, seleção de range estilo Sheets) — não reinventar.
 - **Estado + undo:** Zustand + immer (undo por patches), não máquina de estados própria.
-- **Geração do `.xlsx`:** preencher o template `Modelo.xlsx` sem perda. Usar a **lib mais leve que
-  comprovadamente preserva o nosso modelo** (`xlsx-populate` / ExcelJS / SheetJS); cair para patch
-  artesanal com `fflate` **só se o spike provar** que todas mutilam fórmulas dinâmicas/CF/tabelas.
+- **Geração do `.xlsx`:** **`fflate` (patch artesanal)** — decidido pelo spike. As libs de alto
+  nível (`xlsx-populate` / ExcelJS / SheetJS) reescrevem o ZIP e mutilam fórmulas dinâmicas/CF/
+  tabelas; só o `fflate` preserva o `Modelo.xlsx` byte-a-byte (injeção cirúrgica do `sheetData`),
+  com o menor footprint (796 KB). **Requisito de produção:** gravar `<calcPr fullCalcOnLoad="1"/>`
+  no `xl/workbook.xml` para forçar o recálculo na abertura (o arquivo é escrito sem o `<v>` em
+  cache). Ver `spike/README.md` e `spec/xlsx-spike-decision.md`.
 - **Testes:** Vitest. **Deploy:** Cloudflare Pages / Vercel / Netlify (estático, grátis).
 
 ## Arquitetura de repositório
@@ -79,18 +82,20 @@ src/
 - A aba `Dicionario` já existe vazia no template → injeção é só escrever valores, sem cirurgia de OPC.
 - A aba `Naturezas` é **referência intocada** — alimenta fórmulas internas em células que o sistema nunca escreve.
 
-### Como validar a abordagem técnica (fase futura)
+### Validação da abordagem técnica (spike concluído ✅)
 
-Spike comparativo antes de escolher a biblioteca de geração. Para cada candidata
-(`xlsx-populate`, ExcelJS, SheetJS, e `fflate` artesanal):
+O spike comparativo (`xlsx-populate`, ExcelJS, SheetJS, `fflate`) foi executado contra 9
+critérios. **Vencedora: `fflate`** — única a preservar o `Modelo.xlsx` byte-a-byte (C3–C8) e a
+de menor footprint. As três libs de alto nível reescrevem o ZIP: `xlsx-populate` reformata
+`[Content_Types].xml`, SheetJS descarta partes (tabela, estilos, Naturezas) e ExcelJS sequer
+gera (crash ao serializar a formatação condicional). Código arquivado em `spike/`; matriz
+4×9, footprint e tempo em `spec/xlsx-spike-decision.md`.
 
-1. Carregar `Modelo.xlsx` → injetar um **fixture sintético** de linhas + dicionário → salvar → reabrir.
-2. **Critérios de aprovação (o que não pode quebrar):** fórmulas dinâmicas (`LET/REDUCE/LAMBDA/XLOOKUP`)
-   intactas e recalculando; formatação condicional (realce); `Tabela1` com `ref` ajustado; estilos;
-   abas `Naturezas` e fórmulas de totais intactas; **abrir no Excel real sem prompt de reparo**.
-3. **Verificação:** (a) abertura no Excel/365 real = fonte da verdade; (b) `diff` do XML descompactado —
-   tudo que não foi tocado deve ser idêntico; só mudam `sheetData` de Extrato/Dicionario e o `ref` da tabela.
-4. **Decisão:** menor footprint que passa em todos os critérios; `fflate` artesanal só se nenhuma lib passar.
+**Achado do gate manual:** o `.xlsx` gerado pelo `fflate` grava `<f>` sem `<v>` em cache, então
+o Excel abre as fórmulas vazias até recalcular. Corrige-se com `<calcPr fullCalcOnLoad="1"/>` no
+`xl/workbook.xml` (4ª mudança permitida no ZIP, além do `sheetData` de Extrato/Dicionario e do
+`ref` da `Tabela1`). **Método de verificação** (referência para o módulo `excel/`): (a) abertura
+no Excel real = fonte da verdade; (b) `diff` do XML descompactado — só pode mudar o esperado.
 
 ## Regras de UI
 
@@ -133,4 +138,5 @@ A comunidade adiciona bancos implementando um novo parser + fixture + testes. Ze
 ## Itens de ação / a confirmar
 
 - [x] Modelo com abas `Dicionario` (vazia) e `Naturezas` (referência).
-- [ ] Spike de fidelidade (ver "Como validar a abordagem técnica") — fase futura.
+- [x] Spike de fidelidade concluído → **`fflate`** (com `fullCalcOnLoad`); ver `spec/xlsx-spike-decision.md`.
+- [ ] Implementar o módulo `excel/` com `fflate`, aplicando o requisito `fullCalcOnLoad`.
