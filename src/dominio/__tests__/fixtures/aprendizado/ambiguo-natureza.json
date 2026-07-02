@@ -1,0 +1,36 @@
+{
+  "descricao": "Lançamento com mesma (chave, fonte) mas natureza diferente → ambiguo:true na entrada existente",
+  "lancamentos": [
+    {
+      "fonte": "Nubank",
+      "data": "2025-05-01",
+      "transcricao": "PAG BOLETO",
+      "valor": -300.0,
+      "iniciais": "ES",
+      "natureza": "Lazer",
+      "descricao": "Clube"
+    }
+  ],
+  "dicAnterior": [
+    {
+      "chave": "PAG BOLETO",
+      "fonte": "Nubank",
+      "natureza": "Moradia",
+      "descricao": "Clube",
+      "iniciais": "ES",
+      "vezes": 2,
+      "ambiguo": false
+    }
+  ],
+  "esperado": [
+    {
+      "chave": "PAG BOLETO",
+      "fonte": "Nubank",
+      "natureza": "Moradia",
+      "descricao": "Clube",
+      "iniciais": "ES",
+      "vezes": 2,
+      "ambiguo": true
+    }
+  ]
+}
