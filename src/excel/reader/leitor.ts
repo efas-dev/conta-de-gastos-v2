@@ -1,4 +1,4 @@
-// ADR: see spec/mvp-vertical-nubank.adr.md
+// ADR: see Docs/specs/mvp-vertical-nubank.adr.md
 
 import { unzipSync } from 'fflate'
 import type { DicEntry } from '../../types'

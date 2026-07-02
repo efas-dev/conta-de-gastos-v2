@@ -1,4 +1,4 @@
-// ADR: see spec/mvp-vertical-nubank.adr.md
+// ADR: see Docs/specs/mvp-vertical-nubank.adr.md
 
 /**
  * Remove sufixo de data (DD/MM ou DD/MM/AAAA) do final de uma transcrição,

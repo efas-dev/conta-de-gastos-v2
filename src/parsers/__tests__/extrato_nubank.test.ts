@@ -1,4 +1,4 @@
-// ADR: see spec/mvp-vertical-nubank.adr.md
+// ADR: see Docs/specs/mvp-vertical-nubank.adr.md
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'

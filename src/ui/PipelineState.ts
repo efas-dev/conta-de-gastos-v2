@@ -1,4 +1,4 @@
-// ADR: see spec/mvp-vertical-nubank.adr.md
+// ADR: see Docs/specs/mvp-vertical-nubank.adr.md
 
 import type { Lancamento, DicEntry } from '../types'
 import { detectar } from '../parsers/index'

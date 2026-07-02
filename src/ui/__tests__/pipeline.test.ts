@@ -1,4 +1,4 @@
-// ADR: see spec/mvp-vertical-nubank.adr.md
+// ADR: see Docs/specs/mvp-vertical-nubank.adr.md
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { estadoInicial, reduzir, computarNomeArquivo, executarPipeline } from '../PipelineState'
