@@ -22,6 +22,18 @@ Modelo_preenchido.xlsx
 extrato_maio.tsv
 dicionario.tsv
 
+# Amostras reais de extratos/faturas, modelo preenchido e outputs de teste do sistema.
+# Dado sensível de pessoa física — NUNCA versionar. As fixtures sintéticas de teste
+# vivem em src/**/__tests__/fixtures/ e ESSAS são versionadas.
+data_sample/
+
+# Safety-net: extratos/faturas reais largados na raiz por engano — nunca versionar.
+/Extrato*.txt
+/Fatura*.txt
+/NU_*.csv
+/Nubank_*.csv
+/*.pdf
+
 # Spike de geração .xlsx — preservamos o código, mas nunca os dados pessoais
 # (lançamentos reais) nem os artefatos pesados/gerados.
 spike/node_modules/
