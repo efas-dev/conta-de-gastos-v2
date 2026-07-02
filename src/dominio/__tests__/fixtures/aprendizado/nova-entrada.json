@@ -1,0 +1,26 @@
+{
+  "descricao": "Lançamento sem entrada prévia no dicionário → deve gerar nova DicEntry com vezes:1 e ambiguo:false",
+  "lancamentos": [
+    {
+      "fonte": "Nubank",
+      "data": "2025-03-10",
+      "transcricao": "UBER VIAGEM",
+      "valor": -25.5,
+      "iniciais": "ES",
+      "natureza": "Transporte",
+      "descricao": "Corrida Uber"
+    }
+  ],
+  "dicAnterior": [],
+  "esperado": [
+    {
+      "chave": "UBER VIAGEM",
+      "fonte": "Nubank",
+      "natureza": "Transporte",
+      "descricao": "Corrida Uber",
+      "iniciais": "ES",
+      "vezes": 1,
+      "ambiguo": false
+    }
+  ]
+}

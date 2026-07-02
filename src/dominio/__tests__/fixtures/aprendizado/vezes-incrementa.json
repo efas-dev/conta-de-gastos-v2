@@ -1,0 +1,36 @@
+{
+  "descricao": "Lançamento com chave/fonte/natureza/descricao/iniciais idênticos à entrada existente → vezes passa de 1 para 2",
+  "lancamentos": [
+    {
+      "fonte": "Nubank",
+      "data": "2025-04-05",
+      "transcricao": "MERCADO EXTRA",
+      "valor": -120.0,
+      "iniciais": "ES",
+      "natureza": "Alimentação",
+      "descricao": "Supermercado"
+    }
+  ],
+  "dicAnterior": [
+    {
+      "chave": "MERCADO EXTRA",
+      "fonte": "Nubank",
+      "natureza": "Alimentação",
+      "descricao": "Supermercado",
+      "iniciais": "ES",
+      "vezes": 1,
+      "ambiguo": false
+    }
+  ],
+  "esperado": [
+    {
+      "chave": "MERCADO EXTRA",
+      "fonte": "Nubank",
+      "natureza": "Alimentação",
+      "descricao": "Supermercado",
+      "iniciais": "ES",
+      "vezes": 2,
+      "ambiguo": false
+    }
+  ]
+}
