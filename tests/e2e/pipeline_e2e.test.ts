@@ -189,7 +189,7 @@ describe('E2E — Caso 1: pipeline completo sem dicionário', () => {
   // TL-03a: lançamento 1 presente em A8 (Fonte/Data/Transcrição)
   it('lançamento 1 (Transferência Pix enviada) presente em linha 8 da Tabela1', () => {
     const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    expect(sheet1).toContain('<c r="A8" s="42" t="inlineStr"><is><t>Nubank</t></is></c>')
+    expect(sheet1).toContain('<c r="A8" s="42" t="inlineStr"><is><t>extrato_nubank</t></is></c>')
     expect(sheet1).toContain('<c r="B8" s="44" t="inlineStr"><is><t>2026-03-01</t></is></c>')
     expect(sheet1).toContain(
       '<c r="C8" s="41" t="inlineStr"><is><t>Transferência enviada pelo Pix - João</t></is></c>',
@@ -200,7 +200,7 @@ describe('E2E — Caso 1: pipeline completo sem dicionário', () => {
   // TL-03b: lançamento 2 presente em A9
   it('lançamento 2 (Transferência Pix recebida) presente em linha 9 da Tabela1', () => {
     const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    expect(sheet1).toContain('<c r="A9" s="42" t="inlineStr"><is><t>Nubank</t></is></c>')
+    expect(sheet1).toContain('<c r="A9" s="42" t="inlineStr"><is><t>extrato_nubank</t></is></c>')
     expect(sheet1).toContain('<c r="B9" s="44" t="inlineStr"><is><t>2026-03-05</t></is></c>')
     expect(sheet1).toContain(
       '<c r="C9" s="41" t="inlineStr"><is><t>Transferência recebida pelo Pix - Salário</t></is></c>',
@@ -211,7 +211,7 @@ describe('E2E — Caso 1: pipeline completo sem dicionário', () => {
   // TL-03c: lançamento 3 presente em A10
   it('lançamento 3 (PAG BOLETO ENERGIA) presente em linha 10 da Tabela1', () => {
     const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    expect(sheet1).toContain('<c r="A10" s="42" t="inlineStr"><is><t>Nubank</t></is></c>')
+    expect(sheet1).toContain('<c r="A10" s="42" t="inlineStr"><is><t>extrato_nubank</t></is></c>')
     expect(sheet1).toContain('<c r="B10" s="44" t="inlineStr"><is><t>2026-03-10</t></is></c>')
     expect(sheet1).toContain(
       '<c r="C10" s="41" t="inlineStr"><is><t>PAG BOLETO ENERGIA</t></is></c>',
@@ -222,7 +222,7 @@ describe('E2E — Caso 1: pipeline completo sem dicionário', () => {
   // TL-03d: lançamento 4 presente em A11
   it('lançamento 4 (Pagamento de fatura) presente em linha 11 da Tabela1', () => {
     const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    expect(sheet1).toContain('<c r="A11" s="42" t="inlineStr"><is><t>Nubank</t></is></c>')
+    expect(sheet1).toContain('<c r="A11" s="42" t="inlineStr"><is><t>extrato_nubank</t></is></c>')
     expect(sheet1).toContain('<c r="B11" s="44" t="inlineStr"><is><t>2026-03-15</t></is></c>')
     expect(sheet1).toContain(
       '<c r="C11" s="41" t="inlineStr"><is><t>Pagamento de fatura</t></is></c>',
@@ -279,8 +279,8 @@ describe('E2E — Caso 2: pipeline com dicionário', () => {
    */
   const LINHAS_DICIONARIO = [
     ['chave', 'fonte', 'natureza', 'descricao', 'iniciais', 'vezes', 'ambiguo'],
-    ['PAG BOLETO ENERGIA', 'Nubank', 'Moradia', 'Conta de luz', 'ES', 3, 'false'],
-    ['Pagamento de fatura', 'Nubank', 'Despesa', 'Fatura cartão', 'RM', 2, 'true'],
+    ['PAG BOLETO ENERGIA', 'extrato_nubank', 'Moradia', 'Conta de luz', 'ES', 3, 'false'],
+    ['Pagamento de fatura', 'extrato_nubank', 'Despesa', 'Fatura cartão', 'RM', 2, 'true'],
   ]
 
   beforeAll(() => {
