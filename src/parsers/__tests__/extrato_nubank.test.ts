@@ -34,11 +34,11 @@ describe('extratoNubank.aceita()', () => {
 // --- TL-04 a TL-09: parsear() com decimal ponto ---
 
 describe('extratoNubank.parsear() — decimal ponto', () => {
-  it('TL-04: retorna fonte="Nubank" em todos os lançamentos', () => {
+  it('TL-04: retorna fonte="extrato_nubank" em todos os lançamentos', () => {
     const { lancamentos } = extratoNubank.parsear(csvPonto)
     expect(lancamentos.length).toBeGreaterThan(0)
     for (const l of lancamentos) {
-      expect(l.fonte).toBe('Nubank')
+      expect(l.fonte).toBe('extrato_nubank')
     }
   })
 

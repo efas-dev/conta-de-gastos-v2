@@ -130,7 +130,7 @@ function parsear(conteudo: string): ResultadoParse {
     identificadoresVistos.add(identificador)
 
     lancamentos.push({
-      fonte: 'Nubank',
+      fonte: 'extrato_nubank',
       data: parsearData(dataStr),
       transcricao,
       valor,
