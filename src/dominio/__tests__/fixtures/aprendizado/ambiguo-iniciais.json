@@ -1,0 +1,36 @@
+{
+  "descricao": "Lançamento com mesma (chave, fonte) mas iniciais diferentes → ambiguo:true na entrada existente",
+  "lancamentos": [
+    {
+      "fonte": "Itaú",
+      "data": "2025-06-10",
+      "transcricao": "FARMACIA DROGA RAIA",
+      "valor": -45.0,
+      "iniciais": "JD",
+      "natureza": "Saúde",
+      "descricao": "Remédios"
+    }
+  ],
+  "dicAnterior": [
+    {
+      "chave": "FARMACIA DROGA RAIA",
+      "fonte": "Itaú",
+      "natureza": "Saúde",
+      "descricao": "Remédios",
+      "iniciais": "ES",
+      "vezes": 1,
+      "ambiguo": false
+    }
+  ],
+  "esperado": [
+    {
+      "chave": "FARMACIA DROGA RAIA",
+      "fonte": "Itaú",
+      "natureza": "Saúde",
+      "descricao": "Remédios",
+      "iniciais": "ES",
+      "vezes": 1,
+      "ambiguo": true
+    }
+  ]
+}

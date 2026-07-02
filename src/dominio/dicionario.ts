@@ -18,7 +18,7 @@ export function enriquecerLancamento(
   iniciaisUsuario: string,
 ): Lancamento {
   const chave = normalizarChave(lancamento.transcricao)
-  const entrada = dicionario.find((e) => e.chave === chave)
+  const entrada = dicionario.find((e) => e.chave === chave && e.fonte === lancamento.fonte)
 
   if (entrada !== undefined && !entrada.ambiguo) {
     return {

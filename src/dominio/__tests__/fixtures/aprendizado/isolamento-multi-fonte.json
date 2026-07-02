@@ -1,0 +1,44 @@
+{
+  "descricao": "Mesma chave mas fontes diferentes → duas entradas separadas, sem contaminação cruzada",
+  "lancamentos": [
+    {
+      "fonte": "Nubank",
+      "data": "2025-07-01",
+      "transcricao": "NETFLIX",
+      "valor": -55.9,
+      "iniciais": "ES",
+      "natureza": "Lazer",
+      "descricao": "Streaming"
+    },
+    {
+      "fonte": "Itaú",
+      "data": "2025-07-01",
+      "transcricao": "NETFLIX",
+      "valor": -55.9,
+      "iniciais": "JD",
+      "natureza": "Entretenimento",
+      "descricao": "Assinatura"
+    }
+  ],
+  "dicAnterior": [],
+  "esperado": [
+    {
+      "chave": "NETFLIX",
+      "fonte": "Nubank",
+      "natureza": "Lazer",
+      "descricao": "Streaming",
+      "iniciais": "ES",
+      "vezes": 1,
+      "ambiguo": false
+    },
+    {
+      "chave": "NETFLIX",
+      "fonte": "Itaú",
+      "natureza": "Entretenimento",
+      "descricao": "Assinatura",
+      "iniciais": "JD",
+      "vezes": 1,
+      "ambiguo": false
+    }
+  ]
+}
