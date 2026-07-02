@@ -1,4 +1,5 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
+// ADR: see Docs/specs/parsers-fatura-nubank-extrato-itau.adr.md
 
 import { extratoNubank, ErroArquivoNaoReconhecido } from './extrato_nubank'
 import type { ResultadoParse } from './extrato_nubank'
