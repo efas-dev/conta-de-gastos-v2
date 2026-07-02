@@ -3,6 +3,8 @@
 import type { Lancamento, DicEntry } from '../types'
 import { detectar } from '../parsers/index'
 import { enriquecerLancamento } from '../dominio/dicionario'
+import { detectarInvestimento } from '../dominio/investimento'
+import { detectarTransferenciaInterna } from '../dominio/transferencia'
 import { lerDicionario } from '../excel/reader/leitor'
 import { gerarXlsx } from '../excel/writer/gerador'
 
@@ -154,8 +156,17 @@ export async function executarPipeline(
     enriquecerLancamento(l, dicEntries, iniciais),
   )
 
+  // 3a. Detecção de investimento e transferência interna com regra de precedência (D6 do ADR)
+  //     Se investimento != null, transferenciaInterna = false (investimento vence).
+  //     nomeUsuario: não recebido ainda pelo pipeline (UI da spec 2) — passa undefined.
+  const lancamentosComFlags = lancamentosEnriquecidos.map((l) => {
+    const investimento = detectarInvestimento(l)
+    const transferenciaInterna = investimento !== null ? false : detectarTransferenciaInterna(l)
+    return { ...l, investimento, transferenciaInterna }
+  })
+
   // 4. Geração do .xlsx por injeção cirúrgica (D7 do ADR)
-  const xlsxBytes = gerarXlsx(modeloBytes, iniciais, lancamentosEnriquecidos, dicEntries)
+  const xlsxBytes = gerarXlsx(modeloBytes, iniciais, lancamentosComFlags, dicEntries)
 
   // 5. Entrega do resultado via callback (sem persistência — zero-retenção)
   // `.slice()` materializa um Uint8Array<ArrayBuffer> puro a partir do Uint8Array<ArrayBufferLike>
@@ -165,6 +176,6 @@ export async function executarPipeline(
   const blob = new Blob([xlsxBytes.slice()], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   })
-  const nome = computarNomeArquivo(lancamentosEnriquecidos, iniciais)
+  const nome = computarNomeArquivo(lancamentosComFlags, iniciais)
   onDownload(blob, nome)
 }

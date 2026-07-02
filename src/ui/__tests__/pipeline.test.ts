@@ -47,6 +47,7 @@ vi.mock('../../excel/writer/gerador', () => ({
 // Importações tipadas das mocks (disponíveis após vi.mock ser processado)
 import { detectar } from '../../parsers/index'
 import { lerDicionario } from '../../excel/reader/leitor'
+import { gerarXlsx } from '../../excel/writer/gerador'
 
 // ---------------------------------------------------------------------------
 // 1–4. estadoInicial
@@ -261,5 +262,79 @@ describe('executarPipeline', () => {
 
     expect(onAviso).toHaveBeenCalled()
     expect(onDownload).toHaveBeenCalledOnce()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 18–22. executarPipeline — flags de detecção (TL-1 a TL-6)
+// ---------------------------------------------------------------------------
+
+describe('executarPipeline — flags de detecção', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(lerDicionario).mockReturnValue([])
+  })
+
+  function mockParsear(transcricao: string, valor = -100): void {
+    vi.mocked(detectar).mockReturnValue({
+      aceita: () => true,
+      parsear: vi.fn(() => ({
+        lancamentos: [
+          {
+            fonte: 'Nubank',
+            data: '2025-01-01',
+            transcricao,
+            valor,
+            iniciais: '',
+            natureza: '',
+            descricao: '',
+          },
+        ] satisfies Lancamento[],
+        linhasIgnoradas: 0,
+      })),
+    })
+  }
+
+  async function rodarPipeline(): Promise<Lancamento[]> {
+    await executarPipeline('', null, new Uint8Array([0]), 'ES', vi.fn(), vi.fn())
+    return vi.mocked(gerarXlsx).mock.calls[0][2] as Lancamento[]
+  }
+
+  it('lançamento comum recebe investimento=null (TL-1)', async () => {
+    mockParsear('Mercado')
+    const lancamentos = await rodarPipeline()
+    expect(lancamentos[0].investimento).toBe(null)
+  })
+
+  it('lançamento comum recebe transferenciaInterna=false (TL-2)', async () => {
+    mockParsear('Mercado')
+    const lancamentos = await rodarPipeline()
+    expect(lancamentos[0].transferenciaInterna).toBe(false)
+  })
+
+  it('transcrição com APLICACAO gera investimento="aplicacao" (TL-3)', async () => {
+    mockParsear('APLICACAO RDB', -1000)
+    const lancamentos = await rodarPipeline()
+    expect(lancamentos[0].investimento).toBe('aplicacao')
+  })
+
+  it('transcrição com RESGATE gera investimento="resgate" (TL-4)', async () => {
+    mockParsear('RESGATE CDB', 2000)
+    const lancamentos = await rodarPipeline()
+    expect(lancamentos[0].investimento).toBe('resgate')
+  })
+
+  it('transcrição com Open Banking gera transferenciaInterna=true e investimento=null (TL-5)', async () => {
+    mockParsear('Open Banking transferencia')
+    const lancamentos = await rodarPipeline()
+    expect(lancamentos[0].transferenciaInterna).toBe(true)
+    expect(lancamentos[0].investimento).toBe(null)
+  })
+
+  it('regra de precedência: APLICACAO + Open Banking → investimento vence, transferenciaInterna=false (TL-6)', async () => {
+    mockParsear('APLICACAO Open Banking', -500)
+    const lancamentos = await rodarPipeline()
+    expect(lancamentos[0].investimento).toBe('aplicacao')
+    expect(lancamentos[0].transferenciaInterna).toBe(false)
   })
 })
