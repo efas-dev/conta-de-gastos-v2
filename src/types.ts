@@ -20,6 +20,21 @@ export interface Lancamento {
   natureza: string
   /** Descrição enriquecida do gasto (preenchida pelo dicionário ou em branco) */
   descricao: string
+  /**
+   * Indica se o lançamento é uma movimentação entre contas do próprio usuário.
+   * `true` = transferência interna (ex.: TED/Pix para conta própria, pagamento de fatura de cartão próprio).
+   * Preenchida pelo pipeline via `detectarTransferenciaInterna`; `undefined` antes do enriquecimento.
+   */
+  transferenciaInterna?: boolean
+  /**
+   * Classificação do lançamento quanto a investimentos de renda fixa/variável.
+   * `'aplicacao'` = entrada de dinheiro em investimento (débito na conta corrente).
+   * `'resgate'` = saída de investimento de volta para conta corrente (crédito).
+   * `null` = lançamento comum, sem caráter de investimento.
+   * `undefined` = campo ainda não avaliado pelo pipeline.
+   * Preenchida pelo pipeline via `detectarInvestimento`.
+   */
+  investimento?: 'aplicacao' | 'resgate' | null
 }
 
 /**

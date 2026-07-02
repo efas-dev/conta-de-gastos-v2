@@ -24,6 +24,96 @@ describe('Lancamento', () => {
     expect(lancamento.descricao).toBe('Compras do mês')
   })
 
+  // TL-17: transferenciaInterna aceita false (movimentação comum)
+  it('campo transferenciaInterna aceita false (TL-17)', () => {
+    const l: Lancamento = {
+      fonte: 'Nubank',
+      data: '2024-01-15',
+      transcricao: 'Mercado Extra',
+      valor: -50,
+      iniciais: 'ES',
+      natureza: '',
+      descricao: '',
+      transferenciaInterna: false,
+    }
+    expect(l.transferenciaInterna).toBe(false)
+  })
+
+  // TL-18: transferenciaInterna aceita true (movimentação entre contas próprias)
+  it('campo transferenciaInterna aceita true (TL-18)', () => {
+    const l: Lancamento = {
+      fonte: 'Nubank',
+      data: '2024-01-15',
+      transcricao: 'TED PARA CONTA PROPRIA',
+      valor: -1000,
+      iniciais: 'ES',
+      natureza: '',
+      descricao: '',
+      transferenciaInterna: true,
+    }
+    expect(l.transferenciaInterna).toBe(true)
+  })
+
+  // TL-19: investimento aceita null (lançamento sem caráter de investimento)
+  it('campo investimento aceita null (TL-19)', () => {
+    const l: Lancamento = {
+      fonte: 'Nubank',
+      data: '2024-01-15',
+      transcricao: 'Mercado Extra',
+      valor: -50,
+      iniciais: 'ES',
+      natureza: '',
+      descricao: '',
+      investimento: null,
+    }
+    expect(l.investimento).toBeNull()
+  })
+
+  // TL-20: investimento aceita 'aplicacao' (aplicação de renda fixa/variável)
+  it("campo investimento aceita 'aplicacao' (TL-20)", () => {
+    const l: Lancamento = {
+      fonte: 'Nubank',
+      data: '2024-01-15',
+      transcricao: 'APLICACAO RDB',
+      valor: -500,
+      iniciais: 'ES',
+      natureza: '',
+      descricao: '',
+      investimento: 'aplicacao',
+    }
+    expect(l.investimento).toBe('aplicacao')
+  })
+
+  // TL-21: investimento aceita 'resgate' (resgate de renda fixa/variável)
+  it("campo investimento aceita 'resgate' (TL-21)", () => {
+    const l: Lancamento = {
+      fonte: 'Nubank',
+      data: '2024-01-15',
+      transcricao: 'RESGATE CDB',
+      valor: 500,
+      iniciais: 'ES',
+      natureza: '',
+      descricao: '',
+      investimento: 'resgate',
+    }
+    expect(l.investimento).toBe('resgate')
+  })
+
+  // TL-22: Lancamento sem os novos campos ainda é válido (compatibilidade backward)
+  it('Lancamento sem transferenciaInterna nem investimento ainda compila (TL-22)', () => {
+    const l: Lancamento = {
+      fonte: 'Nubank',
+      data: '2024-01-15',
+      transcricao: 'Mercado Extra',
+      valor: -50,
+      iniciais: 'ES',
+      natureza: '',
+      descricao: '',
+    }
+    expect(l.transferenciaInterna).toBeUndefined()
+    expect(l.investimento).toBeUndefined()
+  })
+
   it('campo fonte é string (TL-01)', () => {
     const l: Lancamento = {
       fonte: 'Nubank',
