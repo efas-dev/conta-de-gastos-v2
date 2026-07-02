@@ -72,4 +72,20 @@ describe('enriquecerLancamento', () => {
     expect(resultado.descricao).toBe('Conta de luz')
     expect(resultado.iniciais).toBe('ES')
   })
+
+  it('TL-10: entrada do dicionário de fonte diferente não contamina lançamento de outra fonte', () => {
+    // Dicionário contém entrada para 'PAG BOLETO ENERGIA' indexada em 'Nubank'.
+    // Lançamento é de 'Itau' — mesma chave normalizada, fonte diferente.
+    // Resultado esperado: sem enriquecimento (natureza e descricao em branco, iniciais do usuário).
+    const lancamentoItau: Lancamento = {
+      ...lancamentoBase,
+      fonte: 'Itau',
+    }
+
+    const resultado = enriquecerLancamento(lancamentoItau, [entradaNaoAmbigua], 'JD')
+
+    expect(resultado.natureza).toBe('')
+    expect(resultado.descricao).toBe('')
+    expect(resultado.iniciais).toBe('JD')
+  })
 })
