@@ -214,6 +214,154 @@ export function lerDicionario(
   return result
 }
 
+/**
+ * Lê a aba "Naturezas" de um arquivo .xlsx (OOXML) e retorna as strings
+ * não-vazias da coluna B, linhas 3 a 32 (células B3:B32).
+ *
+ * Segue o mesmo padrão de `lerDicionario`: descomprime com fflate, localiza
+ * a planilha via workbook.xml + relacionamentos, parseia com DOMParser.
+ *
+ * Qualquer falha (bytes inválidos, aba ausente) retorna `[]` sem lançar.
+ *
+ * @param bytes  Conteúdo binário do arquivo .xlsx.
+ * @returns      Array de strings não-vazias das células B3:B32.
+ */
+export function lerNaturezas(bytes: Uint8Array): string[] {
+  if (bytes.length === 0) return []
+
+  let zip: Record<string, Uint8Array>
+  try {
+    zip = unzipSync(bytes) as Record<string, Uint8Array>
+  } catch {
+    return []
+  }
+
+  const decoder = new TextDecoder()
+
+  // ----- 1. Localizar r:id da aba "Naturezas" em workbook.xml ---------------
+
+  const workbookBytes = zip['xl/workbook.xml']
+  if (!workbookBytes) return []
+
+  let workbookDoc: Document
+  try {
+    workbookDoc = new DOMParser().parseFromString(
+      decoder.decode(workbookBytes),
+      'text/xml',
+    )
+  } catch {
+    return []
+  }
+
+  const sheetEls = workbookDoc.getElementsByTagNameNS('*', 'sheet')
+  let naturezasRid: string | null = null
+  for (let i = 0; i < sheetEls.length; i++) {
+    const el = sheetEls[i]
+    if (el.getAttribute('name') === 'Naturezas') {
+      naturezasRid = getAttr(el, 'id')
+      break
+    }
+  }
+
+  if (!naturezasRid) return []
+
+  // ----- 2. Resolver o Target via workbook.xml.rels -------------------------
+
+  const relsBytes = zip['xl/_rels/workbook.xml.rels']
+  if (!relsBytes) return []
+
+  let relsDoc: Document
+  try {
+    relsDoc = new DOMParser().parseFromString(
+      decoder.decode(relsBytes),
+      'text/xml',
+    )
+  } catch {
+    return []
+  }
+
+  const relEls = relsDoc.getElementsByTagNameNS('*', 'Relationship')
+  let sheetTarget: string | null = null
+  for (let i = 0; i < relEls.length; i++) {
+    const el = relEls[i]
+    if (el.getAttribute('Id') === naturezasRid) {
+      sheetTarget = el.getAttribute('Target')
+      break
+    }
+  }
+
+  if (!sheetTarget) return []
+
+  // ----- 3. Carregar sharedStrings opcionalmente ---------------------------
+
+  const sharedStrings: string[] = []
+  const ssBytes = zip['xl/sharedStrings.xml']
+  if (ssBytes) {
+    try {
+      const ssDoc = new DOMParser().parseFromString(
+        decoder.decode(ssBytes),
+        'text/xml',
+      )
+      const siEls = ssDoc.getElementsByTagNameNS('*', 'si')
+      for (let i = 0; i < siEls.length; i++) {
+        const tEls = siEls[i].getElementsByTagNameNS('*', 't')
+        let text = ''
+        for (let j = 0; j < tEls.length; j++) {
+          text += tEls[j].textContent ?? ''
+        }
+        sharedStrings.push(text)
+      }
+    } catch {
+      // sem sharedStrings: células tipo "s" retornarão vazio
+    }
+  }
+
+  // ----- 4. Carregar e parsear o XML da planilha ---------------------------
+
+  const sheetPath = sheetTarget.startsWith('/')
+    ? sheetTarget.slice(1)
+    : `xl/${sheetTarget}`
+
+  const sheetBytes = zip[sheetPath]
+  if (!sheetBytes) return []
+
+  let sheetDoc: Document
+  try {
+    sheetDoc = new DOMParser().parseFromString(
+      decoder.decode(sheetBytes),
+      'text/xml',
+    )
+  } catch {
+    return []
+  }
+
+  // ----- 5. Extrair coluna B, linhas 3 a 32 --------------------------------
+
+  const ROW_MIN = 3
+  const ROW_MAX = 32
+
+  const rowEls = sheetDoc.getElementsByTagNameNS('*', 'row')
+  const result: string[] = []
+
+  for (let i = 0; i < rowEls.length; i++) {
+    const rowEl = rowEls[i]
+    const rowNum = parseInt(rowEl.getAttribute('r') ?? '0', 10)
+    if (rowNum < ROW_MIN || rowNum > ROW_MAX) continue
+
+    const cellEls = rowEl.getElementsByTagNameNS('*', 'c')
+    for (let j = 0; j < cellEls.length; j++) {
+      const cell = cellEls[j]
+      const ref = cell.getAttribute('r') ?? ''
+      if (colLetterFromRef(ref) !== 'B') continue
+      const val = getCellText(cell, sharedStrings).trim()
+      if (val) result.push(val)
+      break // apenas coluna B por linha
+    }
+  }
+
+  return result
+}
+
 // ---------------------------------------------------------------------------
 // Utilitários internos
 // ---------------------------------------------------------------------------
