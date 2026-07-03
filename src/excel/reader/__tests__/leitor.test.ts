@@ -2,7 +2,9 @@
 
 import { describe, it, expect, vi } from 'vitest'
 import { zipSync, strToU8 } from 'fflate'
-import { lerDicionario } from '../leitor'
+import * as fs from 'node:fs'
+import * as path from 'node:path'
+import { lerDicionario, lerNaturezas } from '../leitor'
 import type { DicEntry } from '../../../types'
 
 // ---------------------------------------------------------------------------
@@ -315,5 +317,63 @@ describe('lerDicionario — aba Dicionario com apenas cabeçalho', () => {
     const bytes = criarXlsxDicionario([CABECALHO])
     const resultado = lerDicionario(bytes)
     expect(resultado).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// lerNaturezas — fixture real Modelo.xlsx
+// ---------------------------------------------------------------------------
+
+const FIXTURE_PATH = path.resolve(
+  __dirname,
+  '../../writer/__tests__/fixtures/Modelo.xlsx',
+)
+
+describe('lerNaturezas — fixture Modelo.xlsx (happy path)', () => {
+  const bytes = new Uint8Array(fs.readFileSync(FIXTURE_PATH))
+  const naturezas = lerNaturezas(bytes)
+
+  it('TN-01: retorna array não-vazio', () => {
+    expect(naturezas.length).toBeGreaterThan(0)
+  })
+
+  it('TN-02: retorna exatamente 30 itens (B3:B32 preenchidas no Modelo)', () => {
+    expect(naturezas).toHaveLength(30)
+  })
+
+  it('TN-03: primeiro valor é "RR" (célula B3 do Modelo)', () => {
+    expect(naturezas[0]).toBe('RR')
+  })
+
+  it('TN-04: último valor é "IT" (célula B32 do Modelo)', () => {
+    expect(naturezas[29]).toBe('IT')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// lerNaturezas — robustez
+// ---------------------------------------------------------------------------
+
+describe('lerNaturezas — robustez com entradas inválidas', () => {
+  it('TN-05: bytes vazios retorna []', () => {
+    expect(lerNaturezas(new Uint8Array(0))).toEqual([])
+  })
+
+  it('TN-06: bytes inválidos (não-ZIP) retorna [] sem lançar exceção', () => {
+    const bytesInvalidos = new Uint8Array([0, 1, 2, 3, 99, 88])
+    expect(() => lerNaturezas(bytesInvalidos)).not.toThrow()
+    expect(lerNaturezas(bytesInvalidos)).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// lerNaturezas — .xlsx sem aba Naturezas
+// ---------------------------------------------------------------------------
+
+describe('lerNaturezas — .xlsx sem aba Naturezas', () => {
+  it('TN-07: retorna [] quando aba Naturezas ausente', () => {
+    // Reusa a helper de Dicionario que só tem aba "Dicionario"
+    const bytes = criarXlsxDicionario([CABECALHO, ...LINHAS_DADOS])
+    expect(lerNaturezas(bytes)).toEqual([])
   })
 })
