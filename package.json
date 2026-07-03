@@ -14,9 +14,12 @@
     "lint": "echo 'lint: sem linter configurado'"
   },
   "dependencies": {
+    "@glideapps/glide-data-grid": "^6.0.3",
     "fflate": "^0.8.3",
+    "immer": "^11.1.11",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",
