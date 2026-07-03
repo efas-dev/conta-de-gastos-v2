@@ -32,12 +32,10 @@ export function App() {
   const nomeUsuario = useAppStore((s) => s.nomeUsuario)
   const avisos = useAppStore((s) => s.avisos)
   const dicEntries = useAppStore((s) => s.dicEntries)
-  const csvArquivo = useAppStore((s) => s.csvArquivo)
 
   // Actions do store
   const setIniciais = useAppStore((s) => s.setIniciais)
   const setNomeUsuario = useAppStore((s) => s.setNomeUsuario)
-  const setCSV = useAppStore((s) => s.setCSV)
   const setLancamentos = useAppStore((s) => s.setLancamentos)
   const setDic = useAppStore((s) => s.setDic)
   const addAviso = useAppStore((s) => s.addAviso)
@@ -53,6 +51,13 @@ export function App() {
    * store só armazena as entradas parseadas (`dicEntries`), não o File bruto.
    */
   const [dicArquivo, setDicArquivo] = useState<File | null>(null)
+
+  /**
+   * Extratos/faturas CSV selecionados (um ou vários bancos de uma vez).
+   * Mantidos em estado local — o store só guarda os `lancamentos` já parseados
+   * e mesclados, não os Files brutos (mesmo padrão de `dicArquivo`).
+   */
+  const [csvArquivos, setCsvArquivos] = useState<File[]>([])
 
   /**
    * Bytes do Modelo.xlsx carregados no "Produzir" e reusados no "Gerar".
@@ -72,7 +77,7 @@ export function App() {
   // Derivações
   // ---------------------------------------------------------------------------
 
-  const podaProduzir = iniciais !== '' && csvArquivo !== null
+  const podaProduzir = iniciais !== '' && csvArquivos.length > 0
   const podaGerar = lancamentos.length > 0 && modeloBytes !== null
   const emRevisao = lancamentos.length > 0
   const splitLancamento = splitIndice !== null ? lancamentos[splitIndice] : null
@@ -89,11 +94,9 @@ export function App() {
    * Também lê `lerNaturezas` do modelo e grava `naturezasValidas` no store.
    */
   async function handleProduzir() {
-    if (!csvArquivo) return
+    if (csvArquivos.length === 0) return
 
     clearAvisos()
-
-    const csvConteudo = await csvArquivo.text()
 
     let dicBytes: Uint8Array | null = null
     if (dicArquivo) {
@@ -111,24 +114,31 @@ export function App() {
       return
     }
 
-    const {
-      lancamentos: lans,
-      dicEntries: dic,
-      avisos: avs,
-    } = produzirLancamentos(csvConteudo, dicBytes, iniciais, nomeUsuario || undefined)
+    // Cada arquivo é parseado independentemente (pode ser de banco/formato
+    // diferente — `detectar` roda por arquivo) e os lançamentos são concatenados
+    // na ordem dos arquivos selecionados. O dicionário e as naturezas são os
+    // mesmos para todos (fonte única: o dicionário anterior + o Modelo).
+    const todosLancamentos: typeof lancamentos = []
+    let dicMesclado: typeof dicEntries = []
+    for (const arquivo of csvArquivos) {
+      const csvConteudo = await arquivo.text()
+      const { lancamentos: lans, dicEntries: dic, avisos: avs } =
+        produzirLancamentos(csvConteudo, dicBytes, iniciais, nomeUsuario || undefined)
+      todosLancamentos.push(...lans)
+      dicMesclado = dic
+      for (const av of avs) {
+        addAviso(`${arquivo.name}: ${av}`)
+      }
+    }
 
     const naturezas = lerNaturezas(modelo)
 
-    setLancamentos(lans)
-    setDic(dic)
+    setLancamentos(todosLancamentos)
+    setDic(dicMesclado)
     // `setNaturezasValidas` não é exposto como action nominada no store — usa
     // o setState do Zustand diretamente, que é o mecanismo canônico para campos
     // sem action própria (D5 do ADR — store minimalista).
     useAppStore.setState({ naturezasValidas: naturezas })
-
-    for (const av of avs) {
-      addAviso(av)
-    }
 
     setModeloBytes(modelo)
   }
@@ -214,23 +224,25 @@ export function App() {
             />
           </label>
 
-          {/* Input CSV (obrigatório) */}
+          {/* Input CSV (obrigatório) — aceita vários extratos/faturas de uma vez */}
           <label>
-            <span>Extrato CSV (obrigatório):</span>
+            <span>Extratos/faturas CSV (obrigatório — pode selecionar vários):</span>
             <br />
             <input
               type="file"
               accept=".csv,text/csv"
+              multiple
               onChange={(e) => {
-                const file = e.target.files?.[0]
-                setCSV(file ?? null)
+                setCsvArquivos(Array.from(e.target.files ?? []))
               }}
               style={{ marginTop: '0.25rem' }}
             />
-            {csvArquivo && (
-              <span style={{ marginLeft: '0.5rem', fontSize: '0.875rem', color: '#555' }}>
-                {csvArquivo.name}
-              </span>
+            {csvArquivos.length > 0 && (
+              <ul style={{ margin: '0.25rem 0 0', fontSize: '0.875rem', color: '#555' }}>
+                {csvArquivos.map((f) => (
+                  <li key={f.name}>{f.name}</li>
+                ))}
+              </ul>
             )}
           </label>
 
@@ -301,8 +313,13 @@ export function App() {
 
           <AvisoList avisos={avisos} />
 
-          {/* Grid de revisão — lê lancamentos e naturezasValidas do store */}
-          <ReviewGrid onSplitDetectado={(indice) => setSplitIndice(indice)} />
+          {/* Grid de revisão — lê lancamentos e naturezasValidas do store.
+              A Glide Data Grid é um canvas virtualizado: precisa de altura
+              concreta no container, senão o `height: 100%` interno colapsa
+              para 0 e as linhas não aparecem (só a soma, que fica fora do canvas). */}
+          <div style={{ height: '70vh', minHeight: 400 }}>
+            <ReviewGrid onSplitDetectado={(indice) => setSplitIndice(indice)} />
+          </div>
 
           {/* Modal de split — abre quando onSplitDetectado dispara */}
           {splitIndice !== null && splitLancamento && (
