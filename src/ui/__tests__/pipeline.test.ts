@@ -1,11 +1,11 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { estadoInicial, reduzir, computarNomeArquivo, executarPipeline } from '../PipelineState'
-import type { Lancamento } from '../../types'
+import { computarNomeArquivo, executarPipeline, produzirLancamentos, gerarAPartirDosRevisados } from '../PipelineState'
+import type { Lancamento, DicEntry } from '../../types'
 
 // ---------------------------------------------------------------------------
-// Mocks para executarPipeline (módulos pesados substituídos por stubs)
+// Mocks — módulos pesados substituídos por stubs
 // ---------------------------------------------------------------------------
 
 const lancamentosMock: Lancamento[] = [
@@ -44,88 +44,27 @@ vi.mock('../../excel/writer/gerador', () => ({
   gerarXlsx: vi.fn(() => new Uint8Array([80, 75, 3, 4])),
 }))
 
+// Mock do aprenderDicionario — permite verificar 4º arg de gerarXlsx em gerarAPartirDosRevisados
+vi.mock('../../dominio/aprendizado', () => ({
+  aprenderDicionario: vi.fn((_lancamentos: Lancamento[], dicAnterior: DicEntry[]) => dicAnterior),
+}))
+
 // Importações tipadas das mocks (disponíveis após vi.mock ser processado)
 import { detectar } from '../../parsers/index'
 import { lerDicionario } from '../../excel/reader/leitor'
 import { gerarXlsx } from '../../excel/writer/gerador'
+import { aprenderDicionario } from '../../dominio/aprendizado'
 
 // ---------------------------------------------------------------------------
-// 1–4. estadoInicial
+// Nota: os testes dos grupos `estadoInicial` e `reduzir — *` foram removidos
+// nesta migração (T10). A função `reduzir` e `estadoInicial` permanecem
+// exportadas em PipelineState.ts mas são código morto a partir de T6/T9
+// (o estado de UI migrou para o store Zustand). A limpeza do código morto
+// fica fora do escopo de T10 (Áreas tocadas = apenas arquivos de teste).
 // ---------------------------------------------------------------------------
 
-describe('estadoInicial', () => {
-  it('tem iniciais vazia', () => {
-    expect(estadoInicial.iniciais).toBe('')
-  })
-
-  it('não tem arquivo CSV (csvPronto=false, csvArquivo=null)', () => {
-    expect(estadoInicial.csvPronto).toBe(false)
-    expect(estadoInicial.csvArquivo).toBeNull()
-  })
-
-  it('não tem dicionário (dicPronto=false, dicArquivo=null)', () => {
-    expect(estadoInicial.dicPronto).toBe(false)
-    expect(estadoInicial.dicArquivo).toBeNull()
-  })
-
-  it('não tem avisos', () => {
-    expect(estadoInicial.avisos).toEqual([])
-  })
-})
-
 // ---------------------------------------------------------------------------
-// 5–6. SET_INICIAIS
-// ---------------------------------------------------------------------------
-
-describe('reduzir — SET_INICIAIS', () => {
-  it('atualiza iniciais com valor válido', () => {
-    const novo = reduzir(estadoInicial, { tipo: 'SET_INICIAIS', valor: 'ES' })
-    expect(novo.iniciais).toBe('ES')
-  })
-
-  it('rejeita string vazia — iniciais não muda', () => {
-    const comIniciais = { ...estadoInicial, iniciais: 'ES' }
-    const novo = reduzir(comIniciais, { tipo: 'SET_INICIAIS', valor: '' })
-    expect(novo.iniciais).toBe('ES')
-  })
-})
-
-// ---------------------------------------------------------------------------
-// 7. SET_CSV
-// ---------------------------------------------------------------------------
-
-describe('reduzir — SET_CSV', () => {
-  it('marca csvPronto=true e armazena o arquivo', () => {
-    const file = new File(['Data,Valor,Identificador,Descrição\n'], 'extrato.csv', {
-      type: 'text/csv',
-    })
-    const novo = reduzir(estadoInicial, { tipo: 'SET_CSV', arquivo: file })
-    expect(novo.csvPronto).toBe(true)
-    expect(novo.csvArquivo).toBe(file)
-  })
-
-  it('nome do arquivo visível no estado', () => {
-    const file = new File([''], 'meu_extrato_nubank.csv')
-    const novo = reduzir(estadoInicial, { tipo: 'SET_CSV', arquivo: file })
-    expect(novo.csvArquivo?.name).toBe('meu_extrato_nubank.csv')
-  })
-})
-
-// ---------------------------------------------------------------------------
-// 8. SET_DIC
-// ---------------------------------------------------------------------------
-
-describe('reduzir — SET_DIC', () => {
-  it('marca dicPronto=true e armazena o arquivo', () => {
-    const file = new File([''], 'dicionario.xlsx')
-    const novo = reduzir(estadoInicial, { tipo: 'SET_DIC', arquivo: file })
-    expect(novo.dicPronto).toBe(true)
-    expect(novo.dicArquivo).toBe(file)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// 9–11. computarNomeArquivo
+// 1–3. computarNomeArquivo
 // ---------------------------------------------------------------------------
 
 describe('computarNomeArquivo', () => {
@@ -158,36 +97,180 @@ describe('computarNomeArquivo', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 12–14. ADICIONAR_AVISO / LIMPAR_AVISOS
+// 4–6. produzirLancamentos — estrutura de retorno e avisos
 // ---------------------------------------------------------------------------
 
-describe('reduzir — ADICIONAR_AVISO', () => {
-  it('adiciona aviso com contagem numérica ao estado', () => {
-    const novo = reduzir(estadoInicial, {
-      tipo: 'ADICIONAR_AVISO',
-      mensagem: '3 linhas ignoradas no CSV',
+describe('produzirLancamentos', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(detectar).mockReturnValue({
+      aceita: () => true,
+      parsear: vi.fn(() => ({ lancamentos: lancamentosMock, linhasIgnoradas: 0 })),
     })
-    expect(novo.avisos).toHaveLength(1)
-    expect(novo.avisos[0]).toMatch(/3/)
+    vi.mocked(lerDicionario).mockReturnValue([])
   })
 
-  it('acumula múltiplos avisos', () => {
-    let estado = reduzir(estadoInicial, { tipo: 'ADICIONAR_AVISO', mensagem: '3 linhas ignoradas' })
-    estado = reduzir(estado, { tipo: 'ADICIONAR_AVISO', mensagem: 'Dicionário inválido' })
-    expect(estado.avisos).toHaveLength(2)
+  it('retorna { lancamentos, dicEntries, avisos } com array de avisos vazio quando sem linhasIgnoradas', () => {
+    const resultado = produzirLancamentos('csv', null, 'ES')
+    expect(resultado).toHaveProperty('lancamentos')
+    expect(resultado).toHaveProperty('dicEntries')
+    expect(resultado).toHaveProperty('avisos')
+    expect(resultado.avisos).toHaveLength(0)
   })
-})
 
-describe('reduzir — LIMPAR_AVISOS', () => {
-  it('zera os avisos do estado', () => {
-    let estado = reduzir(estadoInicial, { tipo: 'ADICIONAR_AVISO', mensagem: 'aviso qualquer' })
-    estado = reduzir(estado, { tipo: 'LIMPAR_AVISOS' })
-    expect(estado.avisos).toEqual([])
+  it('retorna aviso quando há linhasIgnoradas no CSV', () => {
+    vi.mocked(detectar).mockReturnValue({
+      aceita: () => true,
+      parsear: vi.fn(() => ({ lancamentos: lancamentosMock, linhasIgnoradas: 3 })),
+    })
+    const resultado = produzirLancamentos('csv', null, 'ES')
+    expect(resultado.avisos).toHaveLength(1)
+    expect(resultado.avisos[0]).toMatch(/3/)
+  })
+
+  it('retorna aviso prefixado com "Dicionário:" quando lerDicionario emite aviso', () => {
+    vi.mocked(lerDicionario).mockImplementation((_bytes, onAvisoCb) => {
+      onAvisoCb?.('arquivo .xlsx inválido')
+      return []
+    })
+    const resultado = produzirLancamentos('csv', new Uint8Array([0]), 'ES')
+    expect(resultado.avisos.some((a) => a.startsWith('Dicionário:'))).toBe(true)
+  })
+
+  it('retorna dicEntries vindas de lerDicionario', () => {
+    const entradas: DicEntry[] = [
+      { chave: 'mercado', fonte: 'Nubank', natureza: 'Alimentação', descricao: '', iniciais: 'ES', vezes: 1, ambiguo: false },
+    ]
+    vi.mocked(lerDicionario).mockReturnValue(entradas)
+    const resultado = produzirLancamentos('csv', new Uint8Array([0]), 'ES')
+    expect(resultado.dicEntries).toEqual(entradas)
+  })
+
+  it('não chama lerDicionario quando dicBytes é null (sem dicionário)', () => {
+    produzirLancamentos('csv', null, 'ES')
+    expect(lerDicionario).not.toHaveBeenCalled()
   })
 })
 
 // ---------------------------------------------------------------------------
-// 15–17. executarPipeline
+// 7–12. produzirLancamentos — flags de detecção com precedência
+// ---------------------------------------------------------------------------
+
+describe('produzirLancamentos — flags de detecção', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(lerDicionario).mockReturnValue([])
+  })
+
+  function mockParsear(transcricao: string, valor = -100): void {
+    vi.mocked(detectar).mockReturnValue({
+      aceita: () => true,
+      parsear: vi.fn(() => ({
+        lancamentos: [
+          {
+            fonte: 'Nubank',
+            data: '2025-01-01',
+            transcricao,
+            valor,
+            iniciais: '',
+            natureza: '',
+            descricao: '',
+          },
+        ] satisfies Lancamento[],
+        linhasIgnoradas: 0,
+      })),
+    })
+  }
+
+  it('lançamento comum recebe investimento=null', () => {
+    mockParsear('Mercado')
+    const { lancamentos } = produzirLancamentos('csv', null, 'ES')
+    expect(lancamentos[0].investimento).toBe(null)
+  })
+
+  it('lançamento comum recebe transferenciaInterna=false', () => {
+    mockParsear('Mercado')
+    const { lancamentos } = produzirLancamentos('csv', null, 'ES')
+    expect(lancamentos[0].transferenciaInterna).toBe(false)
+  })
+
+  it('transcrição com APLICACAO gera investimento="aplicacao"', () => {
+    mockParsear('APLICACAO RDB', -1000)
+    const { lancamentos } = produzirLancamentos('csv', null, 'ES')
+    expect(lancamentos[0].investimento).toBe('aplicacao')
+  })
+
+  it('transcrição com RESGATE gera investimento="resgate"', () => {
+    mockParsear('RESGATE CDB', 2000)
+    const { lancamentos } = produzirLancamentos('csv', null, 'ES')
+    expect(lancamentos[0].investimento).toBe('resgate')
+  })
+
+  it('transcrição com Open Banking gera transferenciaInterna=true e investimento=null', () => {
+    mockParsear('Open Banking transferencia')
+    const { lancamentos } = produzirLancamentos('csv', null, 'ES')
+    expect(lancamentos[0].transferenciaInterna).toBe(true)
+    expect(lancamentos[0].investimento).toBe(null)
+  })
+
+  it('regra de precedência: APLICACAO + Open Banking → investimento vence, transferenciaInterna=false', () => {
+    mockParsear('APLICACAO Open Banking', -500)
+    const { lancamentos } = produzirLancamentos('csv', null, 'ES')
+    expect(lancamentos[0].investimento).toBe('aplicacao')
+    expect(lancamentos[0].transferenciaInterna).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 13–15. gerarAPartirDosRevisados — aprenderDicionario + injeção no gerarXlsx
+// ---------------------------------------------------------------------------
+
+describe('gerarAPartirDosRevisados', () => {
+  const modeloBytes = new Uint8Array([0])
+  const lancamentosRevisados: Lancamento[] = [
+    {
+      fonte: 'Nubank',
+      data: '2025-03-15',
+      transcricao: 'Supermercado',
+      valor: -150,
+      iniciais: 'ES',
+      natureza: 'Alimentação',
+      descricao: '',
+    },
+  ]
+  const dicAnterior: DicEntry[] = [
+    { chave: 'supermercado', fonte: 'Nubank', natureza: 'Alimentação', descricao: '', iniciais: 'ES', vezes: 1, ambiguo: false },
+  ]
+  const dicEnriquecido: DicEntry[] = [
+    { chave: 'supermercado', fonte: 'Nubank', natureza: 'Alimentação', descricao: '', iniciais: 'ES', vezes: 2, ambiguo: false },
+  ]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(aprenderDicionario).mockReturnValue(dicEnriquecido)
+  })
+
+  it('chama aprenderDicionario com os lançamentos revisados e o dicionário anterior', () => {
+    gerarAPartirDosRevisados(modeloBytes, 'ES', lancamentosRevisados, dicAnterior)
+    expect(aprenderDicionario).toHaveBeenCalledOnce()
+    expect(aprenderDicionario).toHaveBeenCalledWith(lancamentosRevisados, dicAnterior)
+  })
+
+  it('injeta o dicionário enriquecido (retorno de aprenderDicionario) no 4º arg de gerarXlsx', () => {
+    gerarAPartirDosRevisados(modeloBytes, 'ES', lancamentosRevisados, dicAnterior)
+    expect(gerarXlsx).toHaveBeenCalledOnce()
+    const [, , , dicArg] = vi.mocked(gerarXlsx).mock.calls[0] as [unknown, unknown, unknown, DicEntry[]]
+    expect(dicArg).toEqual(dicEnriquecido)
+  })
+
+  it('retorna os bytes gerados por gerarXlsx', () => {
+    const resultado = gerarAPartirDosRevisados(modeloBytes, 'ES', lancamentosRevisados, dicAnterior)
+    expect(resultado).toBeInstanceOf(Uint8Array)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 16–18. executarPipeline (fachada) — comportamento de orquestração
 // ---------------------------------------------------------------------------
 
 describe('executarPipeline', () => {
@@ -198,6 +281,7 @@ describe('executarPipeline', () => {
       parsear: vi.fn(() => ({ lancamentos: lancamentosMock, linhasIgnoradas: 0 })),
     })
     vi.mocked(lerDicionario).mockReturnValue([])
+    vi.mocked(aprenderDicionario).mockImplementation((_l, dic) => dic)
   })
 
   it('chama onDownload com Blob e nome AAAA-MM-INICIAIS.xlsx', async () => {
@@ -266,13 +350,14 @@ describe('executarPipeline', () => {
 })
 
 // ---------------------------------------------------------------------------
-// 18–22. executarPipeline — flags de detecção (TL-1 a TL-6)
+// 19–24. executarPipeline — flags de detecção (via fachada, para regressão)
 // ---------------------------------------------------------------------------
 
 describe('executarPipeline — flags de detecção', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(lerDicionario).mockReturnValue([])
+    vi.mocked(aprenderDicionario).mockImplementation((_l, dic) => dic)
   })
 
   function mockParsear(transcricao: string, valor = -100): void {
