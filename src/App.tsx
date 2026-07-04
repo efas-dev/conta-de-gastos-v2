@@ -208,10 +208,10 @@ export function App() {
       style={{
         minHeight: '100vh',
         height: emRevisao ? '100vh' : undefined,
-        padding: emRevisao ? 0 : '56px 24px',
+        padding: 0,
         display: 'flex',
         flexDirection: 'column',
-        alignItems: emRevisao ? 'stretch' : 'center',
+        alignItems: 'stretch',
       }}
     >
       {/* Âncora invisível para trigger de download */}
@@ -222,7 +222,18 @@ export function App() {
       {/* Etapa 1 — Upload (visível enquanto não há lançamentos no store)     */}
       {/* ------------------------------------------------------------------ */}
       {!emRevisao && (
-        <div className="dc-card" style={{ width: '100%', maxWidth: 760 }}>
+        <div
+          className="dc-card"
+          style={{
+            width: '100%',
+            minHeight: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            borderRadius: 0,
+            border: 'none',
+            boxShadow: 'none',
+          }}
+        >
           {/* Top bar */}
           <div
             style={{
@@ -255,12 +266,21 @@ export function App() {
             </div>
             <span className="dc-pill-privado">
               <IconeCadeado />
-              Seus dados nunca saem do navegador
+              Seus dados nunca saem do seu computador
             </span>
           </div>
 
           {/* Body */}
-          <div style={{ padding: '40px 48px 48px', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div
+            style={{
+              flex: 1,
+              padding: '40px 48px 48px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
             <div style={{ maxWidth: 560, textAlign: 'center' }}>
               <h1 className="dc-titulo">Importe seus extratos e faturas</h1>
               <p className="dc-subtitulo">

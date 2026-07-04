@@ -10,6 +10,7 @@ import {
   type Item,
   type EditableGridCell,
   type GetRowThemeCallback,
+  type DrawCellCallback,
 } from '@glideapps/glide-data-grid'
 import '@glideapps/glide-data-grid/dist/index.css'
 import { useAppStore } from '../store/appStore'
@@ -316,6 +317,46 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   )
 
   // -----------------------------------------------------------------
+  // drawCell: formato contábil na coluna Valor — prefixo (R$/-R$) colado à
+  // esquerda e o número alinhado à direita, para as casas decimais alinharem
+  // entre as linhas. Só a pintura é customizada; a célula segue editável.
+  // -----------------------------------------------------------------
+
+  const drawCell: DrawCellCallback = useCallback(
+    (args, draw) => {
+      if (args.col !== COL_VALOR) {
+        draw()
+        return
+      }
+      const l = lancamentos[args.row]
+      if (!l) {
+        draw()
+        return
+      }
+      const { ctx, rect, theme } = args
+      const negativo = l.valor < 0
+      const prefixo = negativo ? '-R$' : 'R$'
+      const numero = Math.abs(l.valor).toLocaleString('pt-BR', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+      const pad = theme.cellHorizontalPadding
+      const y = rect.y + rect.height / 2
+
+      ctx.save()
+      ctx.font = `700 14px ${theme.fontFamily}`
+      ctx.fillStyle = negativo ? '#b4654a' : '#4e6a53'
+      ctx.textBaseline = 'middle'
+      ctx.textAlign = 'left'
+      ctx.fillText(prefixo, rect.x + pad, y)
+      ctx.textAlign = 'right'
+      ctx.fillText(numero, rect.x + rect.width - pad, y)
+      ctx.restore()
+    },
+    [lancamentos],
+  )
+
+  // -----------------------------------------------------------------
   // onGridSelectionChange: atualiza seleção e recalcula soma
   // -----------------------------------------------------------------
 
@@ -352,6 +393,7 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
           getCellContent={getCellContent}
           onCellEdited={onCellEdited}
           getRowThemeOverride={getRowThemeOverride}
+          drawCell={drawCell}
           gridSelection={gridSelection}
           onGridSelectionChange={onGridSelectionChange}
           rowMarkers="number"
