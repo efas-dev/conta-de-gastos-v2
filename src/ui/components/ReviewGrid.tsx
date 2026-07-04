@@ -1,6 +1,6 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useMemo } from 'react'
 import {
   DataEditor,
   GridCellKind,
@@ -11,11 +11,14 @@ import {
   type EditableGridCell,
   type GetRowThemeCallback,
   type DrawCellCallback,
+  type ProvideEditorCallback,
+  type GridCell,
 } from '@glideapps/glide-data-grid'
 import '@glideapps/glide-data-grid/dist/index.css'
 import { useAppStore } from '../store/appStore'
 import { validarLinha } from '../../dominio/validacao'
 import type { Lancamento } from '../../types'
+import { GhostEditorCore } from './GhostEditor'
 
 // ---------------------------------------------------------------------------
 // Índices de colunas
@@ -154,6 +157,70 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   const lancamentos = useAppStore((s) => s.lancamentos)
   const naturezasValidas = useAppStore((s) => s.naturezasValidas)
   const editarCelula = useAppStore((s) => s.editarCelula)
+  const dicEntries = useAppStore((s) => s.dicEntries)
+
+  // Ref compartilhada com o componente editor estável (atualizada via onCellActivated)
+  const editorContextRef = useRef<{ col: number; row: number }>({ col: -1, row: -1 })
+
+  // Refs de dados para o editor — permitem leituras sempre frescas sem re-criar o componente
+  const lancamentosRef = useRef(lancamentos)
+  lancamentosRef.current = lancamentos
+  const dicEntriesRef = useRef(dicEntries)
+  dicEntriesRef.current = dicEntries
+
+  // onCellActivated: atualiza editorContextRef antes do provideEditor ser invocado
+  const onCellActivated = useCallback((cell: Item) => {
+    const [col, row] = cell
+    editorContextRef.current = { col, row }
+  }, [])
+
+  // Componente editor estável — criado uma vez, lê context e dados via refs.
+  // O cast final é necessário porque o Glide exporta ProvideEditorCallbackResult como uma
+  // união de tipos de função e objeto; React.FC satisfaz a variante de função.
+  const GlideGhostEditor = useMemo(
+    () =>
+      function GhostEditorGlide({
+        value,
+        onFinishedEditing,
+        initialValue,
+      }: {
+        value: GridCell
+        onFinishedEditing: (cell?: GridCell, movement?: readonly [-1 | 0 | 1, -1 | 0 | 1]) => void
+        initialValue?: string
+        [key: string]: unknown
+      }) {
+        const { col, row } = editorContextRef.current
+        const textoAtual = value.kind === GridCellKind.Text ? value.data : ''
+
+        return (
+          <GhostEditorCore
+            col={col}
+            row={row}
+            valorAtual={textoAtual}
+            valorInicial={initialValue}
+            lancamentos={lancamentosRef.current}
+            dicEntries={dicEntriesRef.current}
+            onFinishedEditing={(texto, movement) => {
+              onFinishedEditing(
+                { ...value, kind: GridCellKind.Text, data: texto, displayData: texto } as GridCell,
+                movement,
+              )
+            }}
+          />
+        )
+      },
+    [],
+  ) // deps vazia — estabilidade garantida; dados frescos via refs
+
+  // provideEditor: ativo somente em COL_INICIAIS, COL_NATUREZA, COL_DESCRICAO (D1 do ADR)
+  const provideEditor: ProvideEditorCallback<GridCell> = useCallback(
+    (_cell) => {
+      const { col } = editorContextRef.current
+      if (col !== COL_INICIAIS && col !== COL_NATUREZA && col !== COL_DESCRICAO) return undefined
+      return GlideGhostEditor as ReturnType<ProvideEditorCallback<GridCell>>
+    },
+    [GlideGhostEditor],
+  )
 
   // Estado local de seleção da grid
   const [gridSelection, setGridSelection] = useState<GridSelection>({
@@ -410,6 +477,9 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
           getCellsForSelection={true}
           onPaste={true}
           fillHandle={true}
+          /* Custom editor inline com ghost-text (T2 — D1/D5/D8 do ADR). */
+          provideEditor={provideEditor}
+          onCellActivated={onCellActivated}
           rangeSelect="multi-rect"
           columnSelect="multi"
           rowSelect="multi"
