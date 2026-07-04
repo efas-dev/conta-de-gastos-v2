@@ -32,6 +32,7 @@ export function App() {
   const nomeUsuario = useAppStore((s) => s.nomeUsuario)
   const avisos = useAppStore((s) => s.avisos)
   const dicEntries = useAppStore((s) => s.dicEntries)
+  const sujo = useAppStore((s) => s.sujo)
 
   // Actions do store
   const setIniciais = useAppStore((s) => s.setIniciais)
@@ -42,6 +43,7 @@ export function App() {
   const clearAvisos = useAppStore((s) => s.clearAvisos)
   const undo = useAppStore((s) => s.undo)
   const redo = useAppStore((s) => s.redo)
+  const marcarLimpo = useAppStore((s) => s.marcarLimpo)
 
   // ---------------------------------------------------------------------------
   // Estado local (só em memória — zero-retenção)
@@ -109,6 +111,17 @@ export function App() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [emRevisao, undo, redo])
+
+  // Intercepta fechamento/recarga quando há mutações não exportadas (zero-retenção:
+  // não persiste nada, só aciona o prompt nativo do navegador via preventDefault).
+  useEffect(() => {
+    if (!sujo) return
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault()
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [sujo])
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -196,6 +209,7 @@ export function App() {
     a.href = url
     a.download = nome
     a.click()
+    marcarLimpo() // seta sujo=false imediatamente após exportação — D6 do ADR
     URL.revokeObjectURL(url) // revoke imediato — zero-retenção
   }
 
@@ -537,6 +551,17 @@ export function App() {
                 lançamentos para revisar
               </span>
             </div>
+            <span
+              style={{
+                fontSize: 12.5,
+                color: 'var(--texto-3)',
+                fontWeight: 500,
+                flex: 1,
+                textAlign: 'center',
+              }}
+            >
+              Os dados vivem apenas nesta aba — exporte antes de fechar ou recarregar.
+            </span>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <button className="dc-btn dc-btn-secundario" onClick={undo}>
                 <IconeDesfazer />

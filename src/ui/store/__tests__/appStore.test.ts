@@ -2,6 +2,12 @@
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useAppStore } from '../appStore'
+import {
+  calcularTemaLinha,
+  TEMA_ERRO,
+  TEMA_INVESTIMENTO,
+  TEMA_TRANSFERENCIA,
+} from '../../components/ReviewGrid'
 import type { Lancamento, DicEntry } from '../../../types'
 
 // ---------------------------------------------------------------------------
@@ -50,6 +56,7 @@ function resetarStore(): void {
     avisos: [],
     historico: [],
     csvArquivo: null,
+    sujo: false,
   })
 }
 
@@ -414,5 +421,102 @@ describe('redo', () => {
     useAppStore.getState().redo()
     const depois = useAppStore.getState().lancamentos.map((l) => l.natureza)
     expect(depois).toEqual(antes)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Flag `sujo` — Task 3 da spec grid-autocomplete-aviso-saida
+// ---------------------------------------------------------------------------
+
+describe('flag sujo', () => {
+  beforeEach(() => {
+    resetarStore()
+    useAppStore.getState().setLancamentos([lancamento()])
+    // Após setLancamentos com não-vazio, sujo fica true.
+    // Resetar manualmente para testar a partir de estado limpo nos casos que precisam.
+    useAppStore.setState({ sujo: false })
+  })
+
+  it('sujo liga após editarCelula', () => {
+    expect(useAppStore.getState().sujo).toBe(false)
+    useAppStore.getState().editarCelula(0, 'natureza', 'Moradia')
+    expect(useAppStore.getState().sujo).toBe(true)
+  })
+
+  it('sujo liga após setLancamentos com array não-vazio', () => {
+    expect(useAppStore.getState().sujo).toBe(false)
+    useAppStore.getState().setLancamentos([lancamento()])
+    expect(useAppStore.getState().sujo).toBe(true)
+  })
+
+  it('sujo desliga após marcarLimpo()', () => {
+    useAppStore.getState().editarCelula(0, 'natureza', 'Moradia')
+    expect(useAppStore.getState().sujo).toBe(true)
+    useAppStore.getState().marcarLimpo()
+    expect(useAppStore.getState().sujo).toBe(false)
+  })
+
+  // TL-T5-01: undo não limpa o flag sujo (D6 do ADR — sujo fora de EstadoMutavel)
+  it('undo após editarCelula mantém sujo: true — undo NÃO limpa o flag', () => {
+    expect(useAppStore.getState().sujo).toBe(false)
+    useAppStore.getState().editarCelula(0, 'natureza', 'Moradia')
+    expect(useAppStore.getState().sujo).toBe(true)
+    useAppStore.getState().undo()
+    // Undo restaura o valor de natureza, mas sujo permanece true (D6)
+    expect(useAppStore.getState().lancamentos[0].natureza).toBe('Alimentação')
+    expect(useAppStore.getState().sujo).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// calcularTemaLinha — Task 5 da spec grid-autocomplete-aviso-saida
+// Precedência: investimento > transferência interna > erro de validação
+// ---------------------------------------------------------------------------
+
+describe('calcularTemaLinha', () => {
+  const naturezasValidas = ['Alimentação', 'Moradia', 'Transporte']
+
+  function lancamentoBase(parcial: Partial<Lancamento> = {}): Lancamento {
+    return {
+      fonte: 'Nubank',
+      data: '2025-03-15',
+      transcricao: 'Compra',
+      valor: -50,
+      iniciais: 'ES',
+      natureza: 'Alimentação',
+      descricao: 'Supermercado',
+      transferenciaInterna: false,
+      investimento: null,
+      ...parcial,
+    }
+  }
+
+  // TL-T5-02: TEMA_INVESTIMENTO quando investimento != null (precedência máxima)
+  it('retorna TEMA_INVESTIMENTO quando investimento != null', () => {
+    const l = lancamentoBase({ investimento: 'Tesouro Direto' })
+    expect(calcularTemaLinha(l, naturezasValidas)).toBe(TEMA_INVESTIMENTO)
+  })
+
+  // TL-T5-03: investimento vence transferenciaInterna (precedência máxima)
+  it('retorna TEMA_INVESTIMENTO mesmo quando transferenciaInterna é true — investimento tem precedência', () => {
+    const l = lancamentoBase({ investimento: 'CDB', transferenciaInterna: true })
+    expect(calcularTemaLinha(l, naturezasValidas)).toBe(TEMA_INVESTIMENTO)
+  })
+
+  // TL-T5-04: TEMA_TRANSFERENCIA quando transferenciaInterna=true e investimento=null
+  it('retorna TEMA_TRANSFERENCIA quando transferenciaInterna é true e investimento é null', () => {
+    const l = lancamentoBase({ transferenciaInterna: true, investimento: null })
+    expect(calcularTemaLinha(l, naturezasValidas)).toBe(TEMA_TRANSFERENCIA)
+  })
+
+  // TL-T5-05: TEMA_ERRO quando natureza inválida (sem investimento, sem transferência)
+  it('retorna TEMA_ERRO quando natureza é inválida e linha não é investimento nem transferência', () => {
+    const l = lancamentoBase({ natureza: 'NaturezaDesconhecida' })
+    expect(calcularTemaLinha(l, naturezasValidas)).toBe(TEMA_ERRO)
+  })
+
+  it('retorna undefined quando linha é normal (natureza válida, sem investimento, sem transferência)', () => {
+    const l = lancamentoBase({ natureza: 'Alimentação' })
+    expect(calcularTemaLinha(l, naturezasValidas)).toBeUndefined()
   })
 })
