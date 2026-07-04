@@ -50,6 +50,7 @@ function resetarStore(): void {
     avisos: [],
     historico: [],
     csvArquivo: null,
+    sujo: false,
   })
 }
 
@@ -414,5 +415,38 @@ describe('redo', () => {
     useAppStore.getState().redo()
     const depois = useAppStore.getState().lancamentos.map((l) => l.natureza)
     expect(depois).toEqual(antes)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Flag `sujo` — Task 3 da spec grid-autocomplete-aviso-saida
+// ---------------------------------------------------------------------------
+
+describe('flag sujo', () => {
+  beforeEach(() => {
+    resetarStore()
+    useAppStore.getState().setLancamentos([lancamento()])
+    // Após setLancamentos com não-vazio, sujo fica true.
+    // Resetar manualmente para testar a partir de estado limpo nos casos que precisam.
+    useAppStore.setState({ sujo: false })
+  })
+
+  it('sujo liga após editarCelula', () => {
+    expect(useAppStore.getState().sujo).toBe(false)
+    useAppStore.getState().editarCelula(0, 'natureza', 'Moradia')
+    expect(useAppStore.getState().sujo).toBe(true)
+  })
+
+  it('sujo liga após setLancamentos com array não-vazio', () => {
+    expect(useAppStore.getState().sujo).toBe(false)
+    useAppStore.getState().setLancamentos([lancamento()])
+    expect(useAppStore.getState().sujo).toBe(true)
+  })
+
+  it('sujo desliga após marcarLimpo()', () => {
+    useAppStore.getState().editarCelula(0, 'natureza', 'Moradia')
+    expect(useAppStore.getState().sujo).toBe(true)
+    useAppStore.getState().marcarLimpo()
+    expect(useAppStore.getState().sujo).toBe(false)
   })
 })
