@@ -25,10 +25,14 @@
   --terracota: #b4654a;
   --azul: #5b7a94;
 
-  /* Realces de linha (validação / transferência / investimento) */
-  --linha-atencao: #fbeee8;
-  --linha-transferencia: #ebf1f5;
-  --linha-investimento: #ebf2eb;
+  /* Realces de linha (validação / transferência / investimento).
+     Matizes bem separados para distinção fácil, mantendo o tom sereno. */
+  --linha-atencao: #f9e2d6; /* pêssego/terracota */
+  --linha-atencao-borda: #ecc3ad;
+  --linha-transferencia: #d5e4f2; /* azul */
+  --linha-transferencia-borda: #b3cce4;
+  --linha-investimento: #dcedd3; /* verde */
+  --linha-investimento-borda: #bcd9ac;
 
   /* Bordas */
   --borda: #e1dcd1;

@@ -571,9 +571,9 @@ export function App() {
               flexWrap: 'wrap',
             }}
           >
-            <Swatch cor="var(--linha-atencao)" borda="#e7c9bc" rotulo="Precisa de atenção" />
-            <Swatch cor="var(--linha-transferencia)" borda="#cbdae4" rotulo="Transferência própria" />
-            <Swatch cor="var(--linha-investimento)" borda="#cadbca" rotulo="Investimento" />
+            <Swatch cor="var(--linha-atencao)" borda="var(--linha-atencao-borda)" rotulo="Precisa de atenção" />
+            <Swatch cor="var(--linha-transferencia)" borda="var(--linha-transferencia-borda)" rotulo="Transferência própria" />
+            <Swatch cor="var(--linha-investimento)" borda="var(--linha-investimento-borda)" rotulo="Investimento" />
             <span style={{ marginLeft: 'auto', color: 'var(--muted)' }}>
               Selecione células para somar
             </span>

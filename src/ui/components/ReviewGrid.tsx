@@ -47,14 +47,14 @@ const COLUNAS: GridColumn[] = [
 // Cores são funcionais; estética refinada fica fora do escopo desta spec (D6 do ADR).
 // ---------------------------------------------------------------------------
 
-/** Linha requer atenção — natureza inválida ou ausente. */
-export const TEMA_ERRO = { bgCell: '#fbeee8' }
+/** Linha requer atenção — natureza inválida ou ausente. Pêssego/terracota. */
+export const TEMA_ERRO = { bgCell: '#f9e2d6' }
 
-/** Lançamento identificado como transferência entre contas próprias. */
-export const TEMA_TRANSFERENCIA = { bgCell: '#ebf1f5' }
+/** Lançamento identificado como transferência entre contas próprias. Azul. */
+export const TEMA_TRANSFERENCIA = { bgCell: '#d5e4f2' }
 
-/** Lançamento identificado como aplicação ou resgate de investimento. */
-export const TEMA_INVESTIMENTO = { bgCell: '#ebf2eb' }
+/** Lançamento identificado como aplicação ou resgate de investimento. Verde. */
+export const TEMA_INVESTIMENTO = { bgCell: '#dcedd3' }
 
 /**
  * Tema base da grid Glide — alinhado à direção visual do handoff de design
