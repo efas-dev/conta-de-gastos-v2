@@ -20,9 +20,17 @@ function xmlEscape(s: string): string {
 /**
  * Gera o XML de uma célula de string inline.
  * Formato: <c r="REF" [s="STYLE"] t="inlineStr"><is><t>VALUE</t></is></c>
+ *
+ * Valor vazio → célula **genuinamente em branco** (`<c r="REF" s="STYLE"/>`),
+ * igual ao Modelo virgem. Uma célula com string vazia inline (`<is><t></t></is>`)
+ * é tratada pelo Excel como valor `""` (não-branco), o que quebra a formatação
+ * condicional (a regra `$E="" ...` / `ISBLANK`) e funções como `COUNTA`.
  */
 function celulaStr(ref: string, style: string | null, value: string): string {
   const styleAttr = style ? ` s="${style}"` : ''
+  if (value === '') {
+    return `<c r="${ref}"${styleAttr}/>`
+  }
   return `<c r="${ref}"${styleAttr} t="inlineStr"><is><t>${xmlEscape(value)}</t></is></c>`
 }
 
