@@ -11,3 +11,18 @@
 export function normalizarChave(transcricao: string): string {
   return transcricao.replace(/\s+\d{2}\/\d{2}(\/\d{4})?$/, '')
 }
+
+/**
+ * Normaliza um texto para busca por prefixo: remove sufixo de data via
+ * `normalizarChave`, converte para minúsculas e remove diacríticos (acentos).
+ *
+ * Thin wrapper sobre `normalizarChave` — não altera seu contrato.
+ * Reutilizado por `calcularSugestoes` para casamento case/accent-insensitive.
+ * (Decisão 3 do ADR adr-20260704-grid-autocomplete-aviso-saida)
+ */
+export function normalizarParaBusca(texto: string): string {
+  return normalizarChave(texto)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+}
