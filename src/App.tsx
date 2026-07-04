@@ -332,24 +332,6 @@ export function App() {
               <div style={{ marginTop: 6, fontSize: 14, color: 'var(--muted)' }}>
                 ou clique para escolher · CSV ou TXT · vários de uma vez
               </div>
-              <span
-                style={{
-                  marginTop: 16,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 7,
-                  background: '#f6efe0',
-                  border: '1px solid #ece0c6',
-                  color: '#8a6d33',
-                  padding: '6px 12px',
-                  borderRadius: 16,
-                  fontSize: 12.5,
-                  fontWeight: 600,
-                }}
-              >
-                <IconeAlerta cor="#b08a3e" />
-                Apenas CSV ou TXT por enquanto
-              </span>
             </label>
 
             {/* Lista de arquivos selecionados */}
@@ -655,14 +637,6 @@ function IconeArquivo({ cor = 'var(--verde)' }: { cor?: string }) {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={cor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <path d="M14 2v6h6" />
-    </svg>
-  )
-}
-function IconeAlerta({ cor }: { cor: string }) {
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={cor} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 9v4M12 17h.01" />
-      <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
     </svg>
   )
 }
