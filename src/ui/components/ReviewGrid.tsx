@@ -48,13 +48,41 @@ const COLUNAS: GridColumn[] = [
 // ---------------------------------------------------------------------------
 
 /** Linha requer atenção — natureza inválida ou ausente. */
-export const TEMA_ERRO = { bgCell: '#ffe0e0' }
+export const TEMA_ERRO = { bgCell: '#fbeee8' }
 
 /** Lançamento identificado como transferência entre contas próprias. */
-export const TEMA_TRANSFERENCIA = { bgCell: '#dce8ff' }
+export const TEMA_TRANSFERENCIA = { bgCell: '#ebf1f5' }
 
 /** Lançamento identificado como aplicação ou resgate de investimento. */
-export const TEMA_INVESTIMENTO = { bgCell: '#d8f5e1' }
+export const TEMA_INVESTIMENTO = { bgCell: '#ebf2eb' }
+
+/**
+ * Tema base da grid Glide — alinhado à direção visual do handoff de design
+ * (paleta terrosa/serena, fonte Manrope, acento verde).
+ */
+const TEMA_GRID = {
+  accentColor: '#5e7c63',
+  accentLight: '#eff3ef',
+  textDark: '#2c2a26',
+  textMedium: '#6b675e',
+  textLight: '#8a867c',
+  textHeader: '#8a867c',
+  textBubble: '#2c2a26',
+  bgCell: '#faf8f3',
+  bgCellMedium: '#f4f1ea',
+  bgHeader: '#f4f1ea',
+  bgHeaderHasFocus: '#eae5db',
+  bgHeaderHovered: '#eef0e9',
+  borderColor: '#eee9df',
+  horizontalBorderColor: '#eee9df',
+  drilldownBorder: '#dad4c8',
+  fontFamily: "'Manrope', system-ui, sans-serif",
+  baseFontStyle: '600 14px',
+  headerFontStyle: '700 12px',
+  editorFontSize: '14px',
+  cellHorizontalPadding: 14,
+  headerBottomBorderColor: '#e1dcd1',
+}
 
 // ---------------------------------------------------------------------------
 // Funções puras auxiliares — exportadas para testabilidade futura (T10)
@@ -327,6 +355,9 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
           smoothScrollY
           width="100%"
           height="100%"
+          theme={TEMA_GRID}
+          headerHeight={38}
+          rowHeight={40}
           /* Copiar (Ctrl/Cmd+C) usa getCellsForSelection; colar (Ctrl/Cmd+V) via onPaste. */
           getCellsForSelection={true}
           onPaste={true}
@@ -344,15 +375,27 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
       {somaSelecao !== null && (
         <div
           style={{
-            padding: '0.4rem 0.8rem',
-            borderTop: '1px solid #d0d0d0',
-            fontWeight: 'bold',
-            fontSize: '0.9rem',
-            background: '#f5f5f5',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'flex-end',
+            gap: 10,
+            padding: '13px 28px',
+            borderTop: '1px solid #e1dcd1',
+            background: '#f4f1ea',
+            fontFamily: "'Manrope', system-ui, sans-serif",
           }}
         >
-          Soma da seleção:{' '}
-          {somaSelecao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+          <span style={{ fontSize: 15, fontWeight: 800, color: '#2c2a26' }}>Soma da seleção</span>
+          <span
+            style={{
+              fontSize: 15,
+              fontWeight: 800,
+              color: somaSelecao < 0 ? '#b4654a' : '#4e6a53',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {somaSelecao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+          </span>
         </div>
       )}
     </div>

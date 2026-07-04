@@ -1,0 +1,177 @@
+/* ADR: see Docs/specs/grid-revisao.adr.md
+   Direção visual "Conta de Gastos" — importada do handoff do Claude Design.
+   Paleta calma/serena em tons terrosos, fonte Manrope. */
+
+:root {
+  /* Superfícies */
+  --fundo: #edeae3;
+  --superficie: #faf8f3;
+  --branco: #ffffff;
+  --barra: #f4f1ea;
+
+  /* Texto */
+  --texto: #2c2a26;
+  --texto-2: #4a473f;
+  --texto-3: #6b675e;
+  --muted: #8a867c;
+  --muted-2: #9a968c;
+  --muted-3: #b4afa2;
+
+  /* Acentos */
+  --verde: #5e7c63;
+  --verde-hover: #54704f;
+  --verde-suave: #eff3ef;
+  --verde-borda: #dce6dc;
+  --terracota: #b4654a;
+  --azul: #5b7a94;
+
+  /* Realces de linha (validação / transferência / investimento) */
+  --linha-atencao: #fbeee8;
+  --linha-transferencia: #ebf1f5;
+  --linha-investimento: #ebf2eb;
+
+  /* Bordas */
+  --borda: #e1dcd1;
+  --borda-2: #eae5db;
+  --borda-3: #dad4c8;
+  --borda-linha: #eee9df;
+
+  /* Raios e sombras */
+  --raio-card: 20px;
+  --raio-campo: 11px;
+  --raio-botao: 12px;
+  --sombra-card: 0 20px 50px -30px rgba(44, 42, 38, 0.4);
+  --sombra-verde: 0 10px 24px -12px rgba(94, 124, 99, 0.8);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--fundo);
+  color: var(--texto);
+  font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: #cfdccf;
+}
+
+/* Tipografia utilitária */
+.dc-titulo {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+.dc-subtitulo {
+  margin: 14px 0 0;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--texto-3);
+}
+.dc-rotulo {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--texto-2);
+}
+.dc-opcional {
+  color: var(--muted-2);
+  font-weight: 600;
+}
+
+/* Card / superfície */
+.dc-card {
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio-card);
+  overflow: hidden;
+  box-shadow: var(--sombra-card);
+}
+
+/* Inputs */
+.dc-input {
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 12px 14px;
+  border: 1px solid var(--borda-3);
+  border-radius: var(--raio-campo);
+  background: var(--branco);
+  color: var(--texto);
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+.dc-input::placeholder {
+  color: var(--muted-2);
+  font-weight: 500;
+}
+.dc-input:focus {
+  border-color: var(--verde);
+}
+
+/* Botões */
+.dc-btn {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 10px 15px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+}
+.dc-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.dc-btn-secundario {
+  color: var(--texto-2);
+  background: var(--branco);
+  border: 1px solid var(--borda-3);
+}
+.dc-btn-secundario:hover:not(:disabled) {
+  border-color: #b9b2a4;
+}
+.dc-btn-primario {
+  color: var(--superficie);
+  background: var(--verde);
+  border: 1px solid var(--verde);
+  box-shadow: var(--sombra-verde);
+}
+.dc-btn-primario:hover:not(:disabled) {
+  background: var(--verde-hover);
+}
+.dc-btn-cta {
+  font-size: 16px;
+  padding: 16px;
+  border-radius: var(--raio-botao);
+  width: 100%;
+}
+
+/* Pill "dados nunca saem" */
+.dc-pill-privado {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--verde-suave);
+  border: 1px solid var(--verde-borda);
+  color: #4e6a53;
+  padding: 7px 13px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+}

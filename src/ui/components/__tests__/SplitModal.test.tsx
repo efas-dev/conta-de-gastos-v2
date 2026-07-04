@@ -62,8 +62,8 @@ describe('SplitModal — renderização', () => {
     render(
       <SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />,
     )
-    // lancamento.valor = 100, 2 alvos → cada um recebe 50.00
-    const celulasValor = screen.getAllByText('50.00')
+    // lancamento.valor = 100, 2 alvos → cada um recebe 50,00 (exibido em moeda BRL)
+    const celulasValor = screen.getAllByText(/50,00/)
     expect(celulasValor).toHaveLength(2)
   })
 })
@@ -83,7 +83,7 @@ describe('SplitModal — edição de alvos', () => {
       <SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />,
     )
     expect(screen.getAllByRole('textbox')).toHaveLength(2)
-    fireEvent.click(screen.getByText('Adicionar alvo'))
+    fireEvent.click(screen.getByText(/Adicionar alvo/))
     expect(screen.getAllByRole('textbox')).toHaveLength(3)
   })
 
