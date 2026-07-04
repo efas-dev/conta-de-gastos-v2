@@ -52,6 +52,14 @@ export interface EstadoApp {
   futuro: EntradaHistorico[]
   /** Arquivo CSV selecionado pelo usuário (null = nenhum). */
   csvArquivo: File | null
+  /**
+   * Flag de estado "sujo": `true` quando há mutações não exportadas.
+   * Liga em qualquer chamada de `mutarComHistorico` e em `setLancamentos`
+   * com array não-vazio. Desliga via `marcarLimpo()` (chamado após exportação).
+   * Fica fora de `EstadoMutavel` para não ser afetada por patches de undo/redo
+   * (D6 do ADR — flag sujo).
+   */
+  sujo: boolean
 }
 
 /** Entrada de histórico: patches diretos (redo) e inversos (undo) de uma mutação. */
@@ -63,8 +71,10 @@ export interface EntradaHistorico {
 /**
  * Sub-estado que pode ser mutado via `produceWithPatches`.
  * Exclui `historico`/`futuro` porque são gerenciados fora do ciclo de patches.
+ * Exclui `sujo` para que patches de undo/redo não restaurem o flag —
+ * o flag persiste `true` mesmo após desfazer uma mutação (D6 do ADR).
  */
-type EstadoMutavel = Omit<EstadoApp, 'historico' | 'futuro'>
+type EstadoMutavel = Omit<EstadoApp, 'historico' | 'futuro' | 'sujo'>
 
 // ---------------------------------------------------------------------------
 // Actions
@@ -138,6 +148,12 @@ export interface AcoesApp {
 
   /** Remove todas as mensagens de aviso. */
   clearAvisos: () => void
+
+  /**
+   * Seta `sujo: false` — chamado após exportação bem-sucedida para indicar
+   * que não há mutações pendentes (D6 do ADR).
+   */
+  marcarLimpo: () => void
 }
 
 /** Tipo completo do store — estado + actions. */
@@ -157,6 +173,7 @@ const estadoInicial: EstadoApp = {
   historico: [],
   futuro: [],
   csvArquivo: null,
+  sujo: false,
 }
 
 // ---------------------------------------------------------------------------
@@ -174,6 +191,7 @@ function extrairEstado(store: AppStore): EstadoApp {
     historico: store.historico,
     futuro: store.futuro,
     csvArquivo: store.csvArquivo,
+    sujo: store.sujo,
   }
 }
 
@@ -199,16 +217,18 @@ export const useAppStore = create<AppStore>()((set, get) => {
    * e empilha os `inversePatches` resultantes no `historico` do store.
    */
   function mutarComHistorico(recipe: (draft: EstadoMutavel) => void): void {
-    const { historico, futuro: _futuro, ...estadoMutavel } = extrairEstado(get())
+    // `sujo` é excluído do estadoMutavel para que patches não o restaurem no undo/redo.
+    const { historico, futuro: _futuro, sujo: _sujo, ...estadoMutavel } = extrairEstado(get())
     const [novoEstado, diretas, inversas] = produceWithPatches(
       estadoMutavel as EstadoMutavel,
       recipe,
     )
-    // Uma nova mutação invalida o redo (zera `futuro`).
+    // Uma nova mutação invalida o redo (zera `futuro`) e suja o estado.
     set({
       ...novoEstado,
       historico: [...historico, { diretas, inversas }],
       futuro: [],
+      sujo: true,
     })
   }
 
@@ -263,7 +283,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
     },
 
     undo: () => {
-      const { historico, futuro, ...estadoMutavel } = extrairEstado(get())
+      // `sujo` é preservado do estado corrente — undo não limpa o flag (D6 do ADR).
+      const { historico, futuro, sujo: _sujo, ...estadoMutavel } = extrairEstado(get())
       if (historico.length === 0) return
       const entrada = historico[historico.length - 1]
       const estadoRestaurado = applyPatches(estadoMutavel as EstadoMutavel, entrada.inversas)
@@ -275,7 +296,8 @@ export const useAppStore = create<AppStore>()((set, get) => {
     },
 
     redo: () => {
-      const { historico, futuro, ...estadoMutavel } = extrairEstado(get())
+      // `sujo` é preservado do estado corrente — redo não altera o flag.
+      const { historico, futuro, sujo: _sujo, ...estadoMutavel } = extrairEstado(get())
       if (futuro.length === 0) return
       const entrada = futuro[futuro.length - 1]
       const estadoRefeito = applyPatches(estadoMutavel as EstadoMutavel, entrada.diretas)
@@ -290,12 +312,15 @@ export const useAppStore = create<AppStore>()((set, get) => {
     // Setters simples — sem rastreamento de undo
     // -------------------------------------------------------------------
 
-    setLancamentos: (lancamentos) => set({ lancamentos }),
+    // `setLancamentos` suja o estado quando o array é não-vazio (cobre produzirLancamentos).
+    setLancamentos: (lancamentos) =>
+      set({ lancamentos, ...(lancamentos.length > 0 ? { sujo: true } : {}) }),
     setIniciais: (iniciais) => set({ iniciais }),
     setNomeUsuario: (nomeUsuario) => set({ nomeUsuario }),
     setCSV: (arquivo) => set({ csvArquivo: arquivo }),
     setDic: (entries) => set({ dicEntries: entries }),
     addAviso: (aviso) => set((state) => ({ avisos: [...state.avisos, aviso] })),
     clearAvisos: () => set({ avisos: [] }),
+    marcarLimpo: () => set({ sujo: false }),
   }
 })
