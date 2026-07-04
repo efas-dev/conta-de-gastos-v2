@@ -224,13 +224,13 @@ export function App() {
             />
           </label>
 
-          {/* Input CSV (obrigatório) — aceita vários extratos/faturas de uma vez */}
+          {/* Input de extratos/faturas — aceita CSV (Nubank) e TXT (Itaú), vários de uma vez */}
           <label>
-            <span>Extratos/faturas CSV (obrigatório — pode selecionar vários):</span>
+            <span>Extratos/faturas (obrigatório — CSV ou TXT, pode selecionar vários):</span>
             <br />
             <input
               type="file"
-              accept=".csv,text/csv"
+              accept=".csv,.txt,text/csv,text/plain"
               multiple
               onChange={(e) => {
                 setCsvArquivos(Array.from(e.target.files ?? []))
