@@ -175,11 +175,14 @@ export function GhostEditorCore({
         position: 'relative',
         width: '100%',
         height: '100%',
+        // minHeight garante altura visível mesmo quando o container de overlay do Glide
+        // não propaga altura (senão `height:100%` resolve para 0 e o texto fica invisível).
+        minHeight: '2.2em',
         display: 'flex',
         alignItems: 'center',
       }}
     >
-      {/* Input principal — texto digitado pelo usuário */}
+      {/* Input principal — texto digitado pelo usuário (por cima do ghost) */}
       <input
         ref={inputRef}
         data-testid="ghost-input"
@@ -205,33 +208,33 @@ export function GhostEditorCore({
       />
 
       {/*
-        Ghost-text visual: renderiza somente quando há sufixo a mostrar (D8 do ADR).
-        Posicionado como sobreposição transparente; o texto digitado (no input) fica
-        por cima. O ghost aparece visualmente após o cursor, em cor atenuada.
-        Em testes jsdom, `data-testid="ghost-text"` é o sinal de presença do ghost.
+        Ghost-text visual: sobreposição ATRÁS do input, renderizada só quando há sufixo (D8 do ADR).
+        O prefixo digitado é renderizado transparente para empurrar o sufixo à posição exata após
+        o texto do usuário; o sufixo aparece em cor atenuada. `data-testid="ghost-text"` cobre SÓ o
+        sufixo (contrato dos testes). Em jsdom não há layout — altura/alinhamento se verificam manualmente.
       */}
       {ghostSufixo && (
-        <span
-          data-testid="ghost-text"
+        <div
           aria-hidden="true"
           style={{
             position: 'absolute',
-            left: 14,
-            top: '50%',
-            transform: 'translateY(-50%)',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            padding: '0 14px',
             pointerEvents: 'none',
             whiteSpace: 'pre',
             fontSize: 'inherit',
             fontFamily: 'inherit',
-            color: 'rgba(44,42,38,0.35)',
             zIndex: 0,
-            // O prefixo (texto digitado) é renderizado de forma invisível para alinhar
-            // o ghost sufixo na posição correta visualmente
-            paddingLeft: 0,
           }}
         >
-          {ghostSufixo}
-        </span>
+          {/* Prefixo digitado, invisível: alinha o sufixo logo após o texto do usuário */}
+          <span style={{ color: 'transparent' }}>{texto}</span>
+          <span data-testid="ghost-text" style={{ color: 'rgba(44,42,38,0.35)' }}>
+            {ghostSufixo}
+          </span>
+        </div>
       )}
     </div>
   )
