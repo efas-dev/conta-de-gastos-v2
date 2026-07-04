@@ -147,7 +147,8 @@ export function App() {
 
     let modelo: Uint8Array
     try {
-      const resp = await fetch('/Modelo.xlsx')
+      // BASE_URL resolve o subcaminho do GitHub Pages ('/' em dev)
+      const resp = await fetch(`${import.meta.env.BASE_URL}Modelo.xlsx`)
       modelo = new Uint8Array(await resp.arrayBuffer())
     } catch (err) {
       console.error('[App] Falha ao carregar Modelo.xlsx:', err)
