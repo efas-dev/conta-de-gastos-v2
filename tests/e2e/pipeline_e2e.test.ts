@@ -316,10 +316,11 @@ describe('E2E — Caso 2: pipeline com dicionário', () => {
   // TL-08: chave ambígua → Natureza e Descrição em branco, Iniciais = usuário
   it('lançamento com chave ambígua (Pagamento de fatura) tem Natureza/Descrição em branco na linha 11', () => {
     const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    // E11 = Natureza em branco
-    expect(sheet1).toContain('<c r="E11" s="11" t="inlineStr"><is><t></t></is></c>')
+    // E11 = Natureza em branco → célula genuinamente vazia (não inlineStr vazio),
+    // para que a formatação condicional "Natureza vazia com dados" incida.
+    expect(sheet1).toContain('<c r="E11" s="11"/>')
     // F11 = Descrição em branco
-    expect(sheet1).toContain('<c r="F11" s="11" t="inlineStr"><is><t></t></is></c>')
+    expect(sheet1).toContain('<c r="F11" s="11"/>')
     // D11 = Iniciais = INICIAIS (default do usuário)
     expect(sheet1).toContain('<c r="D11" s="41" t="inlineStr"><is><t>ES</t></is></c>')
   })
@@ -327,10 +328,10 @@ describe('E2E — Caso 2: pipeline com dicionário', () => {
   // TL-09: chave ausente → Natureza e Descrição em branco, Iniciais = usuário
   it('lançamento com chave ausente (Transferência Pix enviada) tem Natureza/Descrição em branco na linha 8', () => {
     const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    // E8 = Natureza em branco
-    expect(sheet1).toContain('<c r="E8" s="11" t="inlineStr"><is><t></t></is></c>')
+    // E8 = Natureza em branco → célula genuinamente vazia (não inlineStr vazio).
+    expect(sheet1).toContain('<c r="E8" s="11"/>')
     // F8 = Descrição em branco
-    expect(sheet1).toContain('<c r="F8" s="11" t="inlineStr"><is><t></t></is></c>')
+    expect(sheet1).toContain('<c r="F8" s="11"/>')
     // D8 = Iniciais = INICIAIS (default)
     expect(sheet1).toContain('<c r="D8" s="41" t="inlineStr"><is><t>ES</t></is></c>')
   })
