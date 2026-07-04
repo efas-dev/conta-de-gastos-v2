@@ -40,20 +40,31 @@ export interface EstadoApp {
   /** Mensagens de aviso acumuladas para exibição. */
   avisos: string[]
   /**
-   * Pilha de patches inversos do Immer para o undo.
-   * Cada elemento é o array de `inversePatches` produzido por uma única mutação.
-   * A última posição representa a mutação mais recente.
+   * Pilha de undo. Cada entrada guarda os patches diretos e inversos de uma
+   * mutação, permitindo tanto desfazer (aplicar `inversas`) quanto refazer
+   * (reaplicar `diretas`). A última posição é a mutação mais recente.
    */
-  historico: Patch[][]
+  historico: EntradaHistorico[]
+  /**
+   * Pilha de redo. Recebe as entradas desempilhadas de `historico` pelo `undo`;
+   * é zerada por qualquer nova mutação (uma edição nova invalida o redo).
+   */
+  futuro: EntradaHistorico[]
   /** Arquivo CSV selecionado pelo usuário (null = nenhum). */
   csvArquivo: File | null
 }
 
+/** Entrada de histórico: patches diretos (redo) e inversos (undo) de uma mutação. */
+export interface EntradaHistorico {
+  diretas: Patch[]
+  inversas: Patch[]
+}
+
 /**
  * Sub-estado que pode ser mutado via `produceWithPatches`.
- * Exclui `historico` porque ele é gerenciado fora do ciclo de patches.
+ * Exclui `historico`/`futuro` porque são gerenciados fora do ciclo de patches.
  */
-type EstadoMutavel = Omit<EstadoApp, 'historico'>
+type EstadoMutavel = Omit<EstadoApp, 'historico' | 'futuro'>
 
 // ---------------------------------------------------------------------------
 // Actions
@@ -92,10 +103,17 @@ export interface AcoesApp {
 
   /**
    * Reverte a última mutação aplicando os patches inversos do Immer.
-   * Remove a entrada do topo do `historico`.
+   * Move a entrada do topo do `historico` para o `futuro` (para permitir redo).
    * Sem efeito se o histórico estiver vazio.
    */
   undo: () => void
+
+  /**
+   * Refaz a última mutação desfeita, reaplicando os patches diretos.
+   * Move a entrada do topo do `futuro` de volta para o `historico`.
+   * Sem efeito se o `futuro` estiver vazio.
+   */
+  redo: () => void
 
   /** Substitui a lista de lançamentos (sem rastreamento de undo). */
   setLancamentos: (lancamentos: Lancamento[]) => void
@@ -137,6 +155,7 @@ const estadoInicial: EstadoApp = {
   dicEntries: [],
   avisos: [],
   historico: [],
+  futuro: [],
   csvArquivo: null,
 }
 
@@ -153,6 +172,7 @@ function extrairEstado(store: AppStore): EstadoApp {
     dicEntries: store.dicEntries,
     avisos: store.avisos,
     historico: store.historico,
+    futuro: store.futuro,
     csvArquivo: store.csvArquivo,
   }
 }
@@ -179,12 +199,17 @@ export const useAppStore = create<AppStore>()((set, get) => {
    * e empilha os `inversePatches` resultantes no `historico` do store.
    */
   function mutarComHistorico(recipe: (draft: EstadoMutavel) => void): void {
-    const { historico, ...estadoMutavel } = extrairEstado(get())
-    const [novoEstado, , inversePatches] = produceWithPatches(
+    const { historico, futuro: _futuro, ...estadoMutavel } = extrairEstado(get())
+    const [novoEstado, diretas, inversas] = produceWithPatches(
       estadoMutavel as EstadoMutavel,
       recipe,
     )
-    set({ ...novoEstado, historico: [...historico, inversePatches] })
+    // Uma nova mutação invalida o redo (zera `futuro`).
+    set({
+      ...novoEstado,
+      historico: [...historico, { diretas, inversas }],
+      futuro: [],
+    })
   }
 
   return {
@@ -238,12 +263,27 @@ export const useAppStore = create<AppStore>()((set, get) => {
     },
 
     undo: () => {
-      const { historico, ...estadoMutavel } = extrairEstado(get())
+      const { historico, futuro, ...estadoMutavel } = extrairEstado(get())
       if (historico.length === 0) return
-      const inversePatches = historico[historico.length - 1]
-      const novoHistorico = historico.slice(0, historico.length - 1)
-      const estadoRestaurado = applyPatches(estadoMutavel as EstadoMutavel, inversePatches)
-      set({ ...estadoRestaurado, historico: novoHistorico })
+      const entrada = historico[historico.length - 1]
+      const estadoRestaurado = applyPatches(estadoMutavel as EstadoMutavel, entrada.inversas)
+      set({
+        ...estadoRestaurado,
+        historico: historico.slice(0, historico.length - 1),
+        futuro: [...futuro, entrada],
+      })
+    },
+
+    redo: () => {
+      const { historico, futuro, ...estadoMutavel } = extrairEstado(get())
+      if (futuro.length === 0) return
+      const entrada = futuro[futuro.length - 1]
+      const estadoRefeito = applyPatches(estadoMutavel as EstadoMutavel, entrada.diretas)
+      set({
+        ...estadoRefeito,
+        historico: [...historico, entrada],
+        futuro: futuro.slice(0, futuro.length - 1),
+      })
     },
 
     // -------------------------------------------------------------------

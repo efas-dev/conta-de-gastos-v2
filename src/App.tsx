@@ -1,6 +1,6 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useAppStore } from './ui/store/appStore'
 import {
   produzirLancamentos,
@@ -41,6 +41,7 @@ export function App() {
   const addAviso = useAppStore((s) => s.addAviso)
   const clearAvisos = useAppStore((s) => s.clearAvisos)
   const undo = useAppStore((s) => s.undo)
+  const redo = useAppStore((s) => s.redo)
 
   // ---------------------------------------------------------------------------
   // Estado local (só em memória — zero-retenção)
@@ -81,6 +82,33 @@ export function App() {
   const podaGerar = lancamentos.length > 0 && modeloBytes !== null
   const emRevisao = lancamentos.length > 0
   const splitLancamento = splitIndice !== null ? lancamentos[splitIndice] : null
+
+  // ---------------------------------------------------------------------------
+  // Atalhos de teclado (estilo Google Sheets) — desfazer/refazer
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    if (!emRevisao) return
+    function onKeyDown(e: KeyboardEvent) {
+      const mod = e.ctrlKey || e.metaKey
+      if (!mod) return
+      // Não sequestrar o desfazer nativo quando o foco está em campo de texto
+      // (input do formulário ou overlay de edição da grid).
+      const alvo = e.target as HTMLElement | null
+      const tag = alvo?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || alvo?.isContentEditable) return
+      const key = e.key.toLowerCase()
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        undo()
+      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+        e.preventDefault()
+        redo()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [emRevisao, undo, redo])
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -203,10 +231,7 @@ export function App() {
               type="text"
               value={iniciais}
               placeholder="Ex.: ES"
-              onChange={(e) => {
-                const val = e.target.value.trim().toUpperCase()
-                if (val) setIniciais(val)
-              }}
+              onChange={(e) => setIniciais(e.target.value.trim().toUpperCase())}
               style={{ marginTop: '0.25rem' }}
             />
           </label>
@@ -297,6 +322,10 @@ export function App() {
 
             <button onClick={undo} style={{ padding: '0.25rem 0.75rem' }}>
               Desfazer
+            </button>
+
+            <button onClick={redo} style={{ padding: '0.25rem 0.75rem' }}>
+              Refazer
             </button>
 
             <button

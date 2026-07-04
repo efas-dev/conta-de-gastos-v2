@@ -371,3 +371,48 @@ describe('undo', () => {
     expect(depois).toEqual(antes)
   })
 })
+
+describe('redo', () => {
+  beforeEach(() => {
+    resetarStore()
+    useAppStore.getState().setLancamentos([
+      lancamento({ transcricao: 'A', valor: -100 }),
+      lancamento({ transcricao: 'B', valor: -200 }),
+    ])
+  })
+
+  it('refaz editarCelula após undo — valor reaplicado', () => {
+    useAppStore.getState().editarCelula(0, 'natureza', 'Moradia')
+    useAppStore.getState().undo()
+    expect(useAppStore.getState().lancamentos[0].natureza).toBe('Alimentação')
+    useAppStore.getState().redo()
+    expect(useAppStore.getState().lancamentos[0].natureza).toBe('Moradia')
+  })
+
+  it('refaz excluirLinha após undo — linha removida de novo', () => {
+    useAppStore.getState().excluirLinha(0)
+    useAppStore.getState().undo()
+    expect(useAppStore.getState().lancamentos).toHaveLength(2)
+    useAppStore.getState().redo()
+    expect(useAppStore.getState().lancamentos).toHaveLength(1)
+    expect(useAppStore.getState().lancamentos[0].transcricao).toBe('B')
+  })
+
+  it('nova mutação invalida o redo (futuro é zerado)', () => {
+    useAppStore.getState().editarCelula(0, 'natureza', 'Moradia')
+    useAppStore.getState().undo()
+    expect(useAppStore.getState().futuro).toHaveLength(1)
+    useAppStore.getState().editarCelula(1, 'natureza', 'Saúde')
+    expect(useAppStore.getState().futuro).toHaveLength(0)
+    // redo agora é no-op — a natureza do índice 0 permanece revertida
+    useAppStore.getState().redo()
+    expect(useAppStore.getState().lancamentos[0].natureza).toBe('Alimentação')
+  })
+
+  it('sem efeito quando futuro está vazio', () => {
+    const antes = useAppStore.getState().lancamentos.map((l) => l.natureza)
+    useAppStore.getState().redo()
+    const depois = useAppStore.getState().lancamentos.map((l) => l.natureza)
+    expect(depois).toEqual(antes)
+  })
+})

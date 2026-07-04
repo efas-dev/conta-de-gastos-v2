@@ -327,6 +327,17 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
           smoothScrollY
           width="100%"
           height="100%"
+          /* Copiar (Ctrl/Cmd+C) usa getCellsForSelection; colar (Ctrl/Cmd+V) via onPaste. */
+          getCellsForSelection={true}
+          onPaste={true}
+          /* Atalhos estilo Sheets: selecionar linha/coluna/tudo pelo teclado. */
+          keybindings={{
+            selectAll: true,
+            selectRow: true,
+            selectColumn: true,
+            copy: true,
+            paste: true,
+          }}
         />
       </div>
 
