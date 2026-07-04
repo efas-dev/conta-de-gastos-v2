@@ -348,7 +348,7 @@ export function App() {
                 }}
               >
                 <IconeAlerta cor="#b08a3e" />
-                Apenas CSV ou TXT por enquanto — suporte a PDF em breve
+                Apenas CSV ou TXT por enquanto
               </span>
             </label>
 
