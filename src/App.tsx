@@ -207,10 +207,11 @@ export function App() {
     <main
       style={{
         minHeight: '100vh',
-        padding: emRevisao ? '32px 24px' : '56px 24px',
+        height: emRevisao ? '100vh' : undefined,
+        padding: emRevisao ? 0 : '56px 24px',
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
+        alignItems: emRevisao ? 'stretch' : 'center',
       }}
     >
       {/* Âncora invisível para trigger de download */}
@@ -502,7 +503,18 @@ export function App() {
       {/* Etapa 2 — Revisão (visível quando há lançamentos no store)          */}
       {/* ------------------------------------------------------------------ */}
       {emRevisao && (
-        <div className="dc-card" style={{ width: '100%', maxWidth: 1180 }}>
+        <div
+          className="dc-card"
+          style={{
+            width: '100%',
+            height: '100vh',
+            display: 'flex',
+            flexDirection: 'column',
+            borderRadius: 0,
+            border: 'none',
+            boxShadow: 'none',
+          }}
+        >
           {/* Barra de ações */}
           <div
             style={{
@@ -567,7 +579,7 @@ export function App() {
             </span>
           </div>
 
-          <div style={{ height: '66vh', minHeight: 400 }}>
+          <div style={{ flex: 1, minHeight: 0 }}>
             <ReviewGrid onSplitDetectado={(indice) => setSplitIndice(indice)} />
           </div>
 

@@ -91,16 +91,20 @@ const TEMA_GRID = {
 /**
  * Determina o tema visual de realce de uma linha da grid.
  *
- * Precedência: erro de validação > transferência interna > investimento.
+ * Precedência: investimento > transferência interna > atenção (validação).
+ * A classificação de domínio vence a atenção — assim o usuário VÊ que a linha é
+ * uma transferência própria ou um investimento mesmo antes de preencher a Natureza
+ * (essas linhas em geral nem precisam de classificação manual). O vermelho de
+ * atenção fica reservado para linhas comuns com Natureza vazia ou inválida.
  * Retorna `undefined` para linhas sem realce especial.
  */
 export function calcularTemaLinha(
   l: Lancamento,
   naturezasValidas: string[],
 ): typeof TEMA_ERRO | typeof TEMA_TRANSFERENCIA | typeof TEMA_INVESTIMENTO | undefined {
-  if (validarLinha(l, naturezasValidas)) return TEMA_ERRO
-  if (l.transferenciaInterna === true) return TEMA_TRANSFERENCIA
   if (l.investimento != null) return TEMA_INVESTIMENTO
+  if (l.transferenciaInterna === true) return TEMA_TRANSFERENCIA
+  if (validarLinha(l, naturezasValidas)) return TEMA_ERRO
   return undefined
 }
 
@@ -358,9 +362,15 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
           theme={TEMA_GRID}
           headerHeight={38}
           rowHeight={40}
-          /* Copiar (Ctrl/Cmd+C) usa getCellsForSelection; colar (Ctrl/Cmd+V) via onPaste. */
+          /* Copiar (Ctrl/Cmd+C) usa getCellsForSelection; colar (Ctrl/Cmd+V) via onPaste.
+             Preencher uma sequência: copie uma célula, selecione um range e cole — o
+             valor é replicado nas células editáveis do range. */
           getCellsForSelection={true}
           onPaste={true}
+          fillHandle={true}
+          rangeSelect="multi-rect"
+          columnSelect="multi"
+          rowSelect="multi"
           /* Atalhos estilo Sheets: selecionar linha/coluna/tudo pelo teclado. */
           keybindings={{
             selectAll: true,
