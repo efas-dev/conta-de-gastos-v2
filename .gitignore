@@ -16,23 +16,32 @@ legado/.pytest_cache/
 # macOS
 .DS_Store
 
+# Arquivos de lock temporários do Office (criados enquanto o Excel está aberto)
+~$*
+
 # Dados pessoais e modelo de verificação manual (spike) — nunca versionar
-gastos.db
+*.db
 Modelo_preenchido.xlsx
 extrato_maio.tsv
 dicionario.tsv
+
+# Segredos/ambiente (o app é client-side, mas é barato barrar por precaução)
+.env
+.env.*
 
 # Amostras reais de extratos/faturas, modelo preenchido e outputs de teste do sistema.
 # Dado sensível de pessoa física — NUNCA versionar. As fixtures sintéticas de teste
 # vivem em src/**/__tests__/fixtures/ e ESSAS são versionadas.
 data_sample/
 
-# Safety-net: extratos/faturas reais largados na raiz por engano — nunca versionar.
-/Extrato*.txt
-/Fatura*.txt
-/NU_*.csv
-/Nubank_*.csv
-/*.pdf
+# Safety-net: extratos/faturas reais largados por engano (em qualquer pasta) — nunca
+# versionar. Sem âncora de raiz, também pega subpastas. As fixtures sintéticas usam
+# nomes minúsculos (extrato_*, fatura_*) e não colidem com estes padrões.
+Extrato*.txt
+Fatura*.txt
+NU_*.csv
+Nubank_*.csv
+*.pdf
 
 # Spike de geração .xlsx — preservamos o código, mas nunca os dados pessoais
 # (lançamentos reais) nem os artefatos pesados/gerados.

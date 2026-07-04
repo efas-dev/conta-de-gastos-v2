@@ -4,7 +4,7 @@ version = "0.5.9"
 description = "Ingestão de extratos e faturas bancárias"
 readme = "README.md"
 authors = [
-    { name = "Eduardo Santos", email = "eduardoalves.fs@gmail.com" }
+    { name = "efas-dev", email = "efas-dev@users.noreply.github.com" }
 ]
 requires-python = ">=3.12"
 dependencies = [
