@@ -159,14 +159,14 @@ function injetarDicionario(xml: string, dicEntries: DicEntry[]): string {
 
 /**
  * Atualiza o atributo ref em table1.xml para o range correto com n linhas de dados.
- * A tabela tem cabeçalho em linha 7, dados a partir de linha 8:
- * - ref = A7:G{7+n} (mínimo A7:G7 quando n=0, apenas cabeçalho)
+ * A tabela tem cabeçalho em linha 8, dados a partir de linha 9 — layout Modelo 483f420:
+ * - ref = A8:H{8+n} (mínimo A8:H8 quando n=0, apenas cabeçalho)
  *
  * Substitui TODOS os atributos ref="..." (tabela e autoFilter).
  */
 function atualizarRefTabela1(xml: string, n: number): string {
-  const ultimaLinha = 7 + n
-  return xml.replace(/\bref="[^"]*"/g, () => `ref="A7:G${ultimaLinha}"`)
+  const ultimaLinha = 8 + n
+  return xml.replace(/\bref="[^"]*"/g, () => `ref="A8:H${ultimaLinha}"`)
 }
 
 /**
