@@ -171,7 +171,7 @@ describe('E2E — Caso 1: pipeline completo sem dicionário', () => {
       enriquecerLancamento(l, [], INICIAIS),
     )
 
-    resultadoBytes = gerarXlsx(modeloBytes, INICIAIS, lancamentosEnriquecidos, [])
+    resultadoBytes = gerarXlsx(modeloBytes, INICIAIS, lancamentosEnriquecidos, [], '2026-03')
     resultadoParts = unzipSync(resultadoBytes)
   })
 
@@ -186,54 +186,64 @@ describe('E2E — Caso 1: pipeline completo sem dicionário', () => {
     expect(resultadoBytes.length).toBeGreaterThan(0)
   })
 
-  // TL-03a: lançamento 1 presente em A8 (Fonte/Data/Transcrição)
-  it('lançamento 1 (Transferência Pix enviada) presente em linha 8 da Tabela1', () => {
-    const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    expect(sheet1).toContain('<c r="A8" s="42" t="inlineStr"><is><t>extrato_nubank</t></is></c>')
-    expect(sheet1).toContain('<c r="B8" s="44" t="inlineStr"><is><t>2026-03-01</t></is></c>')
-    expect(sheet1).toContain(
-      '<c r="C8" s="41" t="inlineStr"><is><t>Transferência enviada pelo Pix - João</t></is></c>',
-    )
-    expect(sheet1).toContain('<c r="G8" s="43"><v>-150</v></c>')
-  })
-
-  // TL-03b: lançamento 2 presente em A9
-  it('lançamento 2 (Transferência Pix recebida) presente em linha 9 da Tabela1', () => {
+  // TL-03a: lançamento 1 presente em A9 (Fonte/Data/Transcrição/Ref/Valor — layout novo)
+  it('lançamento 1 (Transferência Pix enviada) presente em linha 9 da Tabela1', () => {
     const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
     expect(sheet1).toContain('<c r="A9" s="42" t="inlineStr"><is><t>extrato_nubank</t></is></c>')
-    expect(sheet1).toContain('<c r="B9" s="44" t="inlineStr"><is><t>2026-03-05</t></is></c>')
+    expect(sheet1).toContain('<c r="B9" s="44" t="inlineStr"><is><t>2026-03-01</t></is></c>')
     expect(sheet1).toContain(
-      '<c r="C9" s="41" t="inlineStr"><is><t>Transferência recebida pelo Pix - Salário</t></is></c>',
+      '<c r="C9" s="41" t="inlineStr"><is><t>Transferência enviada pelo Pix - João</t></is></c>',
     )
-    expect(sheet1).toContain('<c r="G9" s="43"><v>3500</v></c>')
+    expect(sheet1).toContain('<c r="D9" s="41" t="inlineStr"><is><t>2026-03</t></is></c>')
+    expect(sheet1).toContain('<c r="H9" s="43"><v>-150</v></c>')
   })
 
-  // TL-03c: lançamento 3 presente em A10
-  it('lançamento 3 (PAG BOLETO ENERGIA) presente em linha 10 da Tabela1', () => {
+  // TL-03b: lançamento 2 presente em A10
+  it('lançamento 2 (Transferência Pix recebida) presente em linha 10 da Tabela1', () => {
     const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
     expect(sheet1).toContain('<c r="A10" s="42" t="inlineStr"><is><t>extrato_nubank</t></is></c>')
-    expect(sheet1).toContain('<c r="B10" s="44" t="inlineStr"><is><t>2026-03-10</t></is></c>')
+    expect(sheet1).toContain('<c r="B10" s="44" t="inlineStr"><is><t>2026-03-05</t></is></c>')
     expect(sheet1).toContain(
-      '<c r="C10" s="41" t="inlineStr"><is><t>PAG BOLETO ENERGIA</t></is></c>',
+      '<c r="C10" s="41" t="inlineStr"><is><t>Transferência recebida pelo Pix - Salário</t></is></c>',
     )
-    expect(sheet1).toContain('<c r="G10" s="43"><v>-22.5</v></c>')
+    expect(sheet1).toContain('<c r="D10" s="41" t="inlineStr"><is><t>2026-03</t></is></c>')
+    expect(sheet1).toContain('<c r="H10" s="43"><v>3500</v></c>')
   })
 
-  // TL-03d: lançamento 4 presente em A11
-  it('lançamento 4 (Pagamento de fatura) presente em linha 11 da Tabela1', () => {
+  // TL-03c: lançamento 3 presente em A11
+  it('lançamento 3 (PAG BOLETO ENERGIA) presente em linha 11 da Tabela1', () => {
     const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
     expect(sheet1).toContain('<c r="A11" s="42" t="inlineStr"><is><t>extrato_nubank</t></is></c>')
-    expect(sheet1).toContain('<c r="B11" s="44" t="inlineStr"><is><t>2026-03-15</t></is></c>')
+    expect(sheet1).toContain('<c r="B11" s="44" t="inlineStr"><is><t>2026-03-10</t></is></c>')
     expect(sheet1).toContain(
-      '<c r="C11" s="41" t="inlineStr"><is><t>Pagamento de fatura</t></is></c>',
+      '<c r="C11" s="41" t="inlineStr"><is><t>PAG BOLETO ENERGIA</t></is></c>',
     )
-    expect(sheet1).toContain('<c r="G11" s="43"><v>-1200</v></c>')
+    expect(sheet1).toContain('<c r="D11" s="41" t="inlineStr"><is><t>2026-03</t></is></c>')
+    expect(sheet1).toContain('<c r="H11" s="43"><v>-22.5</v></c>')
   })
 
-  // TL-04: ref da Tabela1 ajustado para A7:G11 (4 lançamentos)
-  it('ref da Tabela1 em table1.xml é A7:G11 para 4 lançamentos', () => {
+  // TL-03d: lançamento 4 presente em A12
+  it('lançamento 4 (Pagamento de fatura) presente em linha 12 da Tabela1', () => {
+    const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
+    expect(sheet1).toContain('<c r="A12" s="42" t="inlineStr"><is><t>extrato_nubank</t></is></c>')
+    expect(sheet1).toContain('<c r="B12" s="44" t="inlineStr"><is><t>2026-03-15</t></is></c>')
+    expect(sheet1).toContain(
+      '<c r="C12" s="41" t="inlineStr"><is><t>Pagamento de fatura</t></is></c>',
+    )
+    expect(sheet1).toContain('<c r="D12" s="41" t="inlineStr"><is><t>2026-03</t></is></c>')
+    expect(sheet1).toContain('<c r="H12" s="43"><v>-1200</v></c>')
+  })
+
+  // TL-04: ref da Tabela1 ajustado para A8:H12 (4 lançamentos, cabeçalho linha 8)
+  it('ref da Tabela1 em table1.xml é A8:H12 para 4 lançamentos', () => {
     const table1 = decodePart(resultadoParts, 'xl/tables/table1.xml')
-    expect(table1).toContain('ref="A7:G11"')
+    expect(table1).toContain('ref="A8:H12"')
+  })
+
+  // TL-04b: B3 contém o mês de referência como inlineStr
+  it('B3 contém o mês de referência "2026-03" como inlineStr', () => {
+    const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
+    expect(sheet1).toContain('<c r="B3" s="45" t="inlineStr"><is><t>2026-03</t></is></c>')
   })
 
   // TL-05: fullCalcOnLoad presente em workbook.xml
@@ -298,42 +308,42 @@ describe('E2E — Caso 2: pipeline com dicionário', () => {
       enriquecerLancamento(l, dicEntries, INICIAIS),
     )
 
-    const resultadoBytes = gerarXlsx(modeloBytes, INICIAIS, lancamentosEnriquecidos, dicEntries)
+    const resultadoBytes = gerarXlsx(modeloBytes, INICIAIS, lancamentosEnriquecidos, dicEntries, '2026-03')
     resultadoParts = unzipSync(resultadoBytes)
   })
 
-  // TL-07: chave não-ambígua → Natureza/Descrição/Iniciais preenchidas
-  it('lançamento com chave não-ambígua (PAG BOLETO ENERGIA) tem Natureza/Descrição/Iniciais preenchidas na linha 10', () => {
+  // TL-07: chave não-ambígua → Natureza/Descrição/Iniciais preenchidas (layout novo — linha 11)
+  it('lançamento com chave não-ambígua (PAG BOLETO ENERGIA) tem Natureza/Descrição/Iniciais preenchidas na linha 11', () => {
     const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    // E10 = Natureza
-    expect(sheet1).toContain('<c r="E10" s="11" t="inlineStr"><is><t>Moradia</t></is></c>')
-    // F10 = Descrição
-    expect(sheet1).toContain('<c r="F10" s="11" t="inlineStr"><is><t>Conta de luz</t></is></c>')
-    // D10 = Iniciais (vem do dicionário = 'ES')
-    expect(sheet1).toContain('<c r="D10" s="41" t="inlineStr"><is><t>ES</t></is></c>')
+    // E11 = Iniciais (vem do dicionário = 'ES') — coluna E no layout novo
+    expect(sheet1).toContain('<c r="E11" s="41" t="inlineStr"><is><t>ES</t></is></c>')
+    // F11 = Natureza — coluna F no layout novo
+    expect(sheet1).toContain('<c r="F11" s="11" t="inlineStr"><is><t>Moradia</t></is></c>')
+    // G11 = Descrição — coluna G no layout novo
+    expect(sheet1).toContain('<c r="G11" s="11" t="inlineStr"><is><t>Conta de luz</t></is></c>')
   })
 
-  // TL-08: chave ambígua → Natureza e Descrição em branco, Iniciais = usuário
-  it('lançamento com chave ambígua (Pagamento de fatura) tem Natureza/Descrição em branco na linha 11', () => {
+  // TL-08: chave ambígua → Natureza e Descrição em branco, Iniciais = usuário (linha 12)
+  it('lançamento com chave ambígua (Pagamento de fatura) tem Natureza/Descrição em branco na linha 12', () => {
     const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    // E11 = Natureza em branco → célula genuinamente vazia (não inlineStr vazio),
+    // E12 = Iniciais = INICIAIS (default do usuário) — coluna E no layout novo
+    expect(sheet1).toContain('<c r="E12" s="41" t="inlineStr"><is><t>ES</t></is></c>')
+    // F12 = Natureza em branco → célula genuinamente vazia (não inlineStr vazio),
     // para que a formatação condicional "Natureza vazia com dados" incida.
-    expect(sheet1).toContain('<c r="E11" s="11"/>')
-    // F11 = Descrição em branco
-    expect(sheet1).toContain('<c r="F11" s="11"/>')
-    // D11 = Iniciais = INICIAIS (default do usuário)
-    expect(sheet1).toContain('<c r="D11" s="41" t="inlineStr"><is><t>ES</t></is></c>')
+    expect(sheet1).toContain('<c r="F12" s="11"/>')
+    // G12 = Descrição em branco
+    expect(sheet1).toContain('<c r="G12" s="11"/>')
   })
 
-  // TL-09: chave ausente → Natureza e Descrição em branco, Iniciais = usuário
-  it('lançamento com chave ausente (Transferência Pix enviada) tem Natureza/Descrição em branco na linha 8', () => {
+  // TL-09: chave ausente → Natureza e Descrição em branco, Iniciais = usuário (linha 9)
+  it('lançamento com chave ausente (Transferência Pix enviada) tem Natureza/Descrição em branco na linha 9', () => {
     const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    // E8 = Natureza em branco → célula genuinamente vazia (não inlineStr vazio).
-    expect(sheet1).toContain('<c r="E8" s="11"/>')
-    // F8 = Descrição em branco
-    expect(sheet1).toContain('<c r="F8" s="11"/>')
-    // D8 = Iniciais = INICIAIS (default)
-    expect(sheet1).toContain('<c r="D8" s="41" t="inlineStr"><is><t>ES</t></is></c>')
+    // E9 = Iniciais = INICIAIS (default) — coluna E no layout novo
+    expect(sheet1).toContain('<c r="E9" s="41" t="inlineStr"><is><t>ES</t></is></c>')
+    // F9 = Natureza em branco → célula genuinamente vazia (não inlineStr vazio).
+    expect(sheet1).toContain('<c r="F9" s="11"/>')
+    // G9 = Descrição em branco
+    expect(sheet1).toContain('<c r="G9" s="11"/>')
   })
 
   // TL-10: aba Dicionario do ZIP contém as entradas do dicionário fornecido
