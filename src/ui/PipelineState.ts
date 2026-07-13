@@ -205,7 +205,8 @@ export function gerarAPartirDosRevisados(
   dicEntriesAnterior: DicEntry[],
 ): Uint8Array {
   const dicEnriquecido = aprenderDicionario(lancamentosRevisados, dicEntriesAnterior)
-  return gerarXlsx(modeloBytes, iniciais, lancamentosRevisados, dicEnriquecido)
+  // TODO(spec-ui-mes-referencia): placeholder até o campo de mês de referência existir na UI
+  return gerarXlsx(modeloBytes, iniciais, lancamentosRevisados, dicEnriquecido, 'TODO-mes')
 }
 
 // ---------------------------------------------------------------------------

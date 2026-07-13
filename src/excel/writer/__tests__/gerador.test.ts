@@ -41,7 +41,7 @@ describe('gerarXlsx', () => {
     const lancamentos: Lancamento[] = []
     const dicEntries: DicEntry[] = []
 
-    const resultado = gerarXlsx(modeloBytes, 'ES', lancamentos, dicEntries)
+    const resultado = gerarXlsx(modeloBytes, 'ES', lancamentos, dicEntries, 'TODO-mes')
     const parts = unzipSync(resultado)
     const sheet1 = decodePart(parts, 'xl/worksheets/sheet1.xml')
 
@@ -63,7 +63,7 @@ describe('gerarXlsx', () => {
     ]
     const dicEntries: DicEntry[] = []
 
-    const resultado = gerarXlsx(modeloBytes, 'ES', lancamentos, dicEntries)
+    const resultado = gerarXlsx(modeloBytes, 'ES', lancamentos, dicEntries, 'TODO-mes')
     const parts = unzipSync(resultado)
     const sheet1 = decodePart(parts, 'xl/worksheets/sheet1.xml')
 
@@ -92,7 +92,7 @@ describe('gerarXlsx', () => {
     ]
     const dicEntries: DicEntry[] = []
 
-    const resultado = gerarXlsx(modeloBytes, 'ES', lancamentos, dicEntries)
+    const resultado = gerarXlsx(modeloBytes, 'ES', lancamentos, dicEntries, 'TODO-mes')
     const parts = unzipSync(resultado)
     const table1 = decodePart(parts, 'xl/tables/table1.xml')
 
@@ -104,7 +104,7 @@ describe('gerarXlsx', () => {
 
   // Test List item 4: fullCalcOnLoad="1" em workbook.xml
   it('insere fullCalcOnLoad="1" em calcPr de workbook.xml', () => {
-    const resultado = gerarXlsx(modeloBytes, 'ES', [], [])
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], [], 'TODO-mes')
     const parts = unzipSync(resultado)
     const workbook = decodePart(parts, 'xl/workbook.xml')
 
@@ -120,7 +120,7 @@ describe('gerarXlsx', () => {
       { chave: 'Transferência Pix', fonte: 'Nubank', natureza: 'Transferência', descricao: 'Repasse', iniciais: 'RM', vezes: 1, ambiguo: false },
     ]
 
-    const resultado = gerarXlsx(modeloBytes, 'ES', [], dicEntries)
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], dicEntries, 'TODO-mes')
     const parts = unzipSync(resultado)
     const sheet2 = decodePart(parts, 'xl/worksheets/sheet2.xml')
 
@@ -138,7 +138,7 @@ describe('gerarXlsx', () => {
 
   // Test List item 6: SHA256 de partes não tocadas idêntico ao original
   it('preserva SHA256 de todas as partes não tocadas pela injeção', () => {
-    const resultado = gerarXlsx(modeloBytes, 'ES', [], [])
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], [], 'TODO-mes')
     const resultParts = unzipSync(resultado)
 
     const partesOriginais = Object.keys(modeloParts)
@@ -167,7 +167,7 @@ describe('gerarXlsx', () => {
       },
     ]
 
-    const resultado = gerarXlsx(modeloBytes, 'ES', lancamentos, [])
+    const resultado = gerarXlsx(modeloBytes, 'ES', lancamentos, [], 'TODO-mes')
     const parts = unzipSync(resultado)
     const sheet1 = decodePart(parts, 'xl/worksheets/sheet1.xml')
 
@@ -178,10 +178,25 @@ describe('gerarXlsx', () => {
 
   // Test List item 8: lista vazia de lançamentos — ref A7:G7
   it('com zero lançamentos, ref da Tabela1 é A7:G7 (apenas cabeçalho)', () => {
-    const resultado = gerarXlsx(modeloBytes, 'ES', [], [])
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], [], 'TODO-mes')
     const parts = unzipSync(resultado)
     const table1 = decodePart(parts, 'xl/tables/table1.xml')
 
     expect(table1).toContain('ref="A7:G7"')
+  })
+
+  // T2 — Test List item 9: mesReferencia vazio lança Error com "obrigatório"
+  it('lança Error com "obrigatório" quando mesReferencia é string vazia', () => {
+    expect(() => gerarXlsx(modeloBytes, 'ES', [], [], '')).toThrow(/obrigatório/i)
+  })
+
+  // T2 — Test List item 10: mesReferencia só whitespace também lança Error
+  it('lança Error com "obrigatório" quando mesReferencia é só whitespace', () => {
+    expect(() => gerarXlsx(modeloBytes, 'ES', [], [], '   ')).toThrow(/obrigatório/i)
+  })
+
+  // T2 — Test List item 11: mesReferencia válido não lança erro
+  it('não lança erro quando mesReferencia é válido (ex.: "2025-07")', () => {
+    expect(() => gerarXlsx(modeloBytes, 'ES', [], [], '2025-07')).not.toThrow()
   })
 })

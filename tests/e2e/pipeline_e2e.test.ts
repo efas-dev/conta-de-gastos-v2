@@ -171,7 +171,7 @@ describe('E2E — Caso 1: pipeline completo sem dicionário', () => {
       enriquecerLancamento(l, [], INICIAIS),
     )
 
-    resultadoBytes = gerarXlsx(modeloBytes, INICIAIS, lancamentosEnriquecidos, [])
+    resultadoBytes = gerarXlsx(modeloBytes, INICIAIS, lancamentosEnriquecidos, [], 'TODO-mes')
     resultadoParts = unzipSync(resultadoBytes)
   })
 
@@ -298,7 +298,7 @@ describe('E2E — Caso 2: pipeline com dicionário', () => {
       enriquecerLancamento(l, dicEntries, INICIAIS),
     )
 
-    const resultadoBytes = gerarXlsx(modeloBytes, INICIAIS, lancamentosEnriquecidos, dicEntries)
+    const resultadoBytes = gerarXlsx(modeloBytes, INICIAIS, lancamentosEnriquecidos, dicEntries, 'TODO-mes')
     resultadoParts = unzipSync(resultadoBytes)
   })
 

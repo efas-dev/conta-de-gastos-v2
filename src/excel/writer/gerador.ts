@@ -172,6 +172,7 @@ function injetarFullCalcOnLoad(xml: string): string {
  * @param iniciais - Iniciais do usuário, gravadas em B2 da aba Extrato
  * @param lancamentos - Lançamentos a injetar a partir da linha A8
  * @param dicEntries - Entradas do dicionário a injetar na aba Dicionario
+ * @param mesReferencia - Mês de referência no formato YYYY-MM, gravado em B3 (obrigatório)
  * @returns Bytes do .xlsx gerado
  */
 export function gerarXlsx(
@@ -179,7 +180,12 @@ export function gerarXlsx(
   iniciais: string,
   lancamentos: Lancamento[],
   dicEntries: DicEntry[],
+  mesReferencia: string,
 ): Uint8Array {
+  if (mesReferencia.trim() === '') {
+    throw new Error('mesReferencia é obrigatório')
+  }
+
   const parts = unzipSync(modelo)
 
   // 1. Modificar sheet1.xml (aba Extrato): B2 e linhas de dados A8:G{7+n}
