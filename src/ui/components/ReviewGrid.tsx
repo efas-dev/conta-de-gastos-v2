@@ -1,6 +1,7 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
+// ADR: see spec/grid-ux-filtros.adr.md
 
-import { useState, useCallback, useRef, useMemo } from 'react'
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import {
   DataEditor,
   GridCellKind,
@@ -13,6 +14,8 @@ import {
   type DrawCellCallback,
   type ProvideEditorCallback,
   type GridCell,
+  type NumberCell,
+  type FillPatternEventArgs,
 } from '@glideapps/glide-data-grid'
 import '@glideapps/glide-data-grid/dist/index.css'
 import { useAppStore } from '../store/appStore'
@@ -35,8 +38,93 @@ const COL_VALOR = 6
 /** Conjunto de índices de colunas somente leitura (D7 do ADR). */
 const COLUNAS_SOMENTE_LEITURA = new Set([COL_FONTE, COL_DATA, COL_TRANSCRICAO])
 
-/** Definição das 7 colunas da grid. */
-const COLUNAS: GridColumn[] = [
+/**
+ * IDs textuais das colunas, alinhados com os campos de Lancamento.
+ * Usados por onFillPattern para detectar colunas somente leitura via colId (D15 do ADR).
+ */
+const COL_IDS = ['fonte', 'data', 'transcricao', 'iniciais', 'natureza', 'descricao', 'valor'] as const
+
+/** Conjunto de colIds que são somente leitura (D15 do ADR grid-ux-filtros). */
+const COL_IDS_SOMENTE_LEITURA = new Set(['fonte', 'data', 'transcricao'])
+
+// ---------------------------------------------------------------------------
+// Funções puras auxiliares de medição — D17 e D18 do ADR grid-ux-filtros
+// Exportadas para testabilidade (TL-1 a TL-6 da T3).
+// ---------------------------------------------------------------------------
+
+/**
+ * Teto máximo de largura de coluna em pixels (D16/D17 do ADR grid-ux-filtros).
+ */
+export const LARGURA_MAXIMA_PX = 320
+
+/**
+ * Largura mínima de coluna — garante legibilidade mesmo em colunas sem conteúdo.
+ */
+const LARGURA_MINIMA_PX = 60
+
+/**
+ * Aproximação de pixels por caractere usando heurística de string.
+ * D17 do ADR: Canvas API proibida nos testes; heurística é suficiente.
+ */
+const PX_POR_CHAR = 8
+
+/**
+ * Padding horizontal da célula (esquerda + direita) em pixels.
+ */
+const PADDING_CELULA_PX = 28
+
+/**
+ * Determina se uma coluna (por colId textual) é somente leitura.
+ *
+ * Exportado para testabilidade (TL-6 da T3).
+ * D15 do ADR: onFillPattern ignora colunas somente leitura por colId.
+ */
+export function ehColunaLeituraApenas(colId: string): boolean {
+  return COL_IDS_SOMENTE_LEITURA.has(colId)
+}
+
+/**
+ * Estima a largura em pixels de um texto usando heurística de string.
+ *
+ * Retorna no máximo `maxPx`. Exportado para testabilidade (TL-1/TL-2 da T3).
+ * D17 do ADR: heurística de string em vez de Canvas API.
+ */
+export function medirLarguraHeuristica(texto: string, maxPx: number): number {
+  const estimado = texto.length * PX_POR_CHAR + PADDING_CELULA_PX
+  return Math.min(Math.max(estimado, LARGURA_MINIMA_PX), maxPx)
+}
+
+/**
+ * Calcula a largura ideal de cada coluna com base no conteúdo dos lançamentos.
+ *
+ * Itera sobre todos os lançamentos e todos os colIds; para cada célula, estima
+ * a largura via `medirLarguraHeuristica` e mantém o máximo encontrado.
+ * Inclui o título da coluna no cálculo para não truncar cabeçalhos.
+ * Aplica teto de `LARGURA_MAXIMA_PX`. Exportado para testabilidade (TL-3 a TL-5 da T3).
+ * D17 do ADR: heurística de string.
+ */
+export function calcularLargurasColunas(
+  lancamentos: Lancamento[],
+  colunasBase: GridColumn[],
+): number[] {
+  return colunasBase.map((col, i) => {
+    const colId = COL_IDS[i]
+    // Começa pela largura do título da coluna
+    let largura = medirLarguraHeuristica(col.title, LARGURA_MAXIMA_PX)
+
+    for (const l of lancamentos) {
+      const val = colId ? l[colId as keyof Lancamento] : ''
+      const texto = val != null ? String(val) : ''
+      const w = medirLarguraHeuristica(texto, LARGURA_MAXIMA_PX)
+      if (w > largura) largura = w
+    }
+
+    return largura
+  })
+}
+
+/** Definição das 7 colunas base da grid (larguras serão sobrescritas dinamicamente). */
+const COLUNAS_BASE: GridColumn[] = [
   { title: 'Fonte', width: 120 },
   { title: 'Data', width: 100 },
   { title: 'Transcrição', width: 240 },
@@ -154,17 +242,60 @@ export interface ReviewGridProps {
  * Detecção de split: ao editar Iniciais com `'/'`, chama `onSplitDetectado(indice)`.
  */
 export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
-  const lancamentos = useAppStore((s) => s.lancamentos)
+  const lancamentosVisiveis = useAppStore((s) => s.lancamentosVisiveis)
+  const mapaIndiceVisualReal = useAppStore((s) => s.mapaIndiceVisualReal)
   const naturezasValidas = useAppStore((s) => s.naturezasValidas)
   const editarCelula = useAppStore((s) => s.editarCelula)
+  const preencherIntervalo = useAppStore((s) => s.preencherIntervalo)
   const dicEntries = useAppStore((s) => s.dicEntries)
+
+  // -----------------------------------------------------------------
+  // Estado local de larguras de coluna — D16/D17/D18 do ADR grid-ux-filtros
+  // Auto-medição vence manual: ao recalcular, descarta ajustes manuais.
+  // -----------------------------------------------------------------
+
+  const [largurasColunas, setLargurasColunas] = useState<number[]>(
+    () => COLUNAS_BASE.map((c) => c.width ?? 120),
+  )
+
+  // Timer ref para debounce de 300 ms (D18 do ADR)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  /**
+   * Agenda recálculo automático de larguras com debounce de 300 ms.
+   * Ao disparar, substitui TODO o estado local (auto vence manual — D16).
+   */
+  const agendarRecalculoLarguras = useCallback(
+    (lista: Lancamento[]) => {
+      if (debounceRef.current !== null) clearTimeout(debounceRef.current)
+      debounceRef.current = setTimeout(() => {
+        setLargurasColunas(calcularLargurasColunas(lista, COLUNAS_BASE))
+      }, 300)
+    },
+    [],
+  )
+
+  // Recalcula na carga dos dados visíveis (D18 — na carga dos dados)
+  useEffect(() => {
+    agendarRecalculoLarguras(lancamentosVisiveis)
+    return () => {
+      if (debounceRef.current !== null) clearTimeout(debounceRef.current)
+    }
+  }, [lancamentosVisiveis, agendarRecalculoLarguras])
+
+  // Colunas com larguras dinâmicas aplicadas
+  const colunas: GridColumn[] = useMemo(
+    () => COLUNAS_BASE.map((col, i) => ({ ...col, width: largurasColunas[i] ?? col.width })),
+    [largurasColunas],
+  )
 
   // Ref compartilhada com o componente editor estável (atualizada via onCellActivated)
   const editorContextRef = useRef<{ col: number; row: number }>({ col: -1, row: -1 })
 
-  // Refs de dados para o editor — permitem leituras sempre frescas sem re-criar o componente
-  const lancamentosRef = useRef(lancamentos)
-  lancamentosRef.current = lancamentos
+  // Refs de dados para o editor — permitem leituras sempre frescas sem re-criar o componente.
+  // O GhostEditor usa lancamentosRef[row] onde row é índice VISUAL; usamos lancamentosVisiveis.
+  const lancamentosRef = useRef(lancamentosVisiveis)
+  lancamentosRef.current = lancamentosVisiveis
   const dicEntriesRef = useRef(dicEntries)
   dicEntriesRef.current = dicEntries
 
@@ -238,7 +369,7 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
 
   const getCellContent = useCallback(
     ([col, row]: Item) => {
-      const l = lancamentos[row]
+      const l = lancamentosVisiveis[row]
 
       if (!l) {
         return {
@@ -329,11 +460,12 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
           } as const
       }
     },
-    [lancamentos],
+    [lancamentosVisiveis],
   )
 
   // -----------------------------------------------------------------
   // onCellEdited: despacha editarCelula para o store
+  // Traduz índice visual→índice real via mapaIndiceVisualReal (D14 do ADR).
   // -----------------------------------------------------------------
 
   const onCellEdited = useCallback(
@@ -341,33 +473,39 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
       // Colunas somente leitura nunca chegam aqui, mas a guarda é defensiva
       if (COLUNAS_SOMENTE_LEITURA.has(col)) return
 
+      // Tradução índice visual → índice real (D14 do ADR grid-ux-filtros)
+      const indiceReal = mapaIndiceVisualReal[row] ?? row
+
       switch (col) {
         case COL_INICIAIS: {
           const val = novoValor.kind === GridCellKind.Text ? novoValor.data : ''
           if (val.includes('/') && onSplitDetectado) {
-            onSplitDetectado(row)
+            onSplitDetectado(indiceReal)
           }
-          editarCelula(row, 'iniciais', val)
+          editarCelula(indiceReal, 'iniciais', val)
           break
         }
         case COL_NATUREZA: {
           const val = novoValor.kind === GridCellKind.Text ? novoValor.data : ''
-          editarCelula(row, 'natureza', val)
+          editarCelula(indiceReal, 'natureza', val)
           break
         }
         case COL_DESCRICAO: {
           const val = novoValor.kind === GridCellKind.Text ? novoValor.data : ''
-          editarCelula(row, 'descricao', val)
+          editarCelula(indiceReal, 'descricao', val)
           break
         }
         case COL_VALOR: {
           const val = novoValor.kind === GridCellKind.Number ? (novoValor.data ?? 0) : 0
-          editarCelula(row, 'valor', val)
+          editarCelula(indiceReal, 'valor', val)
           break
         }
       }
+
+      // Agenda recálculo de larguras após edição (D18 do ADR)
+      agendarRecalculoLarguras(lancamentosVisiveis)
     },
-    [editarCelula, onSplitDetectado],
+    [editarCelula, onSplitDetectado, mapaIndiceVisualReal, lancamentosVisiveis, agendarRecalculoLarguras],
   )
 
   // -----------------------------------------------------------------
@@ -376,11 +514,11 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
 
   const getRowThemeOverride: GetRowThemeCallback = useCallback(
     (row) => {
-      const l = lancamentos[row]
+      const l = lancamentosVisiveis[row]
       if (!l) return undefined
       return calcularTemaLinha(l, naturezasValidas)
     },
-    [lancamentos, naturezasValidas],
+    [lancamentosVisiveis, naturezasValidas],
   )
 
   // -----------------------------------------------------------------
@@ -395,7 +533,7 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
         draw()
         return
       }
-      const l = lancamentos[args.row]
+      const l = lancamentosVisiveis[args.row]
       if (!l) {
         draw()
         return
@@ -420,7 +558,57 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
       ctx.fillText(numero, rect.x + rect.width - pad, y)
       ctx.restore()
     },
-    [lancamentos],
+    [lancamentosVisiveis],
+  )
+
+  // -----------------------------------------------------------------
+  // onFillPattern: fill handle replica valor nas colunas editáveis (D14/D15 do ADR)
+  // Ignora colunas somente leitura (Fonte, Data, Transcrição) por colId.
+  // Traduz índices visuais → reais via mapaIndiceVisualReal (via preencherIntervalo).
+  // -----------------------------------------------------------------
+
+  const onFillPattern = useCallback(
+    ({ patternSource, fillDestination }: FillPatternEventArgs) => {
+      // Obtém o colId textual da coluna de destino (x do destino)
+      const colIdx = fillDestination.x
+      const colId = COL_IDS[colIdx]
+
+      // D15: ignora colunas somente leitura
+      if (!colId || ehColunaLeituraApenas(colId)) return
+
+      // Lê o valor da célula de origem (primeira célula do pattern source)
+      const celulaOrigem = getCellContent([patternSource.x, patternSource.y])
+
+      let valorFill: string | number = ''
+      if (celulaOrigem.kind === GridCellKind.Text) {
+        valorFill = celulaOrigem.data
+      } else if (celulaOrigem.kind === GridCellKind.Number) {
+        valorFill = (celulaOrigem as NumberCell).data ?? 0
+      }
+
+      // D14: preencherIntervalo opera sobre lancamentosVisiveis e usa mapaIndiceVisualReal
+      // internamente — os índices aqui são visuais (linhas visíveis)
+      const startRow = fillDestination.y
+      const endRow = fillDestination.y + fillDestination.height - 1
+      preencherIntervalo(startRow, endRow, colId, valorFill)
+    },
+    [getCellContent, preencherIntervalo],
+  )
+
+  // -----------------------------------------------------------------
+  // onColumnResize: estado local de larguras (D16 do ADR grid-ux-filtros)
+  // Atualiza apenas a coluna alterada manualmente.
+  // -----------------------------------------------------------------
+
+  const onColumnResize = useCallback(
+    (_col: GridColumn, newSize: number, colIndex: number) => {
+      setLargurasColunas((prev) => {
+        const nova = [...prev]
+        nova[colIndex] = newSize
+        return nova
+      })
+    },
+    [],
   )
 
   // -----------------------------------------------------------------
@@ -442,9 +630,9 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
         }
       }
 
-      setSomaSelecao(indices.length > 0 ? calcularSomaSelecionados(lancamentos, indices) : null)
+      setSomaSelecao(indices.length > 0 ? calcularSomaSelecionados(lancamentosVisiveis, indices) : null)
     },
-    [lancamentos],
+    [lancamentosVisiveis],
   )
 
   // -----------------------------------------------------------------
@@ -455,8 +643,8 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ flex: 1, minHeight: 0 }}>
         <DataEditor
-          columns={COLUNAS}
-          rows={lancamentos.length}
+          columns={colunas}
+          rows={lancamentosVisiveis.length}
           getCellContent={getCellContent}
           onCellEdited={onCellEdited}
           getRowThemeOverride={getRowThemeOverride}
@@ -476,7 +664,11 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
              valor é replicado nas células editáveis do range. */
           getCellsForSelection={true}
           onPaste={true}
+          /* Fill handle conectado: onFillPattern replica valor nas colunas editáveis (D14/D15). */
           fillHandle={true}
+          onFillPattern={onFillPattern}
+          /* Redimensionamento manual de colunas com estado local (D16). */
+          onColumnResize={onColumnResize}
           /* Custom editor inline com ghost-text (T2 — D1/D5/D8 do ADR). */
           provideEditor={provideEditor}
           onCellActivated={onCellActivated}
