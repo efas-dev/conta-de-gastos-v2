@@ -9,6 +9,7 @@ import {
 } from './ui/PipelineState'
 import { lerNaturezas } from './excel/reader/leitor'
 import { ReviewGrid } from './ui/components/ReviewGrid'
+import { FiltroBar } from './ui/components/FiltroBar'
 import { SplitModal } from './ui/components/SplitModal'
 import { AvisoList } from './ui/components/AvisoList'
 
@@ -606,6 +607,9 @@ export function App() {
               Selecione células para somar
             </span>
           </div>
+
+          {/* FiltroBar — acima da grid, abaixo da legenda (D6 do ADR grid-ux-filtros) */}
+          <FiltroBar />
 
           <div style={{ flex: 1, minHeight: 0 }}>
             <ReviewGrid onSplitDetectado={(indice) => setSplitIndice(indice)} />
