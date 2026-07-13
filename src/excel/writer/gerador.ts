@@ -43,20 +43,31 @@ function celulaNum(ref: string, style: string, value: number): string {
 }
 
 /**
- * Injeta iniciais em B2 e dados dos lançamentos nas linhas A8:G{7+n} de sheet1.xml.
+ * Injeta iniciais em B2, mês de referência em B3, e dados dos lançamentos
+ * nas linhas A9:H{8+n} de sheet1.xml — layout Modelo 483f420.
  *
- * Células do Modelo.xlsx virgem nas linhas de dados (8–503):
+ * Células do Modelo.xlsx virgem (483f420) nas linhas de dados (9–504):
  *   A (Fonte):        s="42"  — empty: <c r="An" s="42"/>
  *   B (Data):         s="44"  — empty: <c r="Bn" s="44"/>
  *   C (Transcrição):  s="41"  — empty: <c r="Cn" s="41"/>
- *   D (Iniciais):     s="41"  — empty: <c r="Dn" s="41"/>
- *   E (Natureza):     s="11"  — empty: <c r="En" s="11"/>
- *   F (Descrição):    s="11"  — empty: <c r="Fn" s="11"/>
- *   G (Valor):        s="43"  — empty: <c r="Gn" s="43"/>
+ *   D (Ref.):         s="41"  — empty: <c r="Dn" s="41"/> — recebe mesReferencia literal
+ *   E (Iniciais):     s="41"  — empty: <c r="En" s="41"/>
+ *   F (Natureza):     s="11"  — empty: <c r="Fn" s="11"/>
+ *   G (Descrição):    s="11"  — empty: <c r="Gn" s="11"/>
+ *   H (Valor):        s="43"  — empty: <c r="Hn" s="43"/>
  *
  * B2 no Modelo.xlsx virgem: <c r="B2" s="40"/>
+ * B3 no Modelo.xlsx virgem: <c r="B3" s="45" t="s"><v>89</v></c>
+ *
+ * Estilos derivados empiricamente do Modelo 483f420 via inspeção de
+ * xl/worksheets/sheet1.xml no ZIP da fixture.
  */
-function injetarSheet1(xml: string, iniciais: string, lancamentos: Lancamento[]): string {
+function injetarSheet1(
+  xml: string,
+  iniciais: string,
+  lancamentos: Lancamento[],
+  mesReferencia: string,
+): string {
   let result = xml
 
   // Injeta iniciais em B2
@@ -65,9 +76,15 @@ function injetarSheet1(xml: string, iniciais: string, lancamentos: Lancamento[])
     () => celulaStr('B2', '40', iniciais),
   )
 
-  // Injeta cada lançamento nas linhas 8, 9, 10, ...
+  // Injeta mês de referência em B3 (substitui a shared string do Modelo por inlineStr)
+  result = result.replace(
+    '<c r="B3" s="45" t="s"><v>89</v></c>',
+    () => celulaStr('B3', '45', mesReferencia),
+  )
+
+  // Injeta cada lançamento nas linhas 9, 10, 11, ... (n = i + 9)
   for (let i = 0; i < lancamentos.length; i++) {
-    const n = i + 8
+    const n = i + 9
     const l = lancamentos[i]
 
     result = result.replace(
@@ -84,19 +101,23 @@ function injetarSheet1(xml: string, iniciais: string, lancamentos: Lancamento[])
     )
     result = result.replace(
       `<c r="D${n}" s="41"/>`,
-      () => celulaStr(`D${n}`, '41', l.iniciais),
+      () => celulaStr(`D${n}`, '41', mesReferencia),
     )
     result = result.replace(
-      `<c r="E${n}" s="11"/>`,
-      () => celulaStr(`E${n}`, '11', l.natureza),
+      `<c r="E${n}" s="41"/>`,
+      () => celulaStr(`E${n}`, '41', l.iniciais),
     )
     result = result.replace(
       `<c r="F${n}" s="11"/>`,
-      () => celulaStr(`F${n}`, '11', l.descricao),
+      () => celulaStr(`F${n}`, '11', l.natureza),
     )
     result = result.replace(
-      `<c r="G${n}" s="43"/>`,
-      () => celulaNum(`G${n}`, '43', l.valor),
+      `<c r="G${n}" s="11"/>`,
+      () => celulaStr(`G${n}`, '11', l.descricao),
+    )
+    result = result.replace(
+      `<c r="H${n}" s="43"/>`,
+      () => celulaNum(`H${n}`, '43', l.valor),
     )
   }
 
@@ -170,7 +191,7 @@ function injetarFullCalcOnLoad(xml: string): string {
  *
  * @param modelo - Bytes do Modelo.xlsx original (lido como Uint8Array)
  * @param iniciais - Iniciais do usuário, gravadas em B2 da aba Extrato
- * @param lancamentos - Lançamentos a injetar a partir da linha A8
+ * @param lancamentos - Lançamentos a injetar a partir da linha A9
  * @param dicEntries - Entradas do dicionário a injetar na aba Dicionario
  * @param mesReferencia - Mês de referência no formato YYYY-MM, gravado em B3 (obrigatório)
  * @returns Bytes do .xlsx gerado
@@ -188,10 +209,10 @@ export function gerarXlsx(
 
   const parts = unzipSync(modelo)
 
-  // 1. Modificar sheet1.xml (aba Extrato): B2 e linhas de dados A8:G{7+n}
+  // 1. Modificar sheet1.xml (aba Extrato): B2, B3 e linhas de dados A9:H{8+n}
   const sheet1Xml = decoder.decode(parts['xl/worksheets/sheet1.xml'])
   parts['xl/worksheets/sheet1.xml'] = encoder.encode(
-    injetarSheet1(sheet1Xml, iniciais, lancamentos),
+    injetarSheet1(sheet1Xml, iniciais, lancamentos, mesReferencia),
   )
 
   // 2. Modificar sheet2.xml (aba Dicionario): substituir <sheetData/> com entradas
