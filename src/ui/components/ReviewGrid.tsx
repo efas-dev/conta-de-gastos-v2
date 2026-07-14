@@ -95,6 +95,40 @@ export function medirLarguraHeuristica(texto: string, maxPx: number): number {
 }
 
 /**
+ * Fator de ajuste da heurística para a fonte bold 14px do formato contábil
+ * da coluna Valor (o drawCell usa `700 14px`, mais larga que a fonte regular
+ * para a qual PX_POR_CHAR foi calibrado).
+ */
+const FATOR_BOLD_VALOR = 1.25
+
+/**
+ * Folga mínima entre o prefixo (ancorado à esquerda) e o número (alinhado à
+ * direita) no formato contábil, para os dois blocos nunca colidirem.
+ */
+const FOLGA_CONTABIL_PX = 12
+
+/**
+ * Estima a largura da célula da coluna Valor no formato contábil renderizado
+ * pelo drawCell: prefixo `R$`/`-R$` à esquerda + número pt-BR à direita.
+ *
+ * Mede a string efetivamente desenhada (não o número cru de `String(valor)`),
+ * com fator para a fonte bold e folga entre os dois blocos. Exportado para
+ * testabilidade (TL-7/TL-8 — dívida valor-truncado-auto-largura).
+ */
+export function medirLarguraValorContabil(valor: number, maxPx: number): number {
+  const prefixo = valor < 0 ? '-R$' : 'R$'
+  const numero = Math.abs(valor).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+  const estimado =
+    Math.ceil((prefixo.length + numero.length) * PX_POR_CHAR * FATOR_BOLD_VALOR) +
+    FOLGA_CONTABIL_PX +
+    PADDING_CELULA_PX
+  return Math.min(Math.max(estimado, LARGURA_MINIMA_PX), maxPx)
+}
+
+/**
  * Calcula a largura ideal de cada coluna com base no conteúdo dos lançamentos.
  *
  * Itera sobre todos os lançamentos e todos os colIds; para cada célula, estima
@@ -113,9 +147,12 @@ export function calcularLargurasColunas(
     let largura = medirLarguraHeuristica(col.title, LARGURA_MAXIMA_PX)
 
     for (const l of lancamentos) {
-      const val = colId ? l[colId as keyof Lancamento] : ''
-      const texto = val != null ? String(val) : ''
-      const w = medirLarguraHeuristica(texto, LARGURA_MAXIMA_PX)
+      // Coluna Valor: mede o formato contábil desenhado pelo drawCell
+      // (prefixo + número pt-BR em bold), não o número cru de String(valor).
+      const w =
+        colId === 'valor'
+          ? medirLarguraValorContabil(l.valor, LARGURA_MAXIMA_PX)
+          : medirLarguraHeuristica(String(l[colId as keyof Lancamento] ?? ''), LARGURA_MAXIMA_PX)
       if (w > largura) largura = w
     }
 
