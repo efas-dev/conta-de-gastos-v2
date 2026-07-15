@@ -448,3 +448,164 @@ describe('App — leitura antecipada no upload (T4)', () => {
     })
   })
 })
+
+// ---------------------------------------------------------------------------
+// Testes — T5: aviso não bloqueante de fatura no painel de avisos existente
+// ---------------------------------------------------------------------------
+
+/** Lançamento mínimo com data anterior a 2026-07 (mês de referência de teste) */
+function lancamentoFatura(fonte: string, data: string): (typeof lancamentosVazios)[0] {
+  return {
+    fonte,
+    data,
+    transcricao: 'Compra',
+    valor: -100,
+    iniciais: 'ES',
+    natureza: 'Alimentação',
+    descricao: '',
+    transferenciaInterna: false as false,
+    investimento: null as null,
+  }
+}
+
+const lancamentosVazios: Array<{
+  fonte: string
+  data: string
+  transcricao: string
+  valor: number
+  iniciais: string
+  natureza: string
+  descricao: string
+  transferenciaInterna: false
+  investimento: null
+}> = []
+
+describe('App — aviso de fatura (T5)', () => {
+  beforeEach(() => {
+    resetarStore()
+    vi.clearAllMocks()
+  })
+
+  // TL5-1: fonte com data anterior ao mesEscolhido → aviso contendo nome da fonte e "fatura"
+  it('TL5-1: fonte com data anterior ao mês de referência adiciona aviso de fatura', async () => {
+    // Mês de referência padrão = mês anterior ao corrente.
+    // Precisamos de uma data ANTERIOR a esse mês.
+    // Usamos data bem no passado para garantir independência do mês corrente.
+    const lancamentos = [lancamentoFatura('Nubank', '2020-01-15')]
+    useAppStore.setState({ lancamentos })
+
+    render(<App />)
+
+    await waitFor(() => {
+      const avisos = useAppStore.getState().avisos
+      const avisoDeFatura = avisos.some(
+        (a) => a.toLowerCase().includes('fatura') && a.toLowerCase().includes('nubank'),
+      )
+      expect(avisoDeFatura).toBe(true)
+    })
+  })
+
+  // TL5-2: sem lançamentos → nenhum aviso de fatura adicionado
+  it('TL5-2: sem lançamentos, nenhum aviso de fatura é adicionado', async () => {
+    useAppStore.setState({ lancamentos: [] })
+
+    render(<App />)
+
+    await waitFor(() => {
+      const avisos = useAppStore.getState().avisos
+      const temAvisoFatura = avisos.some((a) => a.toLowerCase().includes('fatura'))
+      expect(temAvisoFatura).toBe(false)
+    })
+  })
+
+  // TL5-3: lançamentos com datas NO mês de referência ou posteriores → extrato, sem aviso
+  it('TL5-3: fonte com data no mês de referência ou posterior não gera aviso de fatura', async () => {
+    // Usa mês futuro distante para garantir que a data fica no "mesmo mês" ou posterior
+    // ao mesEscolhido que o select vai mostrar (mês anterior ao corrente).
+    // Data no mês corrente ou no futuro não gera aviso.
+    const agora = new Date()
+    const anoCorrente = agora.getFullYear()
+    const mesCorrente = agora.getMonth() + 1
+    const dataFutura = `${anoCorrente + 1}-${String(mesCorrente).padStart(2, '0')}-10`
+
+    const lancamentos = [lancamentoFatura('Itaú', dataFutura)]
+    useAppStore.setState({ lancamentos })
+
+    render(<App />)
+
+    // Garante que o useEffect teve tempo de rodar
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50))
+    })
+
+    const avisos = useAppStore.getState().avisos
+    const temAvisoFatura = avisos.some((a) => a.toLowerCase().includes('fatura'))
+    expect(temAvisoFatura).toBe(false)
+  })
+
+  // TL5-4: ao mudar mesEscolhido, aviso anterior da categoria fatura é substituído (sem duplicatas)
+  it('TL5-4: mudar mesEscolhido substitui aviso de fatura anterior sem duplicatas', async () => {
+    // Data bem no passado — sempre anterior a qualquer mês de referência
+    const lancamentos = [lancamentoFatura('Nubank', '2020-01-15')]
+    useAppStore.setState({ lancamentos })
+
+    render(<App />)
+
+    // Aguarda o primeiro aviso
+    await waitFor(() => {
+      const avisos = useAppStore.getState().avisos
+      expect(avisos.some((a) => a.toLowerCase().includes('fatura'))).toBe(true)
+    })
+
+    // Muda o mês de referência via os selects
+    const selectAno = screen.getByTestId('select-ano') as HTMLSelectElement
+    await act(async () => {
+      fireEvent.change(selectAno, { target: { value: '2025' } })
+    })
+
+    // Aguarda re-execução do efeito
+    await waitFor(() => {
+      const avisos = useAppStore.getState().avisos
+      // Deve haver exatamente UM aviso de fatura (sem duplicatas)
+      const avisosDeFatura = avisos.filter((a) => a.toLowerCase().includes('fatura'))
+      expect(avisosDeFatura.length).toBe(1)
+    })
+  })
+
+  // TL5-5: quando fonte deixa de ser fatura (mesEscolhido muda para antes das datas), aviso é removido
+  it('TL5-5: quando nenhuma fonte é fatura após mudança de mês, aviso de fatura é removido', async () => {
+    // Data no futuro distante — será fatura apenas se mesEscolhido for posterior a ela
+    // Configuramos: lançamento em 2099-06, e mesEscolhido começa no mês anterior ao corrente
+    // (que é < 2099-06), portanto a fonte é 'extrato' inicialmente.
+    // Para este teste, vamos verificar o estado inverso:
+    // lançamento em passado distante (2020-01) → fatura; depois mudamos selects para 2019-12
+    // → o lançamento fica NO mês de ref ou posterior → extrato → aviso removido
+
+    // Fatura inicial
+    const lancamentos = [lancamentoFatura('Nubank', '2020-06-15')]
+    useAppStore.setState({ lancamentos })
+
+    render(<App />)
+
+    // Aguarda aviso de fatura aparecer
+    await waitFor(() => {
+      const avisos = useAppStore.getState().avisos
+      expect(avisos.some((a) => a.toLowerCase().includes('fatura'))).toBe(true)
+    })
+
+    // Muda mesEscolhido para 2019-12 (anterior à data do lançamento 2020-06)
+    // → 2020-06 >= 2019-12 → NOT fatura → extrato → aviso removido
+    const selectAno = screen.getByTestId('select-ano') as HTMLSelectElement
+    const selectMes = screen.getByTestId('select-mes') as HTMLSelectElement
+
+    await act(async () => {
+      fireEvent.change(selectAno, { target: { value: '2019' } })
+      fireEvent.change(selectMes, { target: { value: '12' } })
+    })
+
+    await waitFor(() => {
+      const avisos = useAppStore.getState().avisos
+      expect(avisos.some((a) => a.toLowerCase().includes('fatura'))).toBe(false)
+    })
+  })
+})

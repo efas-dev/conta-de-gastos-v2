@@ -9,7 +9,7 @@ import {
   computarNomeArquivo,
 } from './ui/PipelineState'
 import { lerNaturezas } from './excel/reader/leitor'
-import { defaultMes, detectarMesSugerido } from './dominio/mes'
+import { defaultMes, detectarMesSugerido, classificarFonte } from './dominio/mes'
 import { detectar } from './parsers/index'
 import type { Lancamento } from './types'
 import { ReviewGrid } from './ui/components/ReviewGrid'
@@ -140,6 +140,38 @@ export function App() {
     window.addEventListener('beforeunload', onBeforeUnload)
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [sujo])
+
+  // Aviso não bloqueante de fatura — D4 do ADR mes-referencia-ui.
+  // Recalcula quando os lançamentos carregados ou o mês de referência mudam.
+  // Antes de inserir, remove avisos anteriores da mesma categoria (idempotente).
+  useEffect(() => {
+    // Prefixo interno para identificar a categoria do aviso — não visível ao usuário.
+    const PREFIXO_FATURA = '[fatura-aviso]'
+
+    // Coleta as fontes distintas presentes nos lançamentos
+    const fontes = Array.from(new Set(lancamentos.map((l) => l.fonte)))
+
+    const fontesFatura = fontes.filter(
+      (fonte) => classificarFonte(fonte, lancamentos, mesEscolhido) === 'fatura',
+    )
+
+    // Remove avisos anteriores desta categoria antes de inserir (sem duplicatas)
+    useAppStore.setState((state) => ({
+      avisos: state.avisos.filter((a) => !a.startsWith(PREFIXO_FATURA)),
+    }))
+
+    if (fontesFatura.length === 0) return
+
+    const listagem = fontesFatura.join(', ')
+    const mensagem =
+      `${PREFIXO_FATURA}Atenção: ${listagem} parece${fontesFatura.length > 1 ? 'm' : ''} ser` +
+      ` fatura — cont${fontesFatura.length > 1 ? 'êm' : 'ém'} transações anteriores ao mês de referência (${mesEscolhido}).` +
+      ` Verifique se o mês de referência está correto antes de exportar.`
+
+    useAppStore.setState((state) => ({
+      avisos: [...state.avisos, mensagem],
+    }))
+  }, [lancamentos, mesEscolhido])
 
   // ---------------------------------------------------------------------------
   // Handlers
