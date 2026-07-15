@@ -196,6 +196,7 @@ export function produzirLancamentos(
  * @param iniciais             Iniciais do usuário
  * @param lancamentosRevisados Lançamentos após revisão na grid
  * @param dicEntriesAnterior   Dicionário lido no início do pipeline (não mutado)
+ * @param mesReferencia        Mês de referência no formato YYYY-MM (default '' até T3 conectar App.tsx)
  * @returns Bytes do .xlsx gerado
  */
 export function gerarAPartirDosRevisados(
@@ -203,10 +204,10 @@ export function gerarAPartirDosRevisados(
   iniciais: string,
   lancamentosRevisados: Lancamento[],
   dicEntriesAnterior: DicEntry[],
+  mesReferencia: string = 'pendente-T3',
 ): Uint8Array {
   const dicEnriquecido = aprenderDicionario(lancamentosRevisados, dicEntriesAnterior)
-  // TODO(spec-ui-mes-referencia): placeholder até o campo de mês de referência existir na UI
-  return gerarXlsx(modeloBytes, iniciais, lancamentosRevisados, dicEnriquecido, 'TODO-mes')
+  return gerarXlsx(modeloBytes, iniciais, lancamentosRevisados, dicEnriquecido, mesReferencia)
 }
 
 // ---------------------------------------------------------------------------
