@@ -16,6 +16,7 @@ import { ReviewGrid } from './ui/components/ReviewGrid'
 import { FiltroBar } from './ui/components/FiltroBar'
 import { SplitModal } from './ui/components/SplitModal'
 import { AvisoList } from './ui/components/AvisoList'
+import { FonteRotulo } from './ui/components/FonteRotulo'
 
 /**
  * App — Orquestra o fluxo de três etapas:
@@ -85,6 +86,15 @@ export function App() {
    * Quando true, a detecção automática (T4) não sobrescreve a escolha (D7 do ADR).
    */
   const [usuarioEditou, setUsuarioEditou] = useState<boolean>(false)
+
+  /**
+   * Lançamentos coletados na leitura antecipada, indexados por nome de arquivo.
+   * Permite derivar as fontes presentes em cada arquivo e calcular os rótulos
+   * fatura/extrato por fonte (D10, D11 do ADR mes-referencia-ui).
+   */
+  const [lancamentosAntecipados, setLancamentosAntecipados] = useState<
+    Record<string, Lancamento[]>
+  >({})
 
   /**
    * Índice do lançamento que abriu o SplitModal (null = modal fechado).
@@ -190,19 +200,26 @@ export function App() {
     const arquivos = Array.from(e.target.files ?? [])
     setCsvArquivos(arquivos)
 
-    if (arquivos.length === 0) return
+    if (arquivos.length === 0) {
+      setLancamentosAntecipados({})
+      return
+    }
 
     const todosLancamentos: Lancamento[] = []
+    const porArquivo: Record<string, Lancamento[]> = {}
     for (const arquivo of arquivos) {
       try {
         const conteudo = await arquivo.text()
         const parser = detectar(conteudo)
         const { lancamentos: lans } = parser.parsear(conteudo)
+        porArquivo[arquivo.name] = lans
         todosLancamentos.push(...lans)
       } catch {
         // best-effort: erro silenciado — não quebra o fluxo de upload
+        porArquivo[arquivo.name] = []
       }
     }
+    setLancamentosAntecipados(porArquivo)
 
     const mesSugerido = detectarMesSugerido(todosLancamentos)
     if (mesSugerido !== null && !usuarioEditou) {
@@ -444,7 +461,13 @@ export function App() {
                   gap: 10,
                 }}
               >
-                {csvArquivos.map((f) => (
+                {csvArquivos.map((f) => {
+                  // Fontes distintas detectadas na leitura antecipada deste arquivo.
+                  // Recalcula sempre que mesEscolhido muda (D10, D11 do ADR).
+                  const lansArquivo = lancamentosAntecipados[f.name] ?? []
+                  const fontesArquivo = Array.from(new Set(lansArquivo.map((l) => l.fonte)))
+
+                  return (
                   <div
                     key={f.name}
                     style={{
@@ -476,7 +499,19 @@ export function App() {
                         {f.name}
                       </div>
                       <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 4 }}>
-                        Pronto para revisar
+                        {fontesArquivo.length > 0 ? (
+                          <span style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                            {fontesArquivo.map((fonte) => (
+                              <FonteRotulo
+                                key={fonte}
+                                fonte={fonte}
+                                tipo={classificarFonte(fonte, lansArquivo, mesEscolhido)}
+                              />
+                            ))}
+                          </span>
+                        ) : (
+                          'Pronto para revisar'
+                        )}
                       </div>
                     </div>
                     <button
@@ -498,7 +533,8 @@ export function App() {
                       Remover
                     </button>
                   </div>
-                ))}
+                )
+                })}
               </div>
             )}
 
