@@ -1,10 +1,21 @@
 // ADR: see spec/mes-referencia-ui.adr.md
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import React from 'react'
 import { App } from '../App'
 import { useAppStore } from '../ui/store/appStore'
+
+// Mock do módulo de domínio de mês — permite controlar detectarMesSugerido nos testes de T4
+vi.mock('../dominio/mes', async (importOriginal) => {
+  const original = await importOriginal<typeof import('../dominio/mes')>()
+  return {
+    ...original,
+    detectarMesSugerido: vi.fn(() => null),
+  }
+})
+
+import { detectarMesSugerido } from '../dominio/mes'
 
 // ---------------------------------------------------------------------------
 // Mocks — dependências pesadas substituídas por stubs
@@ -277,5 +288,163 @@ describe('App — campo de mês de referência (T3)', () => {
 
     fireEvent.change(selectAno, { target: { value: String(new Date().getFullYear()) } })
     expect(selectAno.value).toBe(String(new Date().getFullYear()))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Testes — T4: leitura antecipada no upload e autopreenchimento do mês
+// ---------------------------------------------------------------------------
+
+/**
+ * Cria um objeto File falso com método `.text()` que retorna o conteúdo fornecido.
+ * O jsdom não suporta `File.prototype.text()` de forma nativa, então usamos um stub.
+ */
+function criarFileFalso(nome: string, conteudo: string): File {
+  const file = new File([conteudo], nome, { type: 'text/csv' })
+  // Sobrescreve `.text()` — o jsdom não implementa File.prototype.text()
+  Object.defineProperty(file, 'text', {
+    value: () => Promise.resolve(conteudo),
+    writable: true,
+  })
+  return file
+}
+
+describe('App — leitura antecipada no upload (T4)', () => {
+  beforeEach(() => {
+    resetarStore()
+    vi.clearAllMocks()
+  })
+
+  // TL4-1: com usuarioEditou=false e detectarMesSugerido retornando mês válido,
+  // o select-mes e select-ano refletem o mês detectado após a seleção de arquivos.
+  it('autopreenchimento: selects refletem o mês detectado quando usuarioEditou=false', async () => {
+    const detectarMock = vi.mocked(detectarMesSugerido)
+    detectarMock.mockReturnValue('2025-03')
+
+    render(<App />)
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    const arquivo = criarFileFalso('extrato.csv', 'conteudo-qualquer')
+
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [arquivo] } })
+    })
+
+    await waitFor(() => {
+      const selectMes = screen.getByTestId('select-mes') as HTMLSelectElement
+      const selectAno = screen.getByTestId('select-ano') as HTMLSelectElement
+      expect(selectMes.value).toBe('03')
+      expect(selectAno.value).toBe('2025')
+    })
+  })
+
+  // TL4-2: com usuarioEditou=true (o usuário mudou o select manualmente),
+  // a detecção não sobrescreve o valor escolhido.
+  it('usuarioEditou=true: autopreenchimento não sobrescreve escolha manual', async () => {
+    const detectarMock = vi.mocked(detectarMesSugerido)
+    detectarMock.mockReturnValue('2025-03')
+
+    render(<App />)
+
+    // Simula escolha manual — marca usuarioEditou=true
+    const selectMes = screen.getByTestId('select-mes') as HTMLSelectElement
+    const selectAno = screen.getByTestId('select-ano') as HTMLSelectElement
+    fireEvent.change(selectMes, { target: { value: '11' } })
+    fireEvent.change(selectAno, { target: { value: '2024' } })
+    // Agora mesEscolhido = '2024-11' e usuarioEditou = true
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    const arquivo = criarFileFalso('extrato.csv', 'conteudo-qualquer')
+
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [arquivo] } })
+    })
+
+    // Aguarda um tick para confirmar que nada mudou
+    await waitFor(() => {
+      expect(selectMes.value).toBe('11')
+      expect(selectAno.value).toBe('2024')
+    })
+  })
+
+  // TL4-3: detectarMesSugerido retorna null (degenerado) — campo intacto.
+  it('degenerado: sem mês detectável, campo permanece no valor default', async () => {
+    const detectarMock = vi.mocked(detectarMesSugerido)
+    detectarMock.mockReturnValue(null)
+
+    render(<App />)
+
+    const selectMes = screen.getByTestId('select-mes') as HTMLSelectElement
+    const selectAno = screen.getByTestId('select-ano') as HTMLSelectElement
+    const mesInicial = selectMes.value
+    const anoInicial = selectAno.value
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    const arquivo = criarFileFalso('extrato.csv', 'conteudo-qualquer')
+
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [arquivo] } })
+    })
+
+    await waitFor(() => {
+      expect(selectMes.value).toBe(mesInicial)
+      expect(selectAno.value).toBe(anoInicial)
+    })
+  })
+
+  // TL4-4: erro de parse silenciado (best-effort) — campo não alterado e sem exceção.
+  it('best-effort: erro de parse é silenciado e o campo permanece intacto', async () => {
+    // file.text() lança erro para simular falha de leitura
+    const arquivo = new File([], 'erro.csv', { type: 'text/csv' })
+    Object.defineProperty(arquivo, 'text', {
+      value: () => Promise.reject(new Error('falha simulada de leitura')),
+      writable: true,
+    })
+
+    render(<App />)
+
+    const selectMes = screen.getByTestId('select-mes') as HTMLSelectElement
+    const selectAno = screen.getByTestId('select-ano') as HTMLSelectElement
+    const mesInicial = selectMes.value
+    const anoInicial = selectAno.value
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+
+    // Não deve lançar exceção
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [arquivo] } })
+    })
+
+    await waitFor(() => {
+      expect(selectMes.value).toBe(mesInicial)
+      expect(selectAno.value).toBe(anoInicial)
+    })
+  })
+
+  // TL4-5: múltiplos arquivos — lançamentos combinados antes de detectarMesSugerido.
+  // Verificado indiretamente: detectarMesSugerido é chamada (não importa com quantos args
+  // exatamente, mas com o resultado combinado) e o mês é aplicado.
+  it('múltiplos arquivos: lançamentos de todos combinados para detectarMesSugerido', async () => {
+    const detectarMock = vi.mocked(detectarMesSugerido)
+    detectarMock.mockReturnValue('2025-06')
+
+    render(<App />)
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    const arquivo1 = criarFileFalso('extrato1.csv', 'conteudo-1')
+    const arquivo2 = criarFileFalso('extrato2.csv', 'conteudo-2')
+
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [arquivo1, arquivo2] } })
+    })
+
+    await waitFor(() => {
+      // detectarMesSugerido deve ter sido chamada (com os lançamentos combinados)
+      expect(detectarMock).toHaveBeenCalledOnce()
+      const selectMes = screen.getByTestId('select-mes') as HTMLSelectElement
+      const selectAno = screen.getByTestId('select-ano') as HTMLSelectElement
+      expect(selectMes.value).toBe('06')
+      expect(selectAno.value).toBe('2025')
+    })
   })
 })

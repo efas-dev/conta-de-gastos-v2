@@ -9,7 +9,9 @@ import {
   computarNomeArquivo,
 } from './ui/PipelineState'
 import { lerNaturezas } from './excel/reader/leitor'
-import { defaultMes } from './dominio/mes'
+import { defaultMes, detectarMesSugerido } from './dominio/mes'
+import { detectar } from './parsers/index'
+import type { Lancamento } from './types'
 import { ReviewGrid } from './ui/components/ReviewGrid'
 import { FiltroBar } from './ui/components/FiltroBar'
 import { SplitModal } from './ui/components/SplitModal'
@@ -142,6 +144,39 @@ export function App() {
   // ---------------------------------------------------------------------------
   // Handlers
   // ---------------------------------------------------------------------------
+
+  /**
+   * Handler de seleção de arquivos CSV/TXT.
+   *
+   * Além de armazenar os arquivos no estado local, realiza uma leitura antecipada
+   * best-effort: parseia cada arquivo e coleta os lançamentos para detectar o mês
+   * sugerido. Se detectarMesSugerido retornar um valor e o usuário ainda não tiver
+   * editado o campo manualmente (usuarioEditou=false), atualiza mesEscolhido.
+   * Erros de leitura ou parse são silenciados — não interrompem o fluxo de upload.
+   */
+  async function handleCsvChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const arquivos = Array.from(e.target.files ?? [])
+    setCsvArquivos(arquivos)
+
+    if (arquivos.length === 0) return
+
+    const todosLancamentos: Lancamento[] = []
+    for (const arquivo of arquivos) {
+      try {
+        const conteudo = await arquivo.text()
+        const parser = detectar(conteudo)
+        const { lancamentos: lans } = parser.parsear(conteudo)
+        todosLancamentos.push(...lans)
+      } catch {
+        // best-effort: erro silenciado — não quebra o fluxo de upload
+      }
+    }
+
+    const mesSugerido = detectarMesSugerido(todosLancamentos)
+    if (mesSugerido !== null && !usuarioEditou) {
+      setMesEscolhido(mesSugerido)
+    }
+  }
 
   /**
    * Etapa 1 — Parse + enriquecimento.
@@ -341,7 +376,7 @@ export function App() {
                 type="file"
                 accept=".csv,.txt,text/csv,text/plain"
                 multiple
-                onChange={(e) => setCsvArquivos(Array.from(e.target.files ?? []))}
+                onChange={handleCsvChange}
                 style={{ display: 'none' }}
               />
               <span
