@@ -55,10 +55,12 @@ export interface RankNaturezas {
 export function rankNaturezas(lancamentos: Lancamento[]): RankNaturezas {
   if (lancamentos.length === 0) return { top5: [], resto: [] }
 
-  // Soma valor em módulo por natureza
+  // Soma valor em módulo por natureza — naturezas vazias não geram chip
+  // (linhas sem natureza são cobertas pelo chip "só incompletos").
   const somaPorNatureza = new Map<string, number>()
   for (const l of lancamentos) {
     const nat = l.natureza
+    if (!nat || nat.trim() === '') continue
     somaPorNatureza.set(nat, (somaPorNatureza.get(nat) ?? 0) + Math.abs(l.valor))
   }
 

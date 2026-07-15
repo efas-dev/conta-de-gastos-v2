@@ -3,22 +3,12 @@
 import { useState } from 'react'
 import { useAppStore } from '../store/appStore'
 import { rankFontes, rankNaturezas, contarIncompletos } from '../filtroRanking'
-import type { ColunaOrdenavel, DirecaoOrdenacao } from '../store/appStore'
 
 // ---------------------------------------------------------------------------
 // Constantes de UX
 // ---------------------------------------------------------------------------
 
 const TOOLTIP_ATALHO = 'Ctrl+clique (ou Cmd+clique) para acumular seleções'
-
-const COLUNAS_ORDENAVEIS: { id: ColunaOrdenavel; label: string }[] = [
-  { id: 'data', label: 'Data' },
-  { id: 'fonte', label: 'Fonte' },
-  { id: 'valor', label: 'Valor' },
-  { id: 'natureza', label: 'Natureza' },
-  { id: 'iniciais', label: 'Iniciais' },
-  { id: 'descricao', label: 'Descrição' },
-]
 
 // ---------------------------------------------------------------------------
 // Componente
@@ -41,12 +31,9 @@ export function FiltroBar(_props: Record<string, never> = {}) {
   const filtroFontes = useAppStore((s) => s.filtroFontes)
   const filtroNaturezas = useAppStore((s) => s.filtroNaturezas)
   const filtroSoIncompletos = useAppStore((s) => s.filtroSoIncompletos)
-  const ordenacaoColuna = useAppStore((s) => s.ordenacaoColuna)
-  const ordenacaoDirecao = useAppStore((s) => s.ordenacaoDirecao)
   const setFiltroFontes = useAppStore((s) => s.setFiltroFontes)
   const setFiltroNaturezas = useAppStore((s) => s.setFiltroNaturezas)
   const setFiltroSoIncompletos = useAppStore((s) => s.setFiltroSoIncompletos)
-  const setOrdenacao = useAppStore((s) => s.setOrdenacao)
   const limparFiltros = useAppStore((s) => s.limparFiltros)
 
   // Estado local: expansão do chip "+N mais" de Natureza
@@ -96,19 +83,6 @@ export function FiltroBar(_props: Record<string, never> = {}) {
         setFiltroNaturezas([natureza])
       }
     }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Handler de ordenação
-  // ---------------------------------------------------------------------------
-  function handleOrdenacaoColuna(e: React.ChangeEvent<HTMLSelectElement>) {
-    const valor = e.target.value as ColunaOrdenavel | ''
-    setOrdenacao(valor === '' ? null : valor, ordenacaoDirecao)
-  }
-
-  function handleOrdenacaoDirecao() {
-    const novaDirecao: DirecaoOrdenacao = ordenacaoDirecao === 'asc' ? 'desc' : 'asc'
-    setOrdenacao(ordenacaoColuna, novaDirecao)
   }
 
   // ---------------------------------------------------------------------------
@@ -231,36 +205,13 @@ export function FiltroBar(_props: Record<string, never> = {}) {
         </button>
       )}
 
-      {/* Controle de ordenação */}
-      <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
-        <label htmlFor="filtrobar-ordenacao-coluna" style={{ fontSize: '0.85rem', color: '#6b7280' }}>
-          Ordenar por:
-        </label>
-        <select
-          id="filtrobar-ordenacao-coluna"
-          value={ordenacaoColuna ?? ''}
-          onChange={handleOrdenacaoColuna}
-          style={{ fontSize: '0.85rem', padding: '0.1rem 0.4rem' }}
-        >
-          <option value="">— sem ordenação —</option>
-          {COLUNAS_ORDENAVEIS.map(({ id, label }) => (
-            <option key={id} value={id}>{label}</option>
-          ))}
-        </select>
-        <button
-          aria-label={`Direção: ${ordenacaoDirecao === 'asc' ? 'crescente' : 'decrescente'}`}
-          onClick={handleOrdenacaoDirecao}
-          disabled={ordenacaoColuna === null}
-          style={{ fontSize: '0.85rem', padding: '0.1rem 0.4rem', cursor: ordenacaoColuna ? 'pointer' : 'default' }}
-        >
-          {ordenacaoDirecao === 'asc' ? '↑' : '↓'}
-        </button>
-      </div>
-
-      {/* Botão Limpar */}
+      {/* Botão Limpar — segue o design system (dc-btn) em tamanho compacto.
+          A ordenação migrou para cliques nos cabeçalhos das colunas da grid
+          (decisão humana de 2026-07-15); o Limpar também a remove. */}
       <button
+        className="dc-btn dc-btn-secundario"
         onClick={limparFiltros}
-        style={{ fontSize: '0.85rem', padding: '0.2rem 0.6rem', cursor: 'pointer' }}
+        style={{ fontSize: '13px', padding: '4px 12px', borderRadius: '999px' }}
       >
         Limpar
       </button>

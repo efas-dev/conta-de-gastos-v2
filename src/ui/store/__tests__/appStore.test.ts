@@ -789,3 +789,57 @@ describe('preencherIntervalo', () => {
     expect(lancamentos[1].natureza).toBe('Alimentação')
   })
 })
+
+// ---------------------------------------------------------------------------
+// ciclarOrdenacao — ordenação por clique no cabeçalho (decisão humana 2026-07-15)
+// ---------------------------------------------------------------------------
+
+describe('ciclarOrdenacao', () => {
+  beforeEach(resetarStore)
+
+  it('primeiro clique numa coluna ativa asc', () => {
+    useAppStore.getState().ciclarOrdenacao('valor')
+    expect(useAppStore.getState().ordenacaoColuna).toBe('valor')
+    expect(useAppStore.getState().ordenacaoDirecao).toBe('asc')
+  })
+
+  it('segundo clique na mesma coluna vira desc', () => {
+    useAppStore.getState().ciclarOrdenacao('valor')
+    useAppStore.getState().ciclarOrdenacao('valor')
+    expect(useAppStore.getState().ordenacaoColuna).toBe('valor')
+    expect(useAppStore.getState().ordenacaoDirecao).toBe('desc')
+  })
+
+  it('terceiro clique na mesma coluna remove a ordenação', () => {
+    useAppStore.getState().ciclarOrdenacao('valor')
+    useAppStore.getState().ciclarOrdenacao('valor')
+    useAppStore.getState().ciclarOrdenacao('valor')
+    expect(useAppStore.getState().ordenacaoColuna).toBeNull()
+  })
+
+  it('clicar em outra coluna reinicia o ciclo em asc', () => {
+    useAppStore.getState().ciclarOrdenacao('valor')
+    useAppStore.getState().ciclarOrdenacao('valor') // valor desc
+    useAppStore.getState().ciclarOrdenacao('data')
+    expect(useAppStore.getState().ordenacaoColuna).toBe('data')
+    expect(useAppStore.getState().ordenacaoDirecao).toBe('asc')
+  })
+
+  it('re-deriva a visão: asc por valor reordena lancamentosVisiveis', () => {
+    useAppStore.getState().setLancamentos([
+      lancamento({ valor: -300 }),
+      lancamento({ valor: -100 }),
+      lancamento({ valor: -200 }),
+    ])
+    useAppStore.getState().ciclarOrdenacao('valor')
+    const valores = useAppStore.getState().lancamentosVisiveis.map((l) => l.valor)
+    expect(valores).toEqual([-300, -200, -100])
+  })
+
+  it('não gera entrada no histórico de undo', () => {
+    useAppStore.getState().setLancamentos([lancamento()])
+    const antes = useAppStore.getState().historico.length
+    useAppStore.getState().ciclarOrdenacao('valor')
+    expect(useAppStore.getState().historico.length).toBe(antes)
+  })
+})

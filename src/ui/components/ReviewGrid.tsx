@@ -285,6 +285,9 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   const editarCelula = useAppStore((s) => s.editarCelula)
   const preencherIntervalo = useAppStore((s) => s.preencherIntervalo)
   const dicEntries = useAppStore((s) => s.dicEntries)
+  const ordenacaoColuna = useAppStore((s) => s.ordenacaoColuna)
+  const ordenacaoDirecao = useAppStore((s) => s.ordenacaoDirecao)
+  const ciclarOrdenacao = useAppStore((s) => s.ciclarOrdenacao)
 
   // -----------------------------------------------------------------
   // Estado local de larguras de coluna — D16/D17/D18 do ADR grid-ux-filtros
@@ -320,10 +323,25 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
     }
   }, [lancamentosVisiveis, agendarRecalculoLarguras])
 
-  // Colunas com larguras dinâmicas aplicadas
+  // Colunas com larguras dinâmicas aplicadas + indicador de ordenação no título
+  // (ordenação por clique no cabeçalho — decisão humana de 2026-07-15).
   const colunas: GridColumn[] = useMemo(
-    () => COLUNAS_BASE.map((col, i) => ({ ...col, width: largurasColunas[i] ?? col.width })),
-    [largurasColunas],
+    () =>
+      COLUNAS_BASE.map((col, i) => {
+        const ordenada = COL_IDS[i] === ordenacaoColuna
+        const indicador = ordenada ? (ordenacaoDirecao === 'asc' ? ' ↑' : ' ↓') : ''
+        return { ...col, title: col.title + indicador, width: largurasColunas[i] ?? col.width }
+      }),
+    [largurasColunas, ordenacaoColuna, ordenacaoDirecao],
+  )
+
+  // Clique no cabeçalho cicla a ordenação da coluna: sem → asc → desc → sem.
+  const onHeaderClicked = useCallback(
+    (colIndex: number) => {
+      const colId = COL_IDS[colIndex]
+      if (colId) ciclarOrdenacao(colId)
+    },
+    [ciclarOrdenacao],
   )
 
   // Ref compartilhada com o componente editor estável (atualizada via onCellActivated)
@@ -656,6 +674,15 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
     (sel: GridSelection) => {
       setGridSelection(sel)
 
+      // Mantém o contexto do editor atualizado também quando a edição começa por
+      // digitação direta (que abre o editor SEM disparar onCellActivated) — senão
+      // o provideEditor lê col defasada e o GhostEditor não abre (bug latente
+      // exposto na inspeção manual de 2026-07-15).
+      if (sel.current?.cell) {
+        const [col, row] = sel.current.cell
+        editorContextRef.current = { col, row }
+      }
+
       // Coleta índices de linhas selecionadas via row markers (CompactSelection)
       const indices: number[] = [...sel.rows]
 
@@ -709,6 +736,7 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
           /* Custom editor inline com ghost-text (T2 — D1/D5/D8 do ADR). */
           provideEditor={provideEditor}
           onCellActivated={onCellActivated}
+          onHeaderClicked={onHeaderClicked}
           rangeSelect="multi-rect"
           columnSelect="multi"
           rowSelect="multi"

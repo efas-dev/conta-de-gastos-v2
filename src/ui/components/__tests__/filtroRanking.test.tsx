@@ -240,3 +240,37 @@ describe('FiltroBar', () => {
     expect(getByText(/0 de 0/)).toBeTruthy()
   })
 })
+
+// ---------------------------------------------------------------------------
+// rankNaturezas — exclusão de naturezas vazias (chip vazio não faz sentido;
+// achado da inspeção manual de 2026-07-15)
+// ---------------------------------------------------------------------------
+
+describe('rankNaturezas — naturezas vazias', () => {
+  it('natureza vazia ("") não gera chip: fora de top5 e resto', () => {
+    const lancamentos = [
+      lan({ natureza: '', valor: -9999 }),
+      lan({ natureza: 'RR', valor: -100 }),
+    ]
+    const { top5, resto } = rankNaturezas(lancamentos)
+    expect(top5).not.toContain('')
+    expect(resto).not.toContain('')
+    expect(top5).toContain('RR')
+  })
+
+  it('natureza só com espaços não gera chip', () => {
+    const lancamentos = [
+      lan({ natureza: '   ', valor: -9999 }),
+      lan({ natureza: 'GO', valor: -50 }),
+    ]
+    const { top5, resto } = rankNaturezas(lancamentos)
+    expect([...top5, ...resto].some((n) => n.trim() === '')).toBe(false)
+  })
+
+  it('lista só com naturezas vazias retorna rankings vazios', () => {
+    const lancamentos = [lan({ natureza: '' }), lan({ natureza: '' })]
+    const { top5, resto } = rankNaturezas(lancamentos)
+    expect(top5).toEqual([])
+    expect(resto).toEqual([])
+  })
+})

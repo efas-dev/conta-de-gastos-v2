@@ -32,8 +32,11 @@ const COLUNAS_SOMENTE_LEITURA = new Set(['fonte', 'data', 'transcricao'])
 // Tipos de filtro/ordenação (D7 e D9 do ADR grid-ux-filtros)
 // ---------------------------------------------------------------------------
 
-/** Colunas que podem ser usadas para ordenação visual. */
-export type ColunaOrdenavel = keyof Pick<Lancamento, 'fonte' | 'data' | 'valor' | 'natureza' | 'iniciais' | 'descricao'>
+/** Colunas que podem ser usadas para ordenação visual (todas as colunas da grid). */
+export type ColunaOrdenavel = keyof Pick<
+  Lancamento,
+  'fonte' | 'data' | 'transcricao' | 'valor' | 'natureza' | 'iniciais' | 'descricao'
+>
 
 /** Direção da ordenação. */
 export type DirecaoOrdenacao = 'asc' | 'desc'
@@ -237,6 +240,13 @@ export interface AcoesApp {
 
   /** Define a coluna e direção de ordenação. */
   setOrdenacao: (coluna: ColunaOrdenavel | null, direcao: DirecaoOrdenacao) => void
+
+  /**
+   * Cicla a ordenação de `coluna` (clique no cabeçalho): sem ordenação → asc →
+   * desc → sem ordenação. Clicar em outra coluna reinicia o ciclo em asc.
+   * Fora do histórico de undo (D9 do ADR).
+   */
+  ciclarOrdenacao: (coluna: ColunaOrdenavel) => void
 
   /** Remove todos os filtros e ordenação (retorna à ordem original). */
   limparFiltros: () => void
@@ -602,6 +612,22 @@ export const useAppStore = create<AppStore>()((set, get) => {
       const s = get()
       const visao = calcularVisao(s.lancamentos, s.filtroFontes, s.filtroNaturezas, s.filtroSoIncompletos, coluna, direcao)
       set({ ordenacaoColuna: coluna, ordenacaoDirecao: direcao, ...visao })
+    },
+
+    ciclarOrdenacao: (coluna) => {
+      const s = get()
+      // Ciclo por coluna: outra coluna → asc; mesma coluna asc → desc; desc → remove.
+      let novaColuna: ColunaOrdenavel | null = coluna
+      let novaDirecao: DirecaoOrdenacao = 'asc'
+      if (s.ordenacaoColuna === coluna) {
+        if (s.ordenacaoDirecao === 'asc') {
+          novaDirecao = 'desc'
+        } else {
+          novaColuna = null
+        }
+      }
+      const visao = calcularVisao(s.lancamentos, s.filtroFontes, s.filtroNaturezas, s.filtroSoIncompletos, novaColuna, novaDirecao)
+      set({ ordenacaoColuna: novaColuna, ordenacaoDirecao: novaDirecao, ...visao })
     },
 
     limparFiltros: () => {
