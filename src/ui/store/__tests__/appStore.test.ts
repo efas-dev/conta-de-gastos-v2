@@ -2,6 +2,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useAppStore } from '../appStore'
+import type { CampoEditavel } from '../appStore'
 import {
   calcularTemaLinha,
   TEMA_ERRO,
@@ -55,8 +56,14 @@ function resetarStore(): void {
     dicEntries: [],
     avisos: [],
     historico: [],
+    futuro: [],
     csvArquivo: null,
     sujo: false,
+    filtroFontes: [],
+    filtroNaturezas: [],
+    filtroSoIncompletos: false,
+    ordenacaoColuna: null,
+    ordenacaoDirecao: 'asc',
   })
 }
 
@@ -518,5 +525,321 @@ describe('calcularTemaLinha', () => {
   it('retorna undefined quando linha é normal (natureza válida, sem investimento, sem transferência)', () => {
     const l = lancamentoBase({ natureza: 'Alimentação' })
     expect(calcularTemaLinha(l, naturezasValidas)).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// lancamentosVisiveis — TL-T1-06 a TL-T1-11
+// ---------------------------------------------------------------------------
+
+describe('lancamentosVisiveis', () => {
+  beforeEach(resetarStore)
+
+  // TL-T1-06: sem filtro retorna todos os lançamentos
+  it('sem filtro retorna todos os lançamentos na ordem original', () => {
+    const lista = [
+      lancamento({ transcricao: 'A' }),
+      lancamento({ transcricao: 'B' }),
+      lancamento({ transcricao: 'C' }),
+    ]
+    useAppStore.getState().setLancamentos(lista)
+    const visiveis = useAppStore.getState().lancamentosVisiveis
+    expect(visiveis).toHaveLength(3)
+    expect(visiveis[0].transcricao).toBe('A')
+    expect(visiveis[2].transcricao).toBe('C')
+  })
+
+  // TL-T1-07: filtro por fonte reduz a lista
+  it('filtro por fonte retorna apenas lançamentos da fonte selecionada', () => {
+    useAppStore.getState().setLancamentos([
+      lancamento({ transcricao: 'A', fonte: 'Nubank' }),
+      lancamento({ transcricao: 'B', fonte: 'Itaú' }),
+      lancamento({ transcricao: 'C', fonte: 'Nubank' }),
+    ])
+    useAppStore.getState().setFiltroFontes(['Nubank'])
+    const visiveis = useAppStore.getState().lancamentosVisiveis
+    expect(visiveis).toHaveLength(2)
+    expect(visiveis.every((l) => l.fonte === 'Nubank')).toBe(true)
+  })
+
+  // TL-T1-08: filtro por natureza reduz a lista
+  it('filtro por natureza retorna apenas lançamentos da natureza selecionada', () => {
+    useAppStore.getState().setLancamentos([
+      lancamento({ transcricao: 'A', natureza: 'Alimentação' }),
+      lancamento({ transcricao: 'B', natureza: 'Moradia' }),
+      lancamento({ transcricao: 'C', natureza: 'Alimentação' }),
+    ])
+    useAppStore.getState().setFiltroNaturezas(['Moradia'])
+    const visiveis = useAppStore.getState().lancamentosVisiveis
+    expect(visiveis).toHaveLength(1)
+    expect(visiveis[0].transcricao).toBe('B')
+  })
+
+  // TL-T1-09: filtroSoIncompletos mostra apenas lançamentos com natureza ou iniciais vazias
+  it('filtroSoIncompletos mostra apenas lançamentos com natureza ou iniciais vazios', () => {
+    useAppStore.getState().setLancamentos([
+      lancamento({ transcricao: 'A', natureza: 'Alimentação', iniciais: 'ES' }),
+      lancamento({ transcricao: 'B', natureza: '', iniciais: 'ES' }),
+      lancamento({ transcricao: 'C', natureza: 'Moradia', iniciais: '' }),
+    ])
+    useAppStore.getState().setFiltroSoIncompletos(true)
+    const visiveis = useAppStore.getState().lancamentosVisiveis
+    expect(visiveis).toHaveLength(2)
+    expect(visiveis.map((l) => l.transcricao)).toEqual(['B', 'C'])
+  })
+
+  // TL-T1-10: ordenação asc/desc por coluna
+  it('ordenação por valor asc ordena do menor para o maior', () => {
+    useAppStore.getState().setLancamentos([
+      lancamento({ transcricao: 'A', valor: -300 }),
+      lancamento({ transcricao: 'B', valor: -100 }),
+      lancamento({ transcricao: 'C', valor: -200 }),
+    ])
+    useAppStore.getState().setOrdenacao('valor', 'asc')
+    const visiveis = useAppStore.getState().lancamentosVisiveis
+    expect(visiveis[0].valor).toBe(-300)
+    expect(visiveis[1].valor).toBe(-200)
+    expect(visiveis[2].valor).toBe(-100)
+  })
+
+  it('ordenação por valor desc ordena do maior para o menor', () => {
+    useAppStore.getState().setLancamentos([
+      lancamento({ transcricao: 'A', valor: -300 }),
+      lancamento({ transcricao: 'B', valor: -100 }),
+      lancamento({ transcricao: 'C', valor: -200 }),
+    ])
+    useAppStore.getState().setOrdenacao('valor', 'desc')
+    const visiveis = useAppStore.getState().lancamentosVisiveis
+    expect(visiveis[0].valor).toBe(-100)
+    expect(visiveis[1].valor).toBe(-200)
+    expect(visiveis[2].valor).toBe(-300)
+  })
+
+  // TL-T1-11: múltiplos filtros combinados (fonte + natureza)
+  it('múltiplos filtros combinados restringem a lista cumulativamente', () => {
+    useAppStore.getState().setLancamentos([
+      lancamento({ transcricao: 'A', fonte: 'Nubank', natureza: 'Alimentação' }),
+      lancamento({ transcricao: 'B', fonte: 'Itaú', natureza: 'Alimentação' }),
+      lancamento({ transcricao: 'C', fonte: 'Nubank', natureza: 'Moradia' }),
+    ])
+    useAppStore.getState().setFiltroFontes(['Nubank'])
+    useAppStore.getState().setFiltroNaturezas(['Alimentação'])
+    const visiveis = useAppStore.getState().lancamentosVisiveis
+    expect(visiveis).toHaveLength(1)
+    expect(visiveis[0].transcricao).toBe('A')
+  })
+
+  // TL-T1-17: lancamentos permanece inalterado por filtro/ordenação
+  it('o array lancamentos permanece inalterado quando filtros estão ativos', () => {
+    const lista = [
+      lancamento({ transcricao: 'A', fonte: 'Nubank' }),
+      lancamento({ transcricao: 'B', fonte: 'Itaú' }),
+      lancamento({ transcricao: 'C', fonte: 'Nubank' }),
+    ]
+    useAppStore.getState().setLancamentos(lista)
+    useAppStore.getState().setFiltroFontes(['Nubank'])
+    expect(useAppStore.getState().lancamentos).toHaveLength(3)
+    expect(useAppStore.getState().lancamentosVisiveis).toHaveLength(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Filtros fora do histórico — TL-T1-16
+// ---------------------------------------------------------------------------
+
+describe('filtros fora do histórico de undo/redo', () => {
+  beforeEach(() => {
+    resetarStore()
+    useAppStore.getState().setLancamentos([
+      lancamento({ fonte: 'Nubank' }),
+      lancamento({ fonte: 'Itaú' }),
+    ])
+    useAppStore.setState({ historico: [], futuro: [] })
+  })
+
+  // TL-T1-16: mudanças nos campos de filtro NÃO geram entradas no historico
+  it('setFiltroFontes não gera entrada no histórico', () => {
+    useAppStore.getState().setFiltroFontes(['Nubank'])
+    expect(useAppStore.getState().historico).toHaveLength(0)
+  })
+
+  it('setFiltroNaturezas não gera entrada no histórico', () => {
+    useAppStore.getState().setFiltroNaturezas(['Alimentação'])
+    expect(useAppStore.getState().historico).toHaveLength(0)
+  })
+
+  it('setFiltroSoIncompletos não gera entrada no histórico', () => {
+    useAppStore.getState().setFiltroSoIncompletos(true)
+    expect(useAppStore.getState().historico).toHaveLength(0)
+  })
+
+  it('setOrdenacao não gera entrada no histórico', () => {
+    useAppStore.getState().setOrdenacao('valor', 'desc')
+    expect(useAppStore.getState().historico).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// preencherIntervalo — TL-T1-01 a TL-T1-05, TL-T1-18
+// ---------------------------------------------------------------------------
+
+describe('preencherIntervalo', () => {
+  beforeEach(resetarStore)
+
+  // TL-T1-01: aplica valor em campo editável em intervalo completo sem filtro
+  it('sem filtro preenche campo editável em todas as linhas do intervalo', () => {
+    useAppStore.getState().setLancamentos([
+      lancamento({ transcricao: 'A', natureza: 'Alimentação' }),
+      lancamento({ transcricao: 'B', natureza: 'Alimentação' }),
+      lancamento({ transcricao: 'C', natureza: 'Alimentação' }),
+    ])
+    useAppStore.getState().preencherIntervalo(0, 2, 'natureza', 'Moradia')
+    const lancamentos = useAppStore.getState().lancamentos
+    expect(lancamentos[0].natureza).toBe('Moradia')
+    expect(lancamentos[1].natureza).toBe('Moradia')
+    expect(lancamentos[2].natureza).toBe('Moradia')
+  })
+
+  // TL-T1-02: ignora colunas somente leitura
+  it('ignora coluna "fonte" (somente leitura) e não altera nada', () => {
+    useAppStore.getState().setLancamentos([
+      lancamento({ fonte: 'Nubank' }),
+      lancamento({ fonte: 'Nubank' }),
+    ])
+    useAppStore.getState().preencherIntervalo(0, 1, 'fonte' as CampoEditavel, 'Itaú')
+    expect(useAppStore.getState().lancamentos[0].fonte).toBe('Nubank')
+    expect(useAppStore.getState().lancamentos[1].fonte).toBe('Nubank')
+  })
+
+  it('ignora coluna "data" (somente leitura) e não altera nada', () => {
+    useAppStore.getState().setLancamentos([lancamento({ data: '2025-01-01' })])
+    useAppStore.getState().preencherIntervalo(0, 0, 'data' as CampoEditavel, '2030-01-01')
+    expect(useAppStore.getState().lancamentos[0].data).toBe('2025-01-01')
+  })
+
+  it('ignora coluna "transcricao" (somente leitura) e não altera nada', () => {
+    useAppStore.getState().setLancamentos([lancamento({ transcricao: 'Original' })])
+    useAppStore.getState().preencherIntervalo(0, 0, 'transcricao' as CampoEditavel, 'Novo')
+    expect(useAppStore.getState().lancamentos[0].transcricao).toBe('Original')
+  })
+
+  // TL-T1-03: com filtro ativo aplica apenas nas linhas visíveis
+  it('com filtro ativo preenche apenas as linhas visíveis no intervalo', () => {
+    useAppStore.getState().setLancamentos([
+      lancamento({ transcricao: 'A', fonte: 'Nubank', natureza: 'Alimentação' }),
+      lancamento({ transcricao: 'B', fonte: 'Itaú', natureza: 'Alimentação' }),
+      lancamento({ transcricao: 'C', fonte: 'Nubank', natureza: 'Alimentação' }),
+    ])
+    // Visíveis: A (visual 0, real 0), C (visual 1, real 2)
+    useAppStore.getState().setFiltroFontes(['Nubank'])
+    // Preenche todo o intervalo visual [0, 1]
+    useAppStore.getState().preencherIntervalo(0, 1, 'natureza', 'Moradia')
+    const lancamentos = useAppStore.getState().lancamentos
+    expect(lancamentos[0].natureza).toBe('Moradia') // A — visível — atualizado
+    expect(lancamentos[1].natureza).toBe('Alimentação') // B — oculto — intocado
+    expect(lancamentos[2].natureza).toBe('Moradia') // C — visível — atualizado
+  })
+
+  // TL-T1-04: ignora linhas fora do intervalo
+  it('não preenche linhas fora do intervalo [startRow, endRow]', () => {
+    useAppStore.getState().setLancamentos([
+      lancamento({ transcricao: 'A', natureza: 'Alimentação' }),
+      lancamento({ transcricao: 'B', natureza: 'Alimentação' }),
+      lancamento({ transcricao: 'C', natureza: 'Alimentação' }),
+    ])
+    useAppStore.getState().preencherIntervalo(1, 1, 'natureza', 'Moradia')
+    const lancamentos = useAppStore.getState().lancamentos
+    expect(lancamentos[0].natureza).toBe('Alimentação') // fora — intocado
+    expect(lancamentos[1].natureza).toBe('Moradia')     // dentro — atualizado
+    expect(lancamentos[2].natureza).toBe('Alimentação') // fora — intocado
+  })
+
+  // TL-T1-05: sem efeito quando intervalo não cobre nenhuma linha visível
+  it('sem efeito quando nenhuma linha visível está no intervalo informado', () => {
+    useAppStore.getState().setLancamentos([
+      lancamento({ transcricao: 'A', fonte: 'Nubank', natureza: 'Alimentação' }),
+      lancamento({ transcricao: 'B', fonte: 'Itaú', natureza: 'Alimentação' }),
+    ])
+    // Visíveis: apenas B (visual 0, real 1)
+    useAppStore.getState().setFiltroFontes(['Itaú'])
+    const historicoAntes = useAppStore.getState().historico.length
+    // startRow=5 endRow=10 — sem linhas visíveis neste intervalo
+    useAppStore.getState().preencherIntervalo(5, 10, 'natureza', 'Moradia')
+    expect(useAppStore.getState().historico).toHaveLength(historicoAntes)
+    expect(useAppStore.getState().lancamentos[0].natureza).toBe('Alimentação')
+    expect(useAppStore.getState().lancamentos[1].natureza).toBe('Alimentação')
+  })
+
+  // TL-T1-18: empilha entrada de undo
+  it('preencherIntervalo empilha pelo menos uma entrada no histórico de undo', () => {
+    useAppStore.getState().setLancamentos([
+      lancamento({ natureza: 'Alimentação' }),
+      lancamento({ natureza: 'Alimentação' }),
+    ])
+    useAppStore.setState({ historico: [] })
+    useAppStore.getState().preencherIntervalo(0, 1, 'natureza', 'Moradia')
+    expect(useAppStore.getState().historico.length).toBeGreaterThan(0)
+    // Undo reverte as mudanças
+    const historicoLen = useAppStore.getState().historico.length
+    for (let i = 0; i < historicoLen; i++) {
+      useAppStore.getState().undo()
+    }
+    const lancamentos = useAppStore.getState().lancamentos
+    expect(lancamentos[0].natureza).toBe('Alimentação')
+    expect(lancamentos[1].natureza).toBe('Alimentação')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// ciclarOrdenacao — ordenação por clique no cabeçalho (decisão humana 2026-07-15)
+// ---------------------------------------------------------------------------
+
+describe('ciclarOrdenacao', () => {
+  beforeEach(resetarStore)
+
+  it('primeiro clique numa coluna ativa asc', () => {
+    useAppStore.getState().ciclarOrdenacao('valor')
+    expect(useAppStore.getState().ordenacaoColuna).toBe('valor')
+    expect(useAppStore.getState().ordenacaoDirecao).toBe('asc')
+  })
+
+  it('segundo clique na mesma coluna vira desc', () => {
+    useAppStore.getState().ciclarOrdenacao('valor')
+    useAppStore.getState().ciclarOrdenacao('valor')
+    expect(useAppStore.getState().ordenacaoColuna).toBe('valor')
+    expect(useAppStore.getState().ordenacaoDirecao).toBe('desc')
+  })
+
+  it('terceiro clique na mesma coluna remove a ordenação', () => {
+    useAppStore.getState().ciclarOrdenacao('valor')
+    useAppStore.getState().ciclarOrdenacao('valor')
+    useAppStore.getState().ciclarOrdenacao('valor')
+    expect(useAppStore.getState().ordenacaoColuna).toBeNull()
+  })
+
+  it('clicar em outra coluna reinicia o ciclo em asc', () => {
+    useAppStore.getState().ciclarOrdenacao('valor')
+    useAppStore.getState().ciclarOrdenacao('valor') // valor desc
+    useAppStore.getState().ciclarOrdenacao('data')
+    expect(useAppStore.getState().ordenacaoColuna).toBe('data')
+    expect(useAppStore.getState().ordenacaoDirecao).toBe('asc')
+  })
+
+  it('re-deriva a visão: asc por valor reordena lancamentosVisiveis', () => {
+    useAppStore.getState().setLancamentos([
+      lancamento({ valor: -300 }),
+      lancamento({ valor: -100 }),
+      lancamento({ valor: -200 }),
+    ])
+    useAppStore.getState().ciclarOrdenacao('valor')
+    const valores = useAppStore.getState().lancamentosVisiveis.map((l) => l.valor)
+    expect(valores).toEqual([-300, -200, -100])
+  })
+
+  it('não gera entrada no histórico de undo', () => {
+    useAppStore.getState().setLancamentos([lancamento()])
+    const antes = useAppStore.getState().historico.length
+    useAppStore.getState().ciclarOrdenacao('valor')
+    expect(useAppStore.getState().historico.length).toBe(antes)
   })
 })

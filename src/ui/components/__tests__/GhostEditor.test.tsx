@@ -225,4 +225,50 @@ describe('GhostEditorCore', () => {
     expect(ghost).toBeInTheDocument()
     expect(ghost.textContent).toBe('ALI')
   })
+
+  // 9. tab-sem-sugestao-confirma-e-navega (achado da inspeção manual 2026-07-15)
+  it('Tab sem sugestão pendente confirma o texto e navega para a próxima célula [1, 0]', () => {
+    // Sem dicionário e sem histórico → nenhum ghost; Tab deve se comportar
+    // como no Sheets: confirmar a edição e mover para a célula à direita.
+    render(
+      <GhostEditorCore
+        col={COL_NATUREZA}
+        row={0}
+        valorAtual=""
+        valorInicial="zz"
+        lancamentos={[lancamento('', '')]}
+        dicEntries={[]}
+        onFinishedEditing={onFinishedEditing}
+      />,
+    )
+    const input = screen.getByTestId('ghost-input') as HTMLInputElement
+    fireEvent.keyDown(input, { key: 'Tab' })
+
+    expect(onFinishedEditing).toHaveBeenCalledWith('zz', [1, 0])
+  })
+
+  // 10. segundo-tab-apos-aceitar-confirma-e-navega
+  it('segundo Tab após aceitar a sugestão confirma o texto aceito e navega [1, 0]', () => {
+    render(
+      <GhostEditorCore
+        col={COL_DESCRICAO}
+        row={0}
+        valorAtual=""
+        valorInicial="ali"
+        lancamentos={[lancamento('ALI', '')]}
+        dicEntries={[dicAli]}
+        onFinishedEditing={onFinishedEditing}
+      />,
+    )
+    const input = screen.getByTestId('ghost-input') as HTMLInputElement
+
+    // 1º Tab: aceita a sugestão (não confirma)
+    fireEvent.keyDown(input, { key: 'Tab' })
+    expect(input.value).toBe('Alimentos')
+    expect(onFinishedEditing).not.toHaveBeenCalled()
+
+    // 2º Tab: nada mais a aceitar → confirma e navega
+    fireEvent.keyDown(input, { key: 'Tab' })
+    expect(onFinishedEditing).toHaveBeenCalledWith('Alimentos', [1, 0])
+  })
 })

@@ -1,4 +1,5 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
+// ADR: see spec/grid-ux-filtros.adr.md
 
 import { useState, useRef, useEffect } from 'react'
 import { useAppStore } from './ui/store/appStore'
@@ -9,6 +10,7 @@ import {
 } from './ui/PipelineState'
 import { lerNaturezas } from './excel/reader/leitor'
 import { ReviewGrid } from './ui/components/ReviewGrid'
+import { FiltroBar } from './ui/components/FiltroBar'
 import { SplitModal } from './ui/components/SplitModal'
 import { AvisoList } from './ui/components/AvisoList'
 
@@ -599,11 +601,21 @@ export function App() {
               flexWrap: 'wrap',
             }}
           >
-            <Swatch cor="var(--linha-atencao)" borda="var(--linha-atencao-borda)" rotulo="Precisa de atenção" />
-            <Swatch cor="var(--linha-transferencia)" borda="var(--linha-transferencia-borda)" rotulo="Transferência própria" />
-            <Swatch cor="var(--linha-investimento)" borda="var(--linha-investimento-borda)" rotulo="Investimento" />
-            <span style={{ marginLeft: 'auto', color: 'var(--muted)' }}>
-              Selecione células para somar
+            {/* Chips de filtro à esquerda, legenda à direita — barra única
+                (decisão humana de 2026-07-15) */}
+            <FiltroBar />
+            <span
+              style={{
+                marginLeft: 'auto',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 22,
+                flexShrink: 0,
+              }}
+            >
+              <Swatch cor="var(--linha-atencao)" borda="var(--linha-atencao-borda)" rotulo="Precisa de atenção" />
+              <Swatch cor="var(--linha-transferencia)" borda="var(--linha-transferencia-borda)" rotulo="Transferência própria" />
+              <Swatch cor="var(--linha-investimento)" borda="var(--linha-investimento-borda)" rotulo="Investimento" />
             </span>
           </div>
 
