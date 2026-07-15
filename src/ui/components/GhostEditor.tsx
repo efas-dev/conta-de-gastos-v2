@@ -150,10 +150,17 @@ export function GhostEditorCore({
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Tab') {
-      // Tab aceita sem sair da célula (D5 do ADR)
       e.preventDefault()
       e.stopPropagation()
-      aceitarSugestao()
+      if (ghostSufixo) {
+        // Há sugestão pendente: Tab aceita sem sair da célula (D5 do ADR)
+        aceitarSugestao()
+      } else {
+        // Nada a aceitar: Tab confirma e navega para a célula à direita,
+        // como no Sheets (achado da inspeção manual de 2026-07-15 — o ghost
+        // engolia o Tab mesmo sem sugestão, travando a navegação).
+        onFinishedEditing(texto, [1, 0])
+      }
     } else if (e.key === 'ArrowRight') {
       // → aceita somente quando cursor está no fim do texto (D5 do ADR)
       const input = inputRef.current
