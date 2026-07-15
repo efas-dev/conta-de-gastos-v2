@@ -26,6 +26,7 @@ import {
   medirLarguraValorContabil,
   calcularLargurasColunas,
   ehColunaLeituraApenas,
+  proximaCelulaAposTab,
 } from '../ReviewGrid'
 import type { Lancamento } from '../../../types'
 
@@ -207,5 +208,35 @@ describe('calcularLargurasColunas — coluna Valor contábil', () => {
     ]
     const resultado = calcularLargurasColunas(lancamentos, colunasBase)
     expect(resultado[IDX_VALOR]).toBe(medirLarguraValorContabil(-10539.61, 320))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// TL-9 — proximaCelulaAposTab: navegação em zigue-zague no fluxo de revisão
+// (decisão humana de 2026-07-15: Tab na Descrição vai para Iniciais da linha
+// de baixo, em vez da célula Valor ao lado)
+// ---------------------------------------------------------------------------
+
+describe('proximaCelulaAposTab', () => {
+  const COL_INICIAIS = 3
+  const COL_NATUREZA = 4
+  const COL_DESCRICAO = 5
+
+  it('TL-9a: na Descrição, vai para Iniciais da linha de baixo', () => {
+    expect(proximaCelulaAposTab(COL_DESCRICAO, 2, 10)).toEqual([COL_INICIAIS, 3])
+  })
+
+  it('TL-9b: na Descrição da última linha, permanece na célula (não há linha de baixo)', () => {
+    expect(proximaCelulaAposTab(COL_DESCRICAO, 9, 10)).toEqual([COL_DESCRICAO, 9])
+  })
+
+  it('TL-9c: nas demais colunas, vai para a célula à direita na mesma linha', () => {
+    expect(proximaCelulaAposTab(COL_INICIAIS, 2, 10)).toEqual([COL_NATUREZA, 2])
+    expect(proximaCelulaAposTab(COL_NATUREZA, 2, 10)).toEqual([COL_DESCRICAO, 2])
+  })
+
+  it('TL-9d: na última coluna (Valor), permanece na célula', () => {
+    const COL_VALOR = 6
+    expect(proximaCelulaAposTab(COL_VALOR, 2, 10)).toEqual([COL_VALOR, 2])
   })
 })

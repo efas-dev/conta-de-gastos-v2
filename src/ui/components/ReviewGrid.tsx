@@ -115,6 +115,27 @@ const FOLGA_CONTABIL_PX = 12
  * com fator para a fonte bold e folga entre os dois blocos. Exportado para
  * testabilidade (TL-7/TL-8 — dívida valor-truncado-auto-largura).
  */
+/**
+ * Calcula a célula de destino após Tab confirmar uma edição sem sugestão
+ * pendente (navegação em zigue-zague do fluxo de revisão — decisão humana
+ * de 2026-07-15): na Descrição, o destino é Iniciais da linha de baixo;
+ * nas demais colunas, a célula à direita. Sem linha/coluna disponível,
+ * permanece onde está. Exportado para testabilidade (TL-9).
+ */
+export function proximaCelulaAposTab(
+  col: number,
+  row: number,
+  totalLinhas: number,
+): [number, number] {
+  const COL_INICIAIS_IDX = 3
+  const COL_DESCRICAO_IDX = 5
+  const ULTIMA_COLUNA = COL_IDS.length - 1
+  if (col === COL_DESCRICAO_IDX) {
+    return row + 1 < totalLinhas ? [COL_INICIAIS_IDX, row + 1] : [col, row]
+  }
+  return col < ULTIMA_COLUNA ? [col + 1, row] : [col, row]
+}
+
 export function medirLarguraValorContabil(valor: number, maxPx: number): number {
   const prefixo = valor < 0 ? '-R$' : 'R$'
   const numero = Math.abs(valor).toLocaleString('pt-BR', {
@@ -360,6 +381,11 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
     editorContextRef.current = { col, row }
   }, [])
 
+  // Ref estável para reposicionar a seleção após Tab confirmar uma edição.
+  // O movement do Glide só expressa deltas de ±1; o salto Descrição→Iniciais
+  // da linha de baixo (proximaCelulaAposTab) exige seleção programática.
+  const navegarParaRef = useRef<(destino: [number, number]) => void>(() => {})
+
   // Componente editor estável — criado uma vez, lê context e dados via refs.
   // O cast final é necessário porque o Glide exporta ProvideEditorCallbackResult como uma
   // união de tipos de função e objeto; React.FC satisfaz a variante de função.
@@ -387,10 +413,22 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
             lancamentos={lancamentosRef.current}
             dicEntries={dicEntriesRef.current}
             onFinishedEditing={(texto, movement) => {
-              onFinishedEditing(
-                { ...value, kind: GridCellKind.Text, data: texto, displayData: texto } as GridCell,
-                movement,
-              )
+              const celulaEditada = {
+                ...value,
+                kind: GridCellKind.Text,
+                data: texto,
+                displayData: texto,
+              } as GridCell
+              // Tab-navegação ([1, 0]): o destino real vem de proximaCelulaAposTab
+              // (zigue-zague Descrição→Iniciais+1) — confirma sem mover e
+              // reposiciona a seleção programaticamente.
+              if (movement[0] === 1 && movement[1] === 0) {
+                const destino = proximaCelulaAposTab(col, row, lancamentosRef.current.length)
+                onFinishedEditing(celulaEditada, [0, 0])
+                navegarParaRef.current(destino)
+              } else {
+                onFinishedEditing(celulaEditada, movement)
+              }
             }}
           />
         )
@@ -414,6 +452,27 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
     rows: CompactSelection.empty(),
     current: undefined,
   })
+
+  // Reposiciona a seleção para `destino` após o overlay do editor fechar.
+  // setTimeout(0): deixa o Glide aplicar o movement [0, 0] do commit antes
+  // de sobrescrever a seleção com o destino do zigue-zague.
+  navegarParaRef.current = (destino) => {
+    setTimeout(() => {
+      editorContextRef.current = { col: destino[0], row: destino[1] }
+      setGridSelection({
+        columns: CompactSelection.empty(),
+        rows: CompactSelection.empty(),
+        current: {
+          cell: destino,
+          range: { x: destino[0], y: destino[1], width: 1, height: 1 },
+          rangeStack: [],
+        },
+      })
+      // Seleção programática não dispara onGridSelectionChange — atualiza a
+      // soma da seleção manualmente para não exibir o valor da célula anterior.
+      setSomaSelecao(calcularSomaSelecionados(lancamentosRef.current, [destino[1]]))
+    }, 0)
+  }
 
   // Soma dos valores das linhas atualmente selecionadas (null = nenhuma seleção relevante)
   const [somaSelecao, setSomaSelecao] = useState<number | null>(null)

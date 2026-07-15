@@ -95,8 +95,9 @@ export function FiltroBar(_props: Record<string, never> = {}) {
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
+  // Sem padding próprio: a barra compartilhada do App (chips + legenda) o fornece.
   return (
-    <div role="toolbar" aria-label="Filtros e ordenação" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', padding: '0.5rem', alignItems: 'center' }}>
+    <div role="toolbar" aria-label="Filtros e ordenação" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
 
       {/* Chips de Fonte */}
       {fontesRankeadas.length > 0 && (
@@ -217,7 +218,7 @@ export function FiltroBar(_props: Record<string, never> = {}) {
       </button>
 
       {/* Contador N de M visíveis */}
-      <span aria-live="polite" style={{ fontSize: '0.85rem', color: '#6b7280', marginLeft: 'auto' }}>
+      <span aria-live="polite" style={{ fontSize: '0.85rem', color: '#6b7280' }}>
         {lancamentosVisiveis.length} de {lancamentos.length} visíveis
       </span>
     </div>

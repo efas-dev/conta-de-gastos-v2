@@ -600,16 +600,24 @@ export function App() {
               flexWrap: 'wrap',
             }}
           >
-            <Swatch cor="var(--linha-atencao)" borda="var(--linha-atencao-borda)" rotulo="Precisa de atenção" />
-            <Swatch cor="var(--linha-transferencia)" borda="var(--linha-transferencia-borda)" rotulo="Transferência própria" />
-            <Swatch cor="var(--linha-investimento)" borda="var(--linha-investimento-borda)" rotulo="Investimento" />
-            <span style={{ marginLeft: 'auto', color: 'var(--muted)' }}>
-              Selecione células para somar
+            {/* Chips de filtro à esquerda, legenda à direita — barra única
+                (decisão humana de 2026-07-15) */}
+            <FiltroBar />
+            <span
+              style={{
+                marginLeft: 'auto',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 22,
+                flexShrink: 0,
+              }}
+            >
+              <Swatch cor="var(--linha-atencao)" borda="var(--linha-atencao-borda)" rotulo="Precisa de atenção" />
+              <Swatch cor="var(--linha-transferencia)" borda="var(--linha-transferencia-borda)" rotulo="Transferência própria" />
+              <Swatch cor="var(--linha-investimento)" borda="var(--linha-investimento-borda)" rotulo="Investimento" />
+              <span style={{ color: 'var(--muted)' }}>Selecione células para somar</span>
             </span>
           </div>
-
-          {/* FiltroBar — acima da grid, abaixo da legenda (D6 do ADR grid-ux-filtros) */}
-          <FiltroBar />
 
           <div style={{ flex: 1, minHeight: 0 }}>
             <ReviewGrid onSplitDetectado={(indice) => setSplitIndice(indice)} />
