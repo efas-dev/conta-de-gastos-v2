@@ -615,7 +615,6 @@ export function App() {
               <Swatch cor="var(--linha-atencao)" borda="var(--linha-atencao-borda)" rotulo="Precisa de atenção" />
               <Swatch cor="var(--linha-transferencia)" borda="var(--linha-transferencia-borda)" rotulo="Transferência própria" />
               <Swatch cor="var(--linha-investimento)" borda="var(--linha-investimento-borda)" rotulo="Investimento" />
-              <span style={{ color: 'var(--muted)' }}>Selecione células para somar</span>
             </span>
           </div>
 
