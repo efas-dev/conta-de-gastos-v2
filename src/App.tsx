@@ -9,6 +9,7 @@ import {
   computarNomeArquivo,
 } from './ui/PipelineState'
 import { lerNaturezas } from './excel/reader/leitor'
+import { defaultMes } from './dominio/mes'
 import { ReviewGrid } from './ui/components/ReviewGrid'
 import { FiltroBar } from './ui/components/FiltroBar'
 import { SplitModal } from './ui/components/SplitModal'
@@ -69,6 +70,19 @@ export function App() {
    * Mantido em estado local — o store não tem campo para bytes de template.
    */
   const [modeloBytes, setModeloBytes] = useState<Uint8Array | null>(null)
+
+  /**
+   * Mês de referência escolhido pelo usuário (formato YYYY-MM).
+   * Inicializa com o mês anterior ao corrente via defaultMes() (nunca vazio — D6 do ADR).
+   * Estado local — não vai para o appStore (D9 do ADR).
+   */
+  const [mesEscolhido, setMesEscolhido] = useState<string>(defaultMes())
+
+  /**
+   * Flag que indica se o usuário editou manualmente o campo de mês na sessão.
+   * Quando true, a detecção automática (T4) não sobrescreve a escolha (D7 do ADR).
+   */
+  const [usuarioEditou, setUsuarioEditou] = useState<boolean>(false)
 
   /**
    * Índice do lançamento que abriu o SplitModal (null = modal fechado).
@@ -197,7 +211,7 @@ export function App() {
   function handleGerar() {
     if (!modeloBytes || lancamentos.length === 0) return
 
-    const xlsxBytes = gerarAPartirDosRevisados(modeloBytes, iniciais, lancamentos, dicEntries)
+    const xlsxBytes = gerarAPartirDosRevisados(modeloBytes, iniciais, lancamentos, dicEntries, mesEscolhido)
 
     // `.slice()` materializa Uint8Array<ArrayBuffer> puro a partir do
     // Uint8Array<ArrayBufferLike> do fflate — necessário para BlobPart no TS ≥ 5.7.
@@ -500,6 +514,20 @@ export function App() {
               </label>
             </div>
 
+            {/* Campo de mês de referência — D5, D6 do ADR */}
+            <div style={{ width: '100%', maxWidth: 640, marginTop: 14 }}>
+              <span className="dc-rotulo" style={{ display: 'block', marginBottom: 8 }}>
+                Mês de referência
+              </span>
+              <SeletorMesReferencia
+                mesEscolhido={mesEscolhido}
+                onChange={(novoMes) => {
+                  setMesEscolhido(novoMes)
+                  setUsuarioEditou(true)
+                }}
+              />
+            </div>
+
             {/* CTA */}
             <button
               className="dc-btn dc-btn-primario dc-btn-cta"
@@ -574,6 +602,15 @@ export function App() {
                 <IconeRefazer />
                 Refazer
               </button>
+              {/* Seletores de mês de referência — D5 do ADR (dois selects) */}
+              <SeletorMesReferencia
+                mesEscolhido={mesEscolhido}
+                usuarioEditou={usuarioEditou}
+                onChange={(novoMes) => {
+                  setMesEscolhido(novoMes)
+                  setUsuarioEditou(true)
+                }}
+              />
               <button
                 className="dc-btn dc-btn-primario"
                 onClick={handleGerar}
@@ -714,6 +751,75 @@ function Swatch({ cor, borda, rotulo }: { cor: string; borda: string; rotulo: st
     <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
       <span style={{ width: 11, height: 11, borderRadius: 3, background: cor, border: `1px solid ${borda}` }} />
       {rotulo}
+    </span>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// SeletorMesReferencia — dois selects controlados (mês + ano) — D5 do ADR
+// ---------------------------------------------------------------------------
+
+const MESES = ['01','02','03','04','05','06','07','08','09','10','11','12'] as const
+
+function anosDisponiveis(): number[] {
+  const anoCorrente = new Date().getFullYear()
+  const anos: number[] = []
+  for (let a = anoCorrente + 1; a >= anoCorrente - 4; a--) {
+    anos.push(a)
+  }
+  return anos
+}
+
+interface SeletorMesReferenciaProps {
+  mesEscolhido: string // formato YYYY-MM
+  onChange: (novoMes: string) => void
+  /** Flag de controle — quando true, T4 não sobrescreverá a escolha (D7 do ADR) */
+  usuarioEditou?: boolean
+}
+
+/**
+ * Dois selects controlados (mês 01–12 e ano) que nunca ficam vazios.
+ * O estado interno é uma string YYYY-MM derivada da combinação dos dois selects.
+ * Decisão D5 e D6 do ADR: nunca vazio; default = mês anterior ao corrente.
+ */
+function SeletorMesReferencia({ mesEscolhido, onChange }: SeletorMesReferenciaProps) {
+  // mesEscolhido é sempre 'YYYY-MM' (garantido por defaultMes e pelos handlers)
+  const [anoStr, mesStr] = mesEscolhido.split('-')
+
+  function handleMes(e: React.ChangeEvent<HTMLSelectElement>) {
+    onChange(`${anoStr}-${e.target.value}`)
+  }
+
+  function handleAno(e: React.ChangeEvent<HTMLSelectElement>) {
+    onChange(`${e.target.value}-${mesStr}`)
+  }
+
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <select
+        data-testid="select-mes"
+        value={mesStr}
+        onChange={handleMes}
+        className="dc-input"
+        style={{ width: 'auto', padding: '6px 8px', fontSize: 13 }}
+        aria-label="Mês de referência"
+      >
+        {MESES.map((m) => (
+          <option key={m} value={m}>{m}</option>
+        ))}
+      </select>
+      <select
+        data-testid="select-ano"
+        value={anoStr}
+        onChange={handleAno}
+        className="dc-input"
+        style={{ width: 'auto', padding: '6px 8px', fontSize: 13 }}
+        aria-label="Ano de referência"
+      >
+        {anosDisponiveis().map((a) => (
+          <option key={a} value={String(a)}>{a}</option>
+        ))}
+      </select>
     </span>
   )
 }

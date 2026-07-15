@@ -251,20 +251,20 @@ describe('gerarAPartirDosRevisados', () => {
   })
 
   it('chama aprenderDicionario com os lançamentos revisados e o dicionário anterior', () => {
-    gerarAPartirDosRevisados(modeloBytes, 'ES', lancamentosRevisados, dicAnterior)
+    gerarAPartirDosRevisados(modeloBytes, 'ES', lancamentosRevisados, dicAnterior, '2025-03')
     expect(aprenderDicionario).toHaveBeenCalledOnce()
     expect(aprenderDicionario).toHaveBeenCalledWith(lancamentosRevisados, dicAnterior)
   })
 
   it('injeta o dicionário enriquecido (retorno de aprenderDicionario) no 4º arg de gerarXlsx', () => {
-    gerarAPartirDosRevisados(modeloBytes, 'ES', lancamentosRevisados, dicAnterior)
+    gerarAPartirDosRevisados(modeloBytes, 'ES', lancamentosRevisados, dicAnterior, '2025-03')
     expect(gerarXlsx).toHaveBeenCalledOnce()
     const [, , , dicArg] = vi.mocked(gerarXlsx).mock.calls[0] as [unknown, unknown, unknown, DicEntry[]]
     expect(dicArg).toEqual(dicEnriquecido)
   })
 
   it('retorna os bytes gerados por gerarXlsx', () => {
-    const resultado = gerarAPartirDosRevisados(modeloBytes, 'ES', lancamentosRevisados, dicAnterior)
+    const resultado = gerarAPartirDosRevisados(modeloBytes, 'ES', lancamentosRevisados, dicAnterior, '2025-03')
     expect(resultado).toBeInstanceOf(Uint8Array)
   })
 })

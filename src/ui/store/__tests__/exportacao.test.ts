@@ -87,6 +87,7 @@ describe('exportacao — invariância ao filtro', () => {
       'ES',
       useAppStore.getState().lancamentos,
       [],
+      '2026-01',
     )
 
     // Ativa filtro por fonte — lancamentosVisiveis fica com 2 lançamentos (apenas Nubank)
@@ -103,6 +104,7 @@ describe('exportacao — invariância ao filtro', () => {
       'ES',
       estadoFiltrado.lancamentos,
       [],
+      '2026-01',
     )
     expect(resultadoComFiltro_usandoLancamentos).toEqual(resultadoSemFiltro)
 
@@ -112,6 +114,7 @@ describe('exportacao — invariância ao filtro', () => {
       'ES',
       estadoFiltrado.lancamentosVisiveis,
       [],
+      '2026-01',
     )
     // Se usasse lancamentosVisiveis, o resultado seria diferente (demonstra por que D4 importa)
     expect(resultadoComFiltro_usandoVisiveis).not.toEqual(resultadoSemFiltro)
@@ -134,6 +137,7 @@ describe('exportacao — invariância ao filtro', () => {
       'ES',
       useAppStore.getState().lancamentos,
       [],
+      '2026-01',
     )
 
     // Ativa ordenação por valor asc — lancamentosVisiveis reordena
@@ -161,6 +165,7 @@ describe('exportacao — invariância ao filtro', () => {
       'ES',
       estadoOrdenado.lancamentos,
       [],
+      '2026-01',
     )
     expect(resultadoComOrdenacao).toEqual(resultadoSemOrdenacao)
   })
@@ -182,6 +187,7 @@ describe('exportacao — invariância ao filtro', () => {
       'ES',
       useAppStore.getState().lancamentos,
       [],
+      '2026-01',
     )
 
     // Ativa filtro soIncompletos — lancamentosVisiveis fica com 1 lançamento
@@ -196,6 +202,7 @@ describe('exportacao — invariância ao filtro', () => {
       'ES',
       estadoFiltrado.lancamentos,
       [],
+      '2026-01',
     )
     expect(resultadoComFiltro).toEqual(resultadoSemFiltro)
 
@@ -205,6 +212,7 @@ describe('exportacao — invariância ao filtro', () => {
       'ES',
       estadoFiltrado.lancamentosVisiveis,
       [],
+      '2026-01',
     )
     expect(resultadoVisiveis).not.toEqual(resultadoSemFiltro)
   })

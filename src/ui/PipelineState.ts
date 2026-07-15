@@ -196,7 +196,7 @@ export function produzirLancamentos(
  * @param iniciais             Iniciais do usuário
  * @param lancamentosRevisados Lançamentos após revisão na grid
  * @param dicEntriesAnterior   Dicionário lido no início do pipeline (não mutado)
- * @param mesReferencia        Mês de referência no formato YYYY-MM (default '' até T3 conectar App.tsx)
+ * @param mesReferencia        Mês de referência no formato YYYY-MM (ex.: '2025-03')
  * @returns Bytes do .xlsx gerado
  */
 export function gerarAPartirDosRevisados(
@@ -204,7 +204,7 @@ export function gerarAPartirDosRevisados(
   iniciais: string,
   lancamentosRevisados: Lancamento[],
   dicEntriesAnterior: DicEntry[],
-  mesReferencia: string = 'pendente-T3',
+  mesReferencia: string,
 ): Uint8Array {
   const dicEnriquecido = aprenderDicionario(lancamentosRevisados, dicEntriesAnterior)
   return gerarXlsx(modeloBytes, iniciais, lancamentosRevisados, dicEnriquecido, mesReferencia)
@@ -245,7 +245,10 @@ export async function executarPipeline(
     onAviso(aviso)
   }
 
-  const xlsxBytes = gerarAPartirDosRevisados(modeloBytes, iniciais, lancamentos, dicEntries)
+  // Fachada legada: mesReferencia não era parâmetro da assinatura original;
+  // passa string vazia pois esta função é usada apenas em testes E2E e não
+  // produz arquivo com B3 validado. O call-site real é App.tsx (T3).
+  const xlsxBytes = gerarAPartirDosRevisados(modeloBytes, iniciais, lancamentos, dicEntries, '')
 
   // `.slice()` materializa um Uint8Array<ArrayBuffer> puro a partir do Uint8Array<ArrayBufferLike>
   // retornado pelo fflate — necessário porque BlobPart exige ArrayBufferView<ArrayBuffer> no
