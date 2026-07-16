@@ -1,4 +1,4 @@
-// ADR: see spec/grid-ux-filtros.adr.md
+// ADR: see Docs/specs/grid-ux-filtros.adr.md
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useAppStore } from '../appStore'

@@ -1,5 +1,6 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
-// ADR: see spec/grid-ux-filtros.adr.md
+// ADR: see Docs/specs/grid-ux-filtros.adr.md
+// ADR: see Docs/specs/mes-referencia-ui.adr.md
 
 import { useState, useRef, useEffect } from 'react'
 import { useAppStore } from './ui/store/appStore'

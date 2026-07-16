@@ -1,4 +1,4 @@
-// ADR: see spec/mes-referencia-ui.adr.md
+// ADR: see Docs/specs/mes-referencia-ui.adr.md
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'

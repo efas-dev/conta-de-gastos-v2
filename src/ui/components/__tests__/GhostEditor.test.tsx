@@ -1,4 +1,4 @@
-// ADR: see spec/grid-autocomplete-aviso-saida.adr.md
+// ADR: see Docs/specs/grid-autocomplete-aviso-saida.adr.md
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'

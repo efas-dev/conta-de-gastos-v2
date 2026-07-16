@@ -1,4 +1,4 @@
-// ADR: see spec/grid-ux-filtros.adr.md
+// ADR: see Docs/specs/grid-ux-filtros.adr.md
 
 /**
  * Testes de invariância da exportação — critério [3] da spec:

@@ -1,4 +1,4 @@
-// ADR: see spec/grid-autocomplete-aviso-saida.adr.md
+// ADR: see Docs/specs/grid-autocomplete-aviso-saida.adr.md
 
 import { describe, it, expect } from 'vitest'
 import type { DicEntry } from '../../types'

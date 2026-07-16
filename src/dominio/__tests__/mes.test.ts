@@ -1,4 +1,4 @@
-// ADR: see spec/mes-referencia-ui.adr.md
+// ADR: see Docs/specs/mes-referencia-ui.adr.md
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { defaultMes, detectarMesSugerido, classificarFonte } from '../mes'

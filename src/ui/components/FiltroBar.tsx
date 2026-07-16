@@ -1,4 +1,4 @@
-// ADR: see spec/grid-ux-filtros.adr.md
+// ADR: see Docs/specs/grid-ux-filtros.adr.md
 
 import { useState } from 'react'
 import { useAppStore } from '../store/appStore'

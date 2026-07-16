@@ -1,4 +1,4 @@
-// ADR: see spec/mes-referencia-ui.adr.md
+// ADR: see Docs/specs/mes-referencia-ui.adr.md
 
 import type { Lancamento } from '../types'
 

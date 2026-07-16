@@ -1,5 +1,5 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
-// ADR: see spec/grid-ux-filtros.adr.md
+// ADR: see Docs/specs/grid-ux-filtros.adr.md
 
 /**
  * Testes das funções puras exportadas por ReviewGrid.tsx.

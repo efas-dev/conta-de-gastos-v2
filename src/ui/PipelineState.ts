@@ -1,4 +1,5 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
+// ADR: see Docs/specs/mes-referencia-ui.adr.md
 
 import type { Lancamento, DicEntry } from '../types'
 import { detectar } from '../parsers/index'

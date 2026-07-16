@@ -1,5 +1,5 @@
-// ADR: see spec/grid-autocomplete-aviso-saida.adr.md
-// ADR: see spec/grid-ux-filtros.adr.md
+// ADR: see Docs/specs/grid-autocomplete-aviso-saida.adr.md
+// ADR: see Docs/specs/grid-ux-filtros.adr.md
 
 /**
  * GhostEditorCore — editor inline com ghost-text para as colunas de texto da grid.
