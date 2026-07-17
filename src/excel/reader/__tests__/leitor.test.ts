@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { zipSync, strToU8 } from 'fflate'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { lerDicionario, lerNaturezas } from '../leitor'
+import { lerDicionario, lerNaturezas, ehDicionario, lerIniciais } from '../leitor'
 import type { DicEntry } from '../../../types'
 
 // ---------------------------------------------------------------------------
@@ -375,5 +375,167 @@ describe('lerNaturezas — .xlsx sem aba Naturezas', () => {
     // Reusa a helper de Dicionario que só tem aba "Dicionario"
     const bytes = criarXlsxDicionario([CABECALHO, ...LINHAS_DADOS])
     expect(lerNaturezas(bytes)).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Helper: cria .xlsx com aba "Extrato" contendo B2 com valor opcional
+// ---------------------------------------------------------------------------
+
+function criarXlsxComExtrato(valorB2: string | null): Uint8Array {
+  // Constrói sheetData: sempre inclui linha 1 (placeholder) e linha 2 (B2)
+  const b2Cell = valorB2 !== null
+    ? `<c r="B2" t="inlineStr"><is><t>${valorB2}</t></is></c>`
+    : ''
+  const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Mês</t></is></c></row>
+    <row r="2">${b2Cell}</row>
+  </sheetData>
+</worksheet>`
+
+  const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Extrato" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`
+
+  const workbookRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
+    Target="worksheets/sheet1.xml"/>
+</Relationships>`
+
+  const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+</Types>`
+
+  const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
+    Target="xl/workbook.xml"/>
+</Relationships>`
+
+  return zipSync({
+    '[Content_Types].xml': strToU8(contentTypesXml),
+    '_rels/.rels': strToU8(rootRelsXml),
+    'xl/workbook.xml': strToU8(workbookXml),
+    'xl/_rels/workbook.xml.rels': strToU8(workbookRelsXml),
+    'xl/worksheets/sheet1.xml': strToU8(sheetXml),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// ehDicionario — Test List T1-ED-01 a T1-ED-04
+// ---------------------------------------------------------------------------
+
+describe('ehDicionario — .xlsx com aba Dicionario legível', () => {
+  it('T1-ED-01: retorna true para .xlsx com aba Dicionario legível', () => {
+    const bytes = criarXlsxDicionario(LINHAS_FIXTURE)
+    expect(ehDicionario(bytes)).toBe(true)
+  })
+})
+
+describe('ehDicionario — .xlsx sem aba Dicionario', () => {
+  it('T1-ED-02: retorna false para .xlsx sem aba Dicionario', () => {
+    const bytes = criarXlsxComExtrato('ES')
+    expect(ehDicionario(bytes)).toBe(false)
+  })
+})
+
+describe('ehDicionario — bytes inválidos', () => {
+  it('T1-ED-03: retorna false para bytes não-ZIP sem lançar exceção', () => {
+    const bytesInvalidos = new Uint8Array([0, 1, 2, 3])
+    expect(() => ehDicionario(bytesInvalidos)).not.toThrow()
+    expect(ehDicionario(bytesInvalidos)).toBe(false)
+  })
+
+  it('T1-ED-04: retorna false para Uint8Array vazio', () => {
+    expect(ehDicionario(new Uint8Array(0))).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// lerIniciais — Test List T1-LI-01 a T1-LI-04
+// ---------------------------------------------------------------------------
+
+describe('lerIniciais — aba Extrato com B2 preenchida', () => {
+  it('T1-LI-01: retorna a string de B2 quando preenchida', () => {
+    const bytes = criarXlsxComExtrato('ES')
+    expect(lerIniciais(bytes)).toBe('ES')
+  })
+
+  it('T1-LI-02: retorna null quando B2 está vazia (célula ausente na linha)', () => {
+    const bytes = criarXlsxComExtrato(null)
+    expect(lerIniciais(bytes)).toBeNull()
+  })
+})
+
+describe('lerIniciais — aba Extrato ausente', () => {
+  it('T1-LI-03: retorna null quando não há aba Extrato', () => {
+    // .xlsx com aba Dicionario mas sem Extrato
+    const bytes = criarXlsxDicionario(LINHAS_FIXTURE)
+    expect(lerIniciais(bytes)).toBeNull()
+  })
+})
+
+describe('lerIniciais — bytes inválidos', () => {
+  it('T1-LI-04: retorna null para bytes não-ZIP sem lançar exceção', () => {
+    const bytesInvalidos = new Uint8Array([0, 1, 2, 3])
+    expect(() => lerIniciais(bytesInvalidos)).not.toThrow()
+    expect(lerIniciais(bytesInvalidos)).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// lerDicionario — normalização de acentos e caixa (T1-NA-01 a T1-NA-03)
+// ---------------------------------------------------------------------------
+
+describe('lerDicionario — normalização de acentos NFD no cabeçalho', () => {
+  it('T1-NA-01: reconhece coluna "Descrição" (com acento) e popula descricao', () => {
+    // Cabeçalho com acentos amigáveis, como o writer vai exportar após T2
+    const cabecalhoComAcento = ['Chave', 'Fonte', 'Natureza', 'Descrição', 'Iniciais', 'Vezes', 'Ambíguo']
+    const linhas = [
+      cabecalhoComAcento,
+      ['PAG LUZ', 'Nubank', 'Moradia', 'Conta de energia', 'ES', 1, 'false'],
+    ]
+    const bytes = criarXlsxDicionario(linhas)
+    const resultado = lerDicionario(bytes)
+    expect(resultado).toHaveLength(1)
+    expect(resultado[0].descricao).toBe('Conta de energia')
+    expect(resultado[0].chave).toBe('PAG LUZ')
+  })
+
+  it('T1-NA-02: normaliza MAIÚSCULAS no cabeçalho (CHAVE → chave)', () => {
+    const cabecalhoMaiusculo = ['CHAVE', 'FONTE', 'NATUREZA', 'DESCRICAO', 'INICIAIS', 'VEZES', 'AMBIGUO']
+    const linhas = [
+      cabecalhoMaiusculo,
+      ['MERCADO', 'Nubank', 'Alimentação', 'Super', 'ES', 2, 'false'],
+    ]
+    const bytes = criarXlsxDicionario(linhas)
+    const resultado = lerDicionario(bytes)
+    expect(resultado).toHaveLength(1)
+    expect(resultado[0].chave).toBe('MERCADO')
+  })
+
+  it('T1-NA-03: compatibilidade retro com cabeçalho sem acento (descricao → descricao)', () => {
+    // Dicionários exportados antes desta spec: coluna "descricao" sem acento
+    const cabecalhoSemAcento = ['chave', 'fonte', 'natureza', 'descricao', 'iniciais', 'vezes', 'ambiguo']
+    const linhas = [
+      cabecalhoSemAcento,
+      ['SUPERMERCADO', 'Nubank', 'Alimentação', 'Compras do mês', 'ES', 5, 'true'],
+    ]
+    const bytes = criarXlsxDicionario(linhas)
+    const resultado = lerDicionario(bytes)
+    expect(resultado).toHaveLength(1)
+    expect(resultado[0].descricao).toBe('Compras do mês')
+    expect(resultado[0].ambiguo).toBe(true)
   })
 })
