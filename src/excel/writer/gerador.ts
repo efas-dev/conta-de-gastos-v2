@@ -36,10 +36,12 @@ function celulaStr(ref: string, style: string | null, value: string): string {
 
 /**
  * Gera o XML de uma célula numérica.
- * Formato: <c r="REF" s="STYLE"><v>VALUE</v></c>
+ * Formato: <c r="REF" [s="STYLE"]><v>VALUE</v></c>
+ * Quando style é null, omite o atributo s (célula sem estilo explícito).
  */
-function celulaNum(ref: string, style: string, value: number): string {
-  return `<c r="${ref}" s="${style}"><v>${value}</v></c>`
+function celulaNum(ref: string, style: string | null, value: number): string {
+  const styleAttr = style ? ` s="${style}"` : ''
+  return `<c r="${ref}"${styleAttr}><v>${value}</v></c>`
 }
 
 /**
@@ -125,16 +127,35 @@ function injetarSheet1(
 }
 
 /**
+ * Títulos amigáveis da aba Dicionario, escritos na linha 1.
+ * Ordem: Chave, Fonte, Natureza, Descrição, Iniciais, Vezes, Ambíguo
+ */
+const TITULOS_DICIONARIO = ['Chave', 'Fonte', 'Natureza', 'Descrição', 'Iniciais', 'Vezes', 'Ambíguo']
+
+/**
+ * Letras de coluna para as 7 colunas da aba Dicionario.
+ */
+const COLUNAS_DICIONARIO = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+
+/**
  * Gera o bloco <sheetData> completo para a aba Dicionario com as entradas passadas.
  *
- * Colunas: A=chave, B=fonte, C=natureza, D=descricao, E=iniciais
- * Cada linha começa em 2 (linha 1 é o cabeçalho, mantido pelo Modelo.xlsx).
+ * Linha 1: cabeçalho com títulos amigáveis (Chave, Fonte, Natureza, Descrição, Iniciais, Vezes, Ambíguo).
+ * Linhas 2+: dados de cada entrada.
+ * Colunas: A=chave, B=fonte, C=natureza, D=descricao, E=iniciais, F=vezes (num), G=ambiguo (str)
  */
 function gerarSheetDataDicionario(dicEntries: DicEntry[]): string {
   if (dicEntries.length === 0) {
     return '<sheetData/>'
   }
 
+  // Linha 1: cabeçalho com os 7 títulos amigáveis
+  const cabecalhoCells = TITULOS_DICIONARIO.map((titulo, i) =>
+    celulaStr(`${COLUNAS_DICIONARIO[i]}1`, null, titulo),
+  ).join('')
+  const cabecalho = `<row r="1" spans="1:7">${cabecalhoCells}</row>`
+
+  // Linhas de dados a partir de n=2
   const rows = dicEntries.map((entry, i) => {
     const n = i + 2
     const cells = [
@@ -143,11 +164,13 @@ function gerarSheetDataDicionario(dicEntries: DicEntry[]): string {
       celulaStr(`C${n}`, null, entry.natureza),
       celulaStr(`D${n}`, null, entry.descricao),
       celulaStr(`E${n}`, null, entry.iniciais),
+      celulaNum(`F${n}`, null, entry.vezes),
+      celulaStr(`G${n}`, null, entry.ambiguo ? 'true' : 'false'),
     ].join('')
-    return `<row r="${n}" spans="1:5">${cells}</row>`
+    return `<row r="${n}" spans="1:7">${cells}</row>`
   })
 
-  return `<sheetData>${rows.join('')}</sheetData>`
+  return `<sheetData>${cabecalho}${rows.join('')}</sheetData>`
 }
 
 /**

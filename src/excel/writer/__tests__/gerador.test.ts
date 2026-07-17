@@ -217,3 +217,134 @@ describe('gerarXlsx', () => {
     expect(() => gerarXlsx(modeloBytes, 'AB', lancamentos, [], '')).toThrow(/obrigatório/i)
   })
 })
+
+// --- T2: cabeçalho amigável e colunas F/G em gerarSheetDataDicionario ---
+describe('gerarSheetDataDicionario via gerarXlsx — cabeçalho e colunas Vezes/Ambíguo', () => {
+  let modeloBytes: Uint8Array
+
+  beforeAll(() => {
+    modeloBytes = new Uint8Array(readFileSync(FIXTURE_PATH))
+  })
+
+  // Test List T2-1: linha 1 com 7 títulos amigáveis na ordem correta
+  it('emite linha 1 com os 7 títulos amigáveis na ordem: Chave, Fonte, Natureza, Descrição, Iniciais, Vezes, Ambíguo', () => {
+    const dicEntries: DicEntry[] = [
+      { chave: 'Mercado', fonte: 'Nubank', natureza: 'Alimentação', descricao: 'Supermercado', iniciais: 'ES', vezes: 2, ambiguo: false },
+    ]
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], dicEntries, '2026-07')
+    const parts = unzipSync(resultado)
+    const sheet2 = new TextDecoder().decode(parts['xl/worksheets/sheet2.xml'])
+
+    // Linha 1, célula A1 = "Chave"
+    expect(sheet2).toContain('<c r="A1" t="inlineStr"><is><t>Chave</t></is></c>')
+    // Célula B1 = "Fonte"
+    expect(sheet2).toContain('<c r="B1" t="inlineStr"><is><t>Fonte</t></is></c>')
+    // Célula C1 = "Natureza"
+    expect(sheet2).toContain('<c r="C1" t="inlineStr"><is><t>Natureza</t></is></c>')
+    // Célula D1 = "Descrição" (com acento)
+    expect(sheet2).toContain('<c r="D1" t="inlineStr"><is><t>Descrição</t></is></c>')
+    // Célula E1 = "Iniciais"
+    expect(sheet2).toContain('<c r="E1" t="inlineStr"><is><t>Iniciais</t></is></c>')
+    // Célula F1 = "Vezes"
+    expect(sheet2).toContain('<c r="F1" t="inlineStr"><is><t>Vezes</t></is></c>')
+    // Célula G1 = "Ambíguo" (com acento)
+    expect(sheet2).toContain('<c r="G1" t="inlineStr"><is><t>Ambíguo</t></is></c>')
+  })
+
+  // Test List T2-2: linha 1 é row r="1" com spans="1:7"
+  it('emite a linha de cabeçalho com r="1" e spans="1:7"', () => {
+    const dicEntries: DicEntry[] = [
+      { chave: 'X', fonte: 'Itaú', natureza: 'Outros', descricao: '', iniciais: 'AB', vezes: 1, ambiguo: true },
+    ]
+    const resultado = gerarXlsx(modeloBytes, 'AB', [], dicEntries, '2026-07')
+    const parts = unzipSync(resultado)
+    const sheet2 = new TextDecoder().decode(parts['xl/worksheets/sheet2.xml'])
+
+    expect(sheet2).toContain('<row r="1" spans="1:7">')
+  })
+
+  // Test List T2-3: linhas de dados têm spans="1:7"
+  it('emite linhas de dados com spans="1:7" (não mais "1:5")', () => {
+    const dicEntries: DicEntry[] = [
+      { chave: 'Padaria', fonte: 'Nubank', natureza: 'Alimentação', descricao: 'Pão', iniciais: 'ES', vezes: 5, ambiguo: false },
+    ]
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], dicEntries, '2026-07')
+    const parts = unzipSync(resultado)
+    const sheet2 = new TextDecoder().decode(parts['xl/worksheets/sheet2.xml'])
+
+    // Linha de dados começa em r="2" (após o cabeçalho em r="1")
+    expect(sheet2).toContain('<row r="2" spans="1:7">')
+    // Não deve haver spans="1:5"
+    expect(sheet2).not.toContain('spans="1:5"')
+  })
+
+  // Test List T2-4: coluna F = entry.vezes como número
+  it('emite coluna F com entry.vezes como valor numérico', () => {
+    const dicEntries: DicEntry[] = [
+      { chave: 'Academia', fonte: 'Itaú', natureza: 'Saúde', descricao: 'Mensalidade', iniciais: 'ES', vezes: 7, ambiguo: false },
+    ]
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], dicEntries, '2026-07')
+    const parts = unzipSync(resultado)
+    const sheet2 = new TextDecoder().decode(parts['xl/worksheets/sheet2.xml'])
+
+    // F2 = 7 como número (não como string inline)
+    expect(sheet2).toContain('<c r="F2"><v>7</v></c>')
+  })
+
+  // Test List T2-5: coluna G = "true" quando ambiguo=true
+  it('emite coluna G com "true" quando entry.ambiguo é true', () => {
+    const dicEntries: DicEntry[] = [
+      { chave: 'Pix', fonte: 'Nubank', natureza: 'Transferência', descricao: '', iniciais: 'ES', vezes: 3, ambiguo: true },
+    ]
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], dicEntries, '2026-07')
+    const parts = unzipSync(resultado)
+    const sheet2 = new TextDecoder().decode(parts['xl/worksheets/sheet2.xml'])
+
+    expect(sheet2).toContain('<c r="G2" t="inlineStr"><is><t>true</t></is></c>')
+  })
+
+  // Test List T2-6: coluna G = "false" quando ambiguo=false
+  it('emite coluna G com "false" quando entry.ambiguo é false', () => {
+    const dicEntries: DicEntry[] = [
+      { chave: 'Mercado', fonte: 'Nubank', natureza: 'Alimentação', descricao: 'Compra', iniciais: 'ES', vezes: 2, ambiguo: false },
+    ]
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], dicEntries, '2026-07')
+    const parts = unzipSync(resultado)
+    const sheet2 = new TextDecoder().decode(parts['xl/worksheets/sheet2.xml'])
+
+    expect(sheet2).toContain('<c r="G2" t="inlineStr"><is><t>false</t></is></c>')
+  })
+
+  // Test List T2-7: múltiplas entradas — dados em linhas 2, 3, 4...
+  it('com múltiplas entradas, dados ficam nas linhas 2, 3, ... (cabeçalho ocupa linha 1)', () => {
+    const dicEntries: DicEntry[] = [
+      { chave: 'A', fonte: 'N', natureza: 'X', descricao: '', iniciais: 'ES', vezes: 1, ambiguo: false },
+      { chave: 'B', fonte: 'N', natureza: 'Y', descricao: '', iniciais: 'ES', vezes: 2, ambiguo: true },
+      { chave: 'C', fonte: 'N', natureza: 'Z', descricao: '', iniciais: 'AB', vezes: 3, ambiguo: false },
+    ]
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], dicEntries, '2026-07')
+    const parts = unzipSync(resultado)
+    const sheet2 = new TextDecoder().decode(parts['xl/worksheets/sheet2.xml'])
+
+    expect(sheet2).toContain('<c r="A2" t="inlineStr"><is><t>A</t></is></c>')
+    expect(sheet2).toContain('<c r="F2"><v>1</v></c>')
+    expect(sheet2).toContain('<c r="G2" t="inlineStr"><is><t>false</t></is></c>')
+
+    expect(sheet2).toContain('<c r="A3" t="inlineStr"><is><t>B</t></is></c>')
+    expect(sheet2).toContain('<c r="F3"><v>2</v></c>')
+    expect(sheet2).toContain('<c r="G3" t="inlineStr"><is><t>true</t></is></c>')
+
+    expect(sheet2).toContain('<c r="A4" t="inlineStr"><is><t>C</t></is></c>')
+    expect(sheet2).toContain('<c r="F4"><v>3</v></c>')
+    expect(sheet2).toContain('<c r="G4" t="inlineStr"><is><t>false</t></is></c>')
+  })
+
+  // Test List T2-8: lista vazia preserva <sheetData/> (comportamento intacto)
+  it('com lista vazia de dicEntries, retorna <sheetData/> (sem cabeçalho)', () => {
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-07')
+    const parts = unzipSync(resultado)
+    const sheet2 = new TextDecoder().decode(parts['xl/worksheets/sheet2.xml'])
+
+    expect(sheet2).toContain('<sheetData/>')
+  })
+})
