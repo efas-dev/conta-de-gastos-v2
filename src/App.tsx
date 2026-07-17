@@ -1,6 +1,7 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
 // ADR: see Docs/specs/grid-ux-filtros.adr.md
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
+// ADR: see spec/dicionario-ponta-a-ponta.adr.md
 
 import { useState, useRef, useEffect } from 'react'
 import { useAppStore } from './ui/store/appStore'
@@ -9,7 +10,7 @@ import {
   gerarAPartirDosRevisados,
   computarNomeArquivo,
 } from './ui/PipelineState'
-import { lerNaturezas } from './excel/reader/leitor'
+import { lerNaturezas, lerDicionario, ehDicionario, lerIniciais } from './excel/reader/leitor'
 import { defaultMes, detectarMesSugerido, classificarFonte } from './dominio/mes'
 import { detectar } from './parsers/index'
 import type { Lancamento } from './types'
@@ -57,10 +58,11 @@ export function App() {
   // ---------------------------------------------------------------------------
 
   /**
-   * Arquivo do dicionário .xlsx (opcional) mantido em estado local porque o
-   * store só armazena as entradas parseadas (`dicEntries`), não o File bruto.
+   * Flag que indica se o usuário editou manualmente o campo de iniciais na sessão.
+   * Quando true, o preenchimento automático via lerIniciais (dicionário .xlsx)
+   * não sobrescreve a escolha manual do usuário.
    */
-  const [dicArquivo, setDicArquivo] = useState<File | null>(null)
+  const [usuarioEditouIniciais, setUsuarioEditouIniciais] = useState<boolean>(false)
 
   /**
    * Extratos/faturas CSV selecionados (um ou vários bancos de uma vez).
@@ -189,26 +191,69 @@ export function App() {
   // ---------------------------------------------------------------------------
 
   /**
-   * Handler de seleção de arquivos CSV/TXT.
+   * Handler unificado de seleção de arquivos (CSV, TXT e XLSX).
    *
-   * Além de armazenar os arquivos no estado local, realiza uma leitura antecipada
-   * best-effort: parseia cada arquivo e coleta os lançamentos para detectar o mês
-   * sugerido. Se detectarMesSugerido retornar um valor e o usuário ainda não tiver
-   * editado o campo manualmente (usuarioEditou=false), atualiza mesEscolhido.
-   * Erros de leitura ou parse são silenciados — não interrompem o fluxo de upload.
+   * Para cada arquivo selecionado:
+   * - Se extensão for `.xlsx`: chama ehDicionario(bytes).
+   *   - true → lerDicionario + setDic; lerIniciais → preenche campo de iniciais se
+   *     !usuarioEditouIniciais; se já havia dicionário carregado, emite aviso "último vence".
+   *   - false → addAviso com mensagem de não reconhecido, sem interromper o fluxo.
+   * - Demais extensões (.csv, .txt): roteados para o pipeline de parse CSV/TXT existente,
+   *   com leitura antecipada best-effort para detectar o mês sugerido.
+   *
+   * Erros de leitura ou parse são silenciados (best-effort) — não quebram o fluxo.
    */
-  async function handleCsvChange(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
     const arquivos = Array.from(e.target.files ?? [])
-    setCsvArquivos(arquivos)
 
-    if (arquivos.length === 0) {
-      setLancamentosAntecipados({})
+    // Separa arquivos .xlsx dos demais
+    const arquivosXlsx = arquivos.filter((f) => f.name.toLowerCase().endsWith('.xlsx'))
+    const arquivosCsv = arquivos.filter((f) => !f.name.toLowerCase().endsWith('.xlsx'))
+
+    // --- Processa arquivos .xlsx ---
+    // Controla se já havia dicionário carregado antes deste upload
+    let dicCarregado = dicEntries.length > 0
+    for (const arquivo of arquivosXlsx) {
+      try {
+        const buf = await arquivo.arrayBuffer()
+        const bytes = new Uint8Array(buf)
+        const reconhecido = await ehDicionario(bytes)
+        if (reconhecido) {
+          if (dicCarregado) {
+            addAviso(`${arquivo.name}: dicionário substituído — último vence`)
+          }
+          const entradas = lerDicionario(bytes)
+          setDic(entradas)
+          dicCarregado = true
+          const inicialsDoDic = await lerIniciais(bytes)
+          if (inicialsDoDic !== null && !usuarioEditouIniciais) {
+            setIniciais(inicialsDoDic)
+          }
+        } else {
+          addAviso(`${arquivo.name}: arquivo .xlsx não reconhecido como dicionário — ignorado`)
+        }
+      } catch {
+        // best-effort: erro silenciado — não quebra o fluxo
+        addAviso(`${arquivo.name}: erro ao processar arquivo .xlsx — ignorado`)
+      }
+    }
+
+    // --- Processa arquivos CSV/TXT ---
+    setCsvArquivos(arquivosCsv)
+
+    if (arquivosCsv.length === 0) {
+      if (arquivosXlsx.length > 0) {
+        // Apenas .xlsx foram selecionados — reseta lista de antecipados
+        setLancamentosAntecipados({})
+      } else {
+        setLancamentosAntecipados({})
+      }
       return
     }
 
     const todosLancamentos: Lancamento[] = []
     const porArquivo: Record<string, Lancamento[]> = {}
-    for (const arquivo of arquivos) {
+    for (const arquivo of arquivosCsv) {
       try {
         const conteudo = await arquivo.text()
         const parser = detectar(conteudo)
@@ -240,11 +285,9 @@ export function App() {
 
     clearAvisos()
 
-    let dicBytes: Uint8Array | null = null
-    if (dicArquivo) {
-      const buf = await dicArquivo.arrayBuffer()
-      dicBytes = new Uint8Array(buf)
-    }
+    // Dicionário já está no store (dicEntries) — carregado pelo handler de upload unificado.
+    // Não há mais dicArquivo local; o dicBytes é derivado do store via produzirLancamentos.
+    const dicBytes: Uint8Array | null = null
 
     let modelo: Uint8Array
     try {
@@ -424,9 +467,9 @@ export function App() {
             >
               <input
                 type="file"
-                accept=".csv,.txt,text/csv,text/plain"
+                accept=".csv,.txt,.xlsx"
                 multiple
-                onChange={handleCsvChange}
+                onChange={handleUploadChange}
                 style={{ display: 'none' }}
               />
               <span
@@ -559,7 +602,10 @@ export function App() {
                   type="text"
                   value={iniciais}
                   placeholder="Ex.: ES"
-                  onChange={(e) => setIniciais(e.target.value.trim().toUpperCase())}
+                  onChange={(e) => {
+                    setIniciais(e.target.value.trim().toUpperCase())
+                    setUsuarioEditouIniciais(true)
+                  }}
                 />
               </label>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -573,48 +619,6 @@ export function App() {
                   placeholder="Ex.: Eduardo"
                   onChange={(e) => setNomeUsuario(e.target.value)}
                 />
-              </label>
-            </div>
-
-            {/* Dicionário do mês anterior */}
-            <div style={{ width: '100%', maxWidth: 640, marginTop: 14 }}>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <span className="dc-rotulo">
-                  Dicionário do mês anterior{' '}
-                  <span className="dc-opcional">(opcional — reaproveita suas classificações)</span>
-                </span>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 12,
-                    padding: '12px 14px',
-                    border: '1px dashed var(--borda-3)',
-                    borderRadius: 'var(--raio-campo)',
-                    background: 'var(--branco)',
-                    cursor: 'pointer',
-                    position: 'relative',
-                  }}
-                >
-                  <input
-                    type="file"
-                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    onChange={(e) => setDicArquivo(e.target.files?.[0] ?? null)}
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      opacity: 0,
-                      cursor: 'pointer',
-                    }}
-                  />
-                  <IconeArquivo cor="var(--muted)" />
-                  <span style={{ fontSize: 14, color: 'var(--texto-3)', fontWeight: 600 }}>
-                    {dicArquivo ? dicArquivo.name : 'Escolher arquivo .xlsx'}
-                  </span>
-                  <span style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--muted)', fontWeight: 600 }}>
-                    {dicArquivo ? 'Trocar' : ''}
-                  </span>
-                </div>
               </label>
             </div>
 
