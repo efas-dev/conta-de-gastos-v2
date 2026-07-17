@@ -18,6 +18,7 @@ import { createHash } from 'node:crypto'
 import { unzipSync, zipSync, strToU8 } from 'fflate'
 import { extratoNubank } from '../../src/parsers/extrato_nubank'
 import { enriquecerLancamento } from '../../src/dominio/dicionario'
+import { aprenderDicionario } from '../../src/dominio/aprendizado'
 import { gerarXlsx } from '../../src/excel/writer/gerador'
 import { lerDicionario } from '../../src/excel/reader/leitor'
 import type { Lancamento, DicEntry } from '../../src/types'
@@ -362,5 +363,83 @@ describe('E2E — Caso 2: pipeline com dicionário', () => {
     expect(sheet2).toContain(
       '<c r="A3" t="inlineStr"><is><t>Pagamento de fatura</t></is></c>',
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Caso 3 — Round-trip da frequência do dicionário: vezes N → N+1
+// ---------------------------------------------------------------------------
+
+describe('E2E — Caso 3: round-trip de frequência do dicionário (vezes=3 → vezes=4)', () => {
+  const INICIAIS = 'ES'
+  const CHAVE_TESTE = 'PAG BOLETO ENERGIA'
+
+  // Entrada inicial com vezes=3
+  const dicInicial: DicEntry[] = [
+    {
+      chave: CHAVE_TESTE,
+      fonte: 'extrato_nubank',
+      natureza: 'Moradia',
+      descricao: 'Conta de luz',
+      iniciais: INICIAIS,
+      vezes: 3,
+      ambiguo: false,
+    },
+  ]
+
+  // Lançamento com transcrição idêntica à chave (sem sufixo de data)
+  // para que aprenderDicionario case via normalizarChave(transcricao) === chave
+  const lancamentoRound: Lancamento = {
+    fonte: 'extrato_nubank',
+    data: '2026-07-01',
+    transcricao: CHAVE_TESTE,
+    valor: -22.5,
+    iniciais: INICIAIS,
+    natureza: 'Moradia',
+    descricao: 'Conta de luz',
+  }
+
+  let modeloBytes: Uint8Array
+
+  beforeAll(() => {
+    modeloBytes = new Uint8Array(readFileSync(MODELO_XLSX_PATH))
+  })
+
+  // TL4-1: gerarXlsx com vezes=3 → lerDicionario confirma vezes=3
+  it('lerDicionario sobre .xlsx gerado com vezes=3 retorna entry com vezes=3', () => {
+    const xlsxV3 = gerarXlsx(modeloBytes, INICIAIS, [], dicInicial, '2026-07')
+    const entriesV3 = lerDicionario(xlsxV3)
+
+    expect(entriesV3).toHaveLength(1)
+    expect(entriesV3[0].chave).toBe(CHAVE_TESTE)
+    expect(entriesV3[0].vezes).toBe(3)
+  })
+
+  // TL4-2: aprenderDicionario com padrão idêntico incrementa vezes para 4
+  it('aprenderDicionario com lançamento de padrão idêntico incrementa vezes de 3 para 4', () => {
+    const xlsxV3 = gerarXlsx(modeloBytes, INICIAIS, [], dicInicial, '2026-07')
+    const entriesV3 = lerDicionario(xlsxV3)
+
+    const entriesV4 = aprenderDicionario([lancamentoRound], entriesV3)
+
+    expect(entriesV4).toHaveLength(1)
+    expect(entriesV4[0].vezes).toBe(4)
+    expect(entriesV4[0].ambiguo).toBe(false)
+  })
+
+  // TL4-3: novo gerarXlsx com vezes=4 → lerDicionario confirma vezes=4
+  it('lerDicionario sobre .xlsx regenerado com vezes=4 confirma vezes=4 (round-trip completo)', () => {
+    const xlsxV3 = gerarXlsx(modeloBytes, INICIAIS, [], dicInicial, '2026-07')
+    const entriesV3 = lerDicionario(xlsxV3)
+
+    const entriesV4 = aprenderDicionario([lancamentoRound], entriesV3)
+
+    const xlsxV4 = gerarXlsx(modeloBytes, INICIAIS, [], entriesV4, '2026-07')
+    const entriesConfirmados = lerDicionario(xlsxV4)
+
+    expect(entriesConfirmados).toHaveLength(1)
+    expect(entriesConfirmados[0].chave).toBe(CHAVE_TESTE)
+    expect(entriesConfirmados[0].vezes).toBe(4)
+    expect(entriesConfirmados[0].ambiguo).toBe(false)
   })
 })
