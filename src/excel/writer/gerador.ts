@@ -60,7 +60,9 @@ function celulaNum(ref: string, style: string | null, value: number): string {
  *   H (Valor):        s="43"  — empty: <c r="Hn" s="43"/>
  *
  * B2 no Modelo.xlsx virgem: <c r="B2" s="40"/>
- * B3 no Modelo.xlsx virgem: <c r="B3" s="45" t="s"><v>89</v></c>
+ * B3 no Modelo.xlsx virgem: <c r="B3" s="45"/> — mas re-saves do Modelo já
+ * variaram entre vazia e shared string (<c r="B3" s="45" t="s"><v>89</v></c>),
+ * por isso a substituição é por regex que aceita ambas as formas.
  *
  * Estilos derivados empiricamente do Modelo 483f420 via inspeção de
  * xl/worksheets/sheet1.xml no ZIP da fixture.
@@ -79,9 +81,10 @@ function injetarSheet1(
     () => celulaStr('B2', '40', iniciais),
   )
 
-  // Injeta mês de referência em B3 (substitui a shared string do Modelo por inlineStr)
+  // Injeta mês de referência em B3 como inlineStr (a célula do Modelo pode
+  // vir vazia ou com shared string, conforme o re-save — regex cobre ambas)
   result = result.replace(
-    '<c r="B3" s="45" t="s"><v>89</v></c>',
+    /<c r="B3" s="45"(?:\/>|[^>]*>.*?<\/c>)/,
     () => celulaStr('B3', '45', mesReferencia),
   )
 
@@ -211,7 +214,12 @@ function injetarFullCalcOnLoad(xml: string): string {
  * o gerado deve sempre abrir na Extrato, independente de como o Modelo foi salvo.
  */
 function forcarAbaExtratoAtiva(xml: string): string {
-  return xml.replace(/(<workbookView[^>]*?)\s+activeTab="[^"]*"/, '$1 activeTab="0"')
+  if (/<workbookView[^>]*\bactiveTab=/.test(xml)) {
+    return xml.replace(/(<workbookView[^>]*?)\s+activeTab="[^"]*"/, '$1 activeTab="0"')
+  }
+  // Sem o atributo o default já é 0, mas gravar explícito mantém o gerado
+  // determinístico independente de como o Modelo foi salvo
+  return xml.replace(/<workbookView\b/, '<workbookView activeTab="0"')
 }
 
 /**
