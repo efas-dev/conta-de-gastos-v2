@@ -85,16 +85,32 @@ describe('extratoNubank.parsear() — decimal vírgula', () => {
 // --- TL-10: deduplicação ---
 
 describe('extratoNubank.parsear() — deduplicação', () => {
-  it('TL-10: dois registros com mesmo Identificador → apenas um lançamento no resultado', () => {
+  it('TL-10: duas linhas inteiramente idênticas → apenas um lançamento no resultado', () => {
     const csv = [
       'Data,Valor,Identificador,Descrição',
       '01/03/2026,-150.00,DUP001,Pagamento A',
-      '02/03/2026,-200.00,DUP001,Pagamento A duplicado',
+      '01/03/2026,-150.00,DUP001,Pagamento A',
       '03/03/2026,-50.00,UNI001,Pagamento único',
     ].join('\n')
     const { lancamentos } = extratoNubank.parsear(csv)
     expect(lancamentos).toHaveLength(2)
     expect(lancamentos.filter(l => l.transcricao === 'Pagamento A')).toHaveLength(1)
+  })
+
+  it('TL-17: Pix no Crédito — mesmo Identificador com valor/descrição diferentes materializa as 2 pernas', () => {
+    // Fixture pseudonimizada do beta tester (TODO item 17): linhas 2 e 3 compartilham o id
+    const csv = [
+      'Data,Valor,Identificador,Descrição',
+      '19/06/2026,-4800.00,aa000001-5ed1-4ecb-bf8a-000000000001,Transferência enviada pelo Pix - FULANO BELTRANO DA SILVA - •••.123.456-•• - BCO DO BRASIL',
+      '19/06/2026,1200.00,aa000002-f438-4ddf-a1f5-000000000002,Valor adicionado na conta por cartão de crédito - Valor adicionado para Pix no Crédito',
+      '19/06/2026,-1200.00,aa000002-f438-4ddf-a1f5-000000000002,Transferência enviada pelo Pix - FULANO BELTRANO DA SILVA - •••.123.456-•• - BCO DO BRASIL',
+      '22/06/2026,600.00,aa000003-17fb-477a-9fe5-000000000003,Valor adicionado na conta por cartão de crédito - Valor adicionado para Pix no Crédito',
+    ].join('\n')
+    const { lancamentos, linhasIgnoradas } = extratoNubank.parsear(csv)
+    expect(lancamentos).toHaveLength(4)
+    expect(linhasIgnoradas).toBe(0)
+    const pernas = lancamentos.filter(l => l.data === '2026-06-19' && Math.abs(l.valor) === 1200)
+    expect(pernas.map(l => l.valor).sort((a, b) => a - b)).toEqual([-1200, 1200])
   })
 })
 

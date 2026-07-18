@@ -75,7 +75,8 @@ function aceita(conteudo: string): boolean {
  *
  * Modo best-effort (D6 do ADR): linhas inválidas são puladas e contadas.
  * Arquivo com cabeçalho errado lança ErroArquivoNaoReconhecido.
- * Deduplicação por Identificador: primeiro registro vence (D3 do ADR).
+ * Deduplicação pela linha inteira (data+valor+id+descrição): o "Pix no Crédito"
+ * traz 2 pernas legítimas com o MESMO Identificador — id repetido sozinho não é duplicata.
  */
 function parsear(conteudo: string): ResultadoParse {
   if (!aceita(conteudo)) {
@@ -85,7 +86,7 @@ function parsear(conteudo: string): ResultadoParse {
   }
 
   const linhas = conteudo.split('\n')
-  const identificadoresVistos = new Set<string>()
+  const linhasVistas = new Set<string>()
   const lancamentos: Lancamento[] = []
   let linhasIgnoradas = 0
 
@@ -124,11 +125,12 @@ function parsear(conteudo: string): ResultadoParse {
       continue
     }
 
-    // Deduplicação por Identificador — primeiro vence, duplicata não conta como ignorada
-    if (identificadoresVistos.has(identificador)) {
+    // Deduplicação pela linha inteira — duplicata não conta como ignorada
+    const chaveLinha = `${dataStr}|${valorStr}|${identificador}|${transcricao}`
+    if (linhasVistas.has(chaveLinha)) {
       continue
     }
-    identificadoresVistos.add(identificador)
+    linhasVistas.add(chaveLinha)
 
     lancamentos.push({
       fonte: 'extrato_nubank',
