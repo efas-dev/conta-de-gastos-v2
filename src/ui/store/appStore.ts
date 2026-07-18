@@ -6,6 +6,17 @@ import { enablePatches, produceWithPatches, applyPatches, current, type Patch } 
 import type { Lancamento, DicEntry } from '../../types'
 import { ratearSplit, type AlvoSplit } from '../../dominio/split'
 
+// ---------------------------------------------------------------------------
+// Tipo local — será unificado com src/types.ts quando T1 for mergeado (D2 do ADR)
+// ---------------------------------------------------------------------------
+
+/**
+ * Natureza com dados ricos (sigla, nome completo e descrição curta).
+ * Declarado localmente para T2 rodar em paralelo com T1 (que define o tipo em types.ts).
+ * O merge posterior resolve a duplicação.
+ */
+export type NaturezaRica = { sigla: string; nome: string; descricao: string }
+
 /**
  * Habilita o suporte a patches do Immer (necessário para undo por patches — D3 do ADR).
  * Chamado uma vez no carregamento do módulo — idempotente.
@@ -55,6 +66,8 @@ export interface EstadoApp {
   nomeUsuario: string
   /** Naturezas válidas lidas do Modelo.xlsx (aba Naturezas B3:B32). */
   naturezasValidas: string[]
+  /** Naturezas com dados ricos (sigla, nome, descrição) lidas do Modelo.xlsx. */
+  naturezasRicas: NaturezaRica[]
   /** Entradas do dicionário lidas do .xlsx anterior. */
   dicEntries: DicEntry[]
   /** Mensagens de aviso acumuladas para exibição. */
@@ -212,6 +225,12 @@ export interface AcoesApp {
    */
   setDic: (entries: DicEntry[]) => void
 
+  /**
+   * Substitui a lista de naturezas ricas (sem rastreamento de undo).
+   * Chamado no carregamento do Modelo.xlsx.
+   */
+  setNaturezasRicas: (lista: NaturezaRica[]) => void
+
   /** Adiciona uma mensagem de aviso ao fim da lista. */
   addAviso: (aviso: string) => void
 
@@ -341,6 +360,7 @@ const estadoInicial: EstadoApp = {
   iniciais: '',
   nomeUsuario: '',
   naturezasValidas: [],
+  naturezasRicas: [],
   dicEntries: [],
   avisos: [],
   historico: [],
@@ -366,6 +386,7 @@ function extrairEstado(store: AppStore): EstadoApp {
     iniciais: store.iniciais,
     nomeUsuario: store.nomeUsuario,
     naturezasValidas: store.naturezasValidas,
+    naturezasRicas: store.naturezasRicas,
     dicEntries: store.dicEntries,
     avisos: store.avisos,
     historico: store.historico,
@@ -582,6 +603,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
     setNomeUsuario: (nomeUsuario) => set({ nomeUsuario }),
     setCSV: (arquivo) => set({ csvArquivo: arquivo }),
     setDic: (entries) => set({ dicEntries: entries }),
+    setNaturezasRicas: (lista) => set({ naturezasRicas: lista }),
     addAviso: (aviso) => set((state) => ({ avisos: [...state.avisos, aviso] })),
     clearAvisos: () => set({ avisos: [] }),
     marcarLimpo: () => set({ sujo: false }),

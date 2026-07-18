@@ -53,6 +53,7 @@ function resetarStore(): void {
     iniciais: '',
     nomeUsuario: '',
     naturezasValidas: [],
+    naturezasRicas: [],
     dicEntries: [],
     avisos: [],
     historico: [],
@@ -841,5 +842,46 @@ describe('ciclarOrdenacao', () => {
     const antes = useAppStore.getState().historico.length
     useAppStore.getState().ciclarOrdenacao('valor')
     expect(useAppStore.getState().historico.length).toBe(antes)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// naturezasRicas — campo rico do store (spec-20260718-colinha-naturezas T2)
+// ---------------------------------------------------------------------------
+
+describe('naturezasRicas — estado inicial', () => {
+  beforeEach(resetarStore)
+
+  it('estado inicial é array vazio', () => {
+    expect(useAppStore.getState().naturezasRicas).toEqual([])
+  })
+})
+
+describe('setNaturezasRicas', () => {
+  beforeEach(resetarStore)
+
+  it('persiste lista de naturezas ricas no estado', () => {
+    const lista = [
+      { sigla: 'ALM', nome: 'Alimentação', descricao: 'Gastos com alimentação' },
+      { sigla: 'TRN', nome: 'Transporte', descricao: '' },
+    ]
+    useAppStore.getState().setNaturezasRicas(lista)
+    expect(useAppStore.getState().naturezasRicas).toEqual(lista)
+  })
+
+  it('aceita array vazio para limpar a lista', () => {
+    useAppStore.getState().setNaturezasRicas([
+      { sigla: 'ALM', nome: 'Alimentação', descricao: 'Gastos com alimentação' },
+    ])
+    useAppStore.getState().setNaturezasRicas([])
+    expect(useAppStore.getState().naturezasRicas).toEqual([])
+  })
+
+  it('não altera naturezasValidas ao setar naturezasRicas', () => {
+    useAppStore.setState({ naturezasValidas: ['ALM', 'TRN'] })
+    useAppStore.getState().setNaturezasRicas([
+      { sigla: 'EDU', nome: 'Educação', descricao: 'Cursos e livros' },
+    ])
+    expect(useAppStore.getState().naturezasValidas).toEqual(['ALM', 'TRN'])
   })
 })
