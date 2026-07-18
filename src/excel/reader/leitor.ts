@@ -2,7 +2,7 @@
 // ADR: see Docs/specs/dicionario-ponta-a-ponta.adr.md
 
 import { unzipSync } from 'fflate'
-import type { DicEntry } from '../../types'
+import type { DicEntry, NaturezaRica } from '../../types'
 
 /**
  * Lê a aba "Dicionario" de um arquivo .xlsx (OOXML) e retorna as entradas do
@@ -218,8 +218,13 @@ export function lerDicionario(
 }
 
 /**
- * Lê a aba "Naturezas" de um arquivo .xlsx (OOXML) e retorna as strings
- * não-vazias da coluna B, linhas 3 a 32 (células B3:B32).
+ * Lê a aba "Naturezas" de um arquivo .xlsx (OOXML) e retorna as naturezas
+ * enriquecidas (sigla, nome, descricao) das linhas 3 a 32.
+ *
+ * Colunas lidas: B (sigla), A (nome completo), F (descrição curta).
+ * Linha 2 é o cabeçalho e é pulada (só processa linhas 3–32).
+ * Linha com coluna F ausente ou vazia resulta em `descricao: ""`.
+ * Linhas sem sigla em B são ignoradas.
  *
  * Segue o mesmo padrão de `lerDicionario`: descomprime com fflate, localiza
  * a planilha via workbook.xml + relacionamentos, parseia com DOMParser.
@@ -227,9 +232,9 @@ export function lerDicionario(
  * Qualquer falha (bytes inválidos, aba ausente) retorna `[]` sem lançar.
  *
  * @param bytes  Conteúdo binário do arquivo .xlsx.
- * @returns      Array de strings não-vazias das células B3:B32.
+ * @returns      Array de NaturezaRica das linhas 3–32 com sigla não-vazia.
  */
-export function lerNaturezas(bytes: Uint8Array): string[] {
+export function lerNaturezas(bytes: Uint8Array): NaturezaRica[] {
   if (bytes.length === 0) return []
 
   let zip: Record<string, Uint8Array>
@@ -338,28 +343,42 @@ export function lerNaturezas(bytes: Uint8Array): string[] {
     return []
   }
 
-  // ----- 5. Extrair coluna B, linhas 3 a 32 --------------------------------
+  // ----- 5. Extrair colunas A, B e F, linhas 3 a 32 -----------------------
 
   const ROW_MIN = 3
   const ROW_MAX = 32
 
   const rowEls = sheetDoc.getElementsByTagNameNS('*', 'row')
-  const result: string[] = []
+  const result: NaturezaRica[] = []
 
   for (let i = 0; i < rowEls.length; i++) {
     const rowEl = rowEls[i]
     const rowNum = parseInt(rowEl.getAttribute('r') ?? '0', 10)
     if (rowNum < ROW_MIN || rowNum > ROW_MAX) continue
 
+    // Extrair valores das colunas A, B e F desta linha
+    let sigla = ''
+    let nome = ''
+    let descricao = ''
+
     const cellEls = rowEl.getElementsByTagNameNS('*', 'c')
     for (let j = 0; j < cellEls.length; j++) {
       const cell = cellEls[j]
       const ref = cell.getAttribute('r') ?? ''
-      if (colLetterFromRef(ref) !== 'B') continue
-      const val = getCellText(cell, sharedStrings).trim()
-      if (val) result.push(val)
-      break // apenas coluna B por linha
+      const col = colLetterFromRef(ref)
+      if (col === 'A') {
+        nome = getCellText(cell, sharedStrings).trim()
+      } else if (col === 'B') {
+        sigla = getCellText(cell, sharedStrings).trim()
+      } else if (col === 'F') {
+        descricao = getCellText(cell, sharedStrings).trim()
+      }
     }
+
+    // Ignora linhas sem sigla em B
+    if (!sigla) continue
+
+    result.push({ sigla, nome, descricao })
   }
 
   return result

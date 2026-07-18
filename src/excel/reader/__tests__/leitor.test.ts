@@ -5,7 +5,7 @@ import { zipSync, strToU8 } from 'fflate'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { lerDicionario, lerNaturezas, ehDicionario, lerIniciais } from '../leitor'
-import type { DicEntry } from '../../../types'
+import type { DicEntry, NaturezaRica } from '../../../types'
 
 // ---------------------------------------------------------------------------
 // Helper: cria um .xlsx sintético mínimo com aba "Dicionario"
@@ -341,12 +341,12 @@ describe('lerNaturezas — fixture Modelo.xlsx (happy path)', () => {
     expect(naturezas).toHaveLength(30)
   })
 
-  it('TN-03: primeiro valor é "RR" (célula B3 do Modelo)', () => {
-    expect(naturezas[0]).toBe('RR')
+  it('TN-03: primeira sigla é "RR" (célula B3 do Modelo)', () => {
+    expect(naturezas[0].sigla).toBe('RR')
   })
 
-  it('TN-04: último valor é "IT" (célula B32 do Modelo)', () => {
-    expect(naturezas[29]).toBe('IT')
+  it('TN-04: última sigla é "IT" (célula B32 do Modelo)', () => {
+    expect(naturezas[29].sigla).toBe('IT')
   })
 })
 
@@ -375,6 +375,177 @@ describe('lerNaturezas — .xlsx sem aba Naturezas', () => {
     // Reusa a helper de Dicionario que só tem aba "Dicionario"
     const bytes = criarXlsxDicionario([CABECALHO, ...LINHAS_DADOS])
     expect(lerNaturezas(bytes)).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Helper: cria .xlsx com aba "Naturezas" (colunas A, B, F; linha 2 = cabeçalho)
+// ---------------------------------------------------------------------------
+
+/**
+ * Constrói um ZIP OOXML mínimo com aba "Naturezas".
+ * Linhas passadas começam na linha 2 (cabeçalho) + dados a partir de linha 3.
+ * Cada item: { sigla, nome, descricao? }
+ * Células com descricao undefined ou "" não geram célula F.
+ */
+function criarXlsxNaturezas(
+  dados: Array<{ sigla: string; nome: string; descricao?: string }>,
+  opcoes?: { incluirCabecalho?: boolean },
+): Uint8Array {
+  const incluirCabecalho = opcoes?.incluirCabecalho ?? true
+
+  const buildLinhas = (): string => {
+    const linhas: string[] = []
+
+    if (incluirCabecalho) {
+      // Linha 2 = cabeçalho
+      linhas.push(
+        `<row r="2">` +
+          `<c r="A2" t="inlineStr"><is><t>Nome</t></is></c>` +
+          `<c r="B2" t="inlineStr"><is><t>Sigla</t></is></c>` +
+          `<c r="F2" t="inlineStr"><is><t>Descrição</t></is></c>` +
+          `</row>`,
+      )
+    }
+
+    dados.forEach((item, idx) => {
+      const rowNum = 3 + idx
+      const celB = `<c r="B${rowNum}" t="inlineStr"><is><t>${item.sigla}</t></is></c>`
+      const celA = `<c r="A${rowNum}" t="inlineStr"><is><t>${item.nome}</t></is></c>`
+      const celF =
+        item.descricao !== undefined && item.descricao !== ''
+          ? `<c r="F${rowNum}" t="inlineStr"><is><t>${item.descricao}</t></is></c>`
+          : ''
+      linhas.push(`<row r="${rowNum}">${celA}${celB}${celF}</row>`)
+    })
+
+    return linhas.join('')
+  }
+
+  const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>${buildLinhas()}</sheetData>
+</worksheet>`
+
+  const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Naturezas" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`
+
+  const workbookRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
+    Target="worksheets/sheet1.xml"/>
+</Relationships>`
+
+  const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml"
+    ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml"
+    ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>`
+
+  const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
+    Target="xl/workbook.xml"/>
+</Relationships>`
+
+  return zipSync({
+    '[Content_Types].xml': strToU8(contentTypesXml),
+    '_rels/.rels': strToU8(rootRelsXml),
+    'xl/workbook.xml': strToU8(workbookXml),
+    'xl/_rels/workbook.xml.rels': strToU8(workbookRelsXml),
+    'xl/worksheets/sheet1.xml': strToU8(sheetXml),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// TL-N1: lerNaturezas retorna NaturezaRica[] com sigla, nome e descricao
+// ---------------------------------------------------------------------------
+
+describe('lerNaturezas — estrutura NaturezaRica (TL-N1 a TL-N7)', () => {
+  const dados = [
+    { sigla: 'ALM', nome: 'Alimentação', descricao: 'Gastos com comida' },
+    { sigla: 'TRN', nome: 'Transporte', descricao: 'Passagem e combustível' },
+    { sigla: 'EDU', nome: 'Educação', descricao: '' }, // F vazia
+    { sigla: 'LAZ', nome: 'Lazer' },                   // F ausente
+  ]
+  const bytes = criarXlsxNaturezas(dados)
+
+  it('TL-N1: retorna array com 4 entradas', () => {
+    const resultado = lerNaturezas(bytes)
+    expect(resultado).toHaveLength(4)
+  })
+
+  it('TL-N2: cabeçalho linha 2 é pulado — nenhum item tem sigla "Sigla"', () => {
+    const resultado = lerNaturezas(bytes)
+    expect(resultado.every((n: NaturezaRica) => n.sigla !== 'Sigla')).toBe(true)
+  })
+
+  it('TL-N3: campos sigla, nome e descricao presentes em cada entrada', () => {
+    const resultado = lerNaturezas(bytes)
+    expect(resultado[0]).toEqual({ sigla: 'ALM', nome: 'Alimentação', descricao: 'Gastos com comida' })
+    expect(resultado[1]).toEqual({ sigla: 'TRN', nome: 'Transporte', descricao: 'Passagem e combustível' })
+  })
+
+  it('TL-N7: linha sem coluna F resulta em descricao vazia ""', () => {
+    const resultado = lerNaturezas(bytes)
+    // EDU tem F vazia explícita → ""
+    expect(resultado[2]).toMatchObject({ sigla: 'EDU', descricao: '' })
+    // LAZ não tem F → ""
+    expect(resultado[3]).toMatchObject({ sigla: 'LAZ', descricao: '' })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// TL-N4/N5/N6: trim aplicado em todas as colunas A, B e F
+// ---------------------------------------------------------------------------
+
+describe('lerNaturezas — trim em sigla, nome e descricao (TL-N4, TL-N5, TL-N6)', () => {
+  // Valores com espaços extras para validar o trim
+  const dados = [
+    { sigla: '  RR  ', nome: '  Renda Recorrente  ', descricao: '  Salário e afins  ' },
+  ]
+  const bytes = criarXlsxNaturezas(dados)
+
+  it('TL-N4: trim em sigla (coluna B)', () => {
+    const resultado = lerNaturezas(bytes)
+    expect(resultado[0].sigla).toBe('RR')
+  })
+
+  it('TL-N5: trim em nome (coluna A)', () => {
+    const resultado = lerNaturezas(bytes)
+    expect(resultado[0].nome).toBe('Renda Recorrente')
+  })
+
+  it('TL-N6: trim em descricao (coluna F)', () => {
+    const resultado = lerNaturezas(bytes)
+    expect(resultado[0].descricao).toBe('Salário e afins')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// TL-N8/N9: bytes inválidos e vazios (já cobertos por TN-05/TN-06 mas re-provados para NaturezaRica[])
+// ---------------------------------------------------------------------------
+
+describe('lerNaturezas — robustez NaturezaRica (TL-N8, TL-N9)', () => {
+  it('TL-N8: bytes inválidos retornam [] sem lançar exceção', () => {
+    const bytesInvalidos = new Uint8Array([0, 1, 2, 3, 99, 88])
+    expect(() => lerNaturezas(bytesInvalidos)).not.toThrow()
+    expect(lerNaturezas(bytesInvalidos)).toEqual([])
+  })
+
+  it('TL-N9: bytes vazios retornam []', () => {
+    expect(lerNaturezas(new Uint8Array(0))).toEqual([])
   })
 })
 
