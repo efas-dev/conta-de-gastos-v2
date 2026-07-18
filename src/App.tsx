@@ -2,6 +2,7 @@
 // ADR: see Docs/specs/grid-ux-filtros.adr.md
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
 // ADR: see Docs/specs/dicionario-ponta-a-ponta.adr.md
+// ADR: see Docs/specs/colinha-naturezas.adr.md
 
 import { useState, useRef, useEffect } from 'react'
 import { useAppStore } from './ui/store/appStore'
@@ -19,6 +20,7 @@ import { FiltroBar } from './ui/components/FiltroBar'
 import { SplitModal } from './ui/components/SplitModal'
 import { AvisoList } from './ui/components/AvisoList'
 import { FonteRotulo } from './ui/components/FonteRotulo'
+import { PainelNaturezas } from './ui/components/PainelNaturezas'
 
 /**
  * App — Orquestra o fluxo de três etapas:
@@ -41,6 +43,7 @@ export function App() {
   const avisos = useAppStore((s) => s.avisos)
   const dicEntries = useAppStore((s) => s.dicEntries)
   const sujo = useAppStore((s) => s.sujo)
+  const naturezasRicas = useAppStore((s) => s.naturezasRicas)
 
   // Actions do store
   const setIniciais = useAppStore((s) => s.setIniciais)
@@ -116,6 +119,10 @@ export function App() {
   const podaGerar = lancamentos.length > 0 && modeloBytes !== null
   const emRevisao = lancamentos.length > 0
   const splitLancamento = splitIndice !== null ? lancamentos[splitIndice] : null
+
+  // D5 do ADR colinha-naturezas: lista filtrada — somente naturezas com descrição preenchida.
+  // PainelNaturezas retorna null quando lista vazia (botão não aparece).
+  const naturezasDescritas = naturezasRicas.filter((n) => n.descricao !== '')
 
   // ---------------------------------------------------------------------------
   // Atalhos de teclado (estilo Google Sheets) — desfazer/refazer
@@ -730,6 +737,11 @@ export function App() {
                   setMesEscolhido(novoMes)
                   setUsuarioEditou(true)
                 }}
+              />
+              {/* Colinha de naturezas — D5 do ADR colinha-naturezas: botão oculto quando lista filtrada é vazia */}
+              <PainelNaturezas
+                naturezas={naturezasDescritas}
+                onClose={() => {}}
               />
               <button
                 className="dc-btn dc-btn-primario"
