@@ -206,6 +206,26 @@ function injetarFullCalcOnLoad(xml: string): string {
 }
 
 /**
+ * Força a aba Extrato (índice 0) como ativa no workbook.xml.
+ * O Modelo.xlsx pode vir salvo com outra aba ativa (activeTab="1" = Dicionario);
+ * o gerado deve sempre abrir na Extrato, independente de como o Modelo foi salvo.
+ */
+function forcarAbaExtratoAtiva(xml: string): string {
+  return xml.replace(/(<workbookView[^>]*?)\s+activeTab="[^"]*"/, '$1 activeTab="0"')
+}
+
+/**
+ * Garante que o sheetView tenha (ou não) a seleção de aba (tabSelected="1").
+ * Usado para mover a seleção herdada do Modelo: sheet1 (Extrato) ganha,
+ * sheet2 (Dicionario) perde — em par com o activeTab="0" do workbook.
+ */
+function definirTabSelected(xml: string, selecionada: boolean): string {
+  const semSelecao = xml.replace(/(<sheetView[^>]*?)\s+tabSelected="[^"]*"/, '$1')
+  if (!selecionada) return semSelecao
+  return semSelecao.replace(/<sheetView\b/, '<sheetView tabSelected="1"')
+}
+
+/**
  * Gera um novo arquivo .xlsx por injeção cirúrgica no Modelo.xlsx.
  *
  * Estratégia: descompactar o ZIP com fflate.unzipSync, modificar cirurgicamente
@@ -233,16 +253,18 @@ export function gerarXlsx(
 
   const parts = unzipSync(modelo)
 
-  // 1. Modificar sheet1.xml (aba Extrato): B2, B3 e linhas de dados A9:H{8+n}
+  // 1. Modificar sheet1.xml (aba Extrato): B2, B3, linhas de dados A9:H{8+n}
+  //    e seleção de aba (item 19 — o gerado abre na Extrato)
   const sheet1Xml = decoder.decode(parts['xl/worksheets/sheet1.xml'])
   parts['xl/worksheets/sheet1.xml'] = encoder.encode(
-    injetarSheet1(sheet1Xml, iniciais, lancamentos, mesReferencia),
+    definirTabSelected(injetarSheet1(sheet1Xml, iniciais, lancamentos, mesReferencia), true),
   )
 
   // 2. Modificar sheet2.xml (aba Dicionario): substituir <sheetData/> com entradas
+  //    e remover a seleção de aba herdada do Modelo
   const sheet2Xml = decoder.decode(parts['xl/worksheets/sheet2.xml'])
   parts['xl/worksheets/sheet2.xml'] = encoder.encode(
-    injetarDicionario(sheet2Xml, dicEntries),
+    definirTabSelected(injetarDicionario(sheet2Xml, dicEntries), false),
   )
 
   // 3. Modificar table1.xml: ajustar ref para o número exato de linhas
@@ -251,10 +273,10 @@ export function gerarXlsx(
     atualizarRefTabela1(table1Xml, lancamentos.length),
   )
 
-  // 4. Modificar workbook.xml: adicionar fullCalcOnLoad="1" em <calcPr>
+  // 4. Modificar workbook.xml: fullCalcOnLoad="1" em <calcPr> e aba Extrato ativa
   const workbookXml = decoder.decode(parts['xl/workbook.xml'])
   parts['xl/workbook.xml'] = encoder.encode(
-    injetarFullCalcOnLoad(workbookXml),
+    forcarAbaExtratoAtiva(injetarFullCalcOnLoad(workbookXml)),
   )
 
   return zipSync(parts)

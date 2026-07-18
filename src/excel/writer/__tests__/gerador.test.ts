@@ -124,6 +124,18 @@ describe('gerarXlsx', () => {
     expect(workbook).toMatch(/<calcPr[^>]*fullCalcOnLoad="1"[^>]*\/>/)
   })
 
+  // Item 19 do TODO: o gerado deve abrir na aba Extrato, não na Dicionario
+  it('força a aba Extrato ativa: activeTab="0" no workbook e tabSelected movido de sheet2 para sheet1', () => {
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06')
+    const parts = unzipSync(resultado)
+
+    // workbook.xml: aba ativa é a primeira (Extrato) — o Modelo vem salvo com activeTab="1"
+    expect(decodePart(parts, 'xl/workbook.xml')).toMatch(/<workbookView[^>]*activeTab="0"/)
+    // sheet1 (Extrato) ganha a seleção; sheet2 (Dicionario) perde a que o Modelo carregava
+    expect(decodePart(parts, 'xl/worksheets/sheet1.xml')).toMatch(/<sheetView[^>]*tabSelected="1"/)
+    expect(decodePart(parts, 'xl/worksheets/sheet2.xml')).not.toContain('tabSelected')
+  })
+
   // Test List item 6: aba Dicionario com entradas corretas
   it('injeta DicEntry em sheet2.xml com colunas chave/fonte/natureza/descricao/iniciais', () => {
     const dicEntries: DicEntry[] = [
