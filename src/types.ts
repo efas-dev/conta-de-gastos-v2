@@ -38,6 +38,21 @@ export interface Lancamento {
 }
 
 /**
+ * Natureza de gasto enriquecida com nome completo e descrição curta,
+ * lida da aba `Naturezas` do Modelo.xlsx (colunas B, A e F, linhas 3–32).
+ *
+ * Produzida por `lerNaturezas` e consumida pelo store e pelo painel colinha.
+ */
+export interface NaturezaRica {
+  /** Sigla da natureza (coluna B, ex.: "ALM", "TRN") */
+  sigla: string
+  /** Nome completo da natureza (coluna A, ex.: "Alimentação") */
+  nome: string
+  /** Descrição curta (coluna F); vazio quando a célula está ausente ou em branco */
+  descricao: string
+}
+
+/**
  * Entrada do dicionário de classificações, lida da aba `Dicionario` do .xlsx anterior.
  *
  * A chave é a transcrição normalizada (sufixo de data removido).
