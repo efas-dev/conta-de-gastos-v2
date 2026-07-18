@@ -182,7 +182,7 @@ export function calcularLargurasColunas(
 }
 
 /** Definição das 7 colunas base da grid (larguras serão sobrescritas dinamicamente). */
-const COLUNAS_BASE: GridColumn[] = [
+const COLUNAS_BASE: (GridColumn & { width: number })[] = [
   { title: 'Fonte', width: 120 },
   { title: 'Data', width: 100 },
   { title: 'Transcrição', width: 240 },

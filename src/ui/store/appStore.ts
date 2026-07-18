@@ -671,7 +671,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
             const num = typeof valor === 'number' ? valor : Number(valor)
             if (Number.isFinite(num)) l.valor = num
           } else {
-            ;(l as Record<string, unknown>)[colId] = valor
+            ;(l as unknown as Record<string, unknown>)[colId] = valor
           }
         })
       }
