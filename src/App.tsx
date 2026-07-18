@@ -204,8 +204,24 @@ export function App() {
    * Erros de leitura ou parse são silenciados (best-effort) — não quebram o fluxo.
    */
   async function handleUploadChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const arquivos = Array.from(e.target.files ?? [])
+    await processarArquivos(Array.from(e.target.files ?? []))
+  }
 
+  /**
+   * Drop de arquivos no dropzone — mesmo roteamento do input escondido.
+   * O dragOver precisa de preventDefault para o navegador permitir o drop
+   * (sem ele, soltar o arquivo abre-o na aba).
+   */
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault()
+  }
+
+  async function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    await processarArquivos(Array.from(e.dataTransfer.files ?? []))
+  }
+
+  async function processarArquivos(arquivos: File[]) {
     // Separa arquivos .xlsx dos demais
     const arquivosXlsx = arquivos.filter((f) => f.name.toLowerCase().endsWith('.xlsx'))
     const arquivosCsv = arquivos.filter((f) => !f.name.toLowerCase().endsWith('.xlsx'))
@@ -441,8 +457,10 @@ export function App() {
               </p>
             </div>
 
-            {/* Dropzone (label clicável envolvendo o input escondido) */}
+            {/* Dropzone (label clicável envolvendo o input escondido; drop via handlers próprios) */}
             <label
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
               style={{
                 width: '100%',
                 maxWidth: 640,
