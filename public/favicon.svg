@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Mesmo logo do header do app: quadrado verde (token "verde" #5e7c63) arredondado
+       com as 3 linhas do IconeMenu (App.tsx), em escala 64px para favicon. -->
+  <rect width="64" height="64" rx="19" fill="#5e7c63"/>
+  <g stroke="#faf8f3" stroke-width="4" stroke-linecap="round" fill="none">
+    <path d="M20 25.3h24M20 32h24M20 38.7h13.3"/>
+  </g>
+</svg>
