@@ -1,4 +1,4 @@
-// ADR: see spec/dicionario-ponta-a-ponta.adr.md
+// ADR: see Docs/specs/dicionario-ponta-a-ponta.adr.md
 
 /**
  * Testes de integração para T3 — Unificação do input de upload e roteamento por tipo de arquivo.

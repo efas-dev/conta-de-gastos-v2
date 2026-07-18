@@ -1,7 +1,7 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
 // ADR: see Docs/specs/grid-ux-filtros.adr.md
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
-// ADR: see spec/dicionario-ponta-a-ponta.adr.md
+// ADR: see Docs/specs/dicionario-ponta-a-ponta.adr.md
 
 import { useState, useRef, useEffect } from 'react'
 import { useAppStore } from './ui/store/appStore'

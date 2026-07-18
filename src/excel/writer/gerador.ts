@@ -1,4 +1,5 @@
 // ADR: see Docs/specs/injecao-xlsx-mes-referencia.adr.md
+// ADR: see Docs/specs/dicionario-ponta-a-ponta.adr.md
 import { unzipSync, zipSync } from 'fflate'
 import type { Lancamento, DicEntry } from '../../types.js'
 

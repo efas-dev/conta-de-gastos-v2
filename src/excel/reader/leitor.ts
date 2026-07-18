@@ -1,5 +1,5 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
-// ADR: see spec/dicionario-ponta-a-ponta.adr.md
+// ADR: see Docs/specs/dicionario-ponta-a-ponta.adr.md
 
 import { unzipSync } from 'fflate'
 import type { DicEntry } from '../../types'
