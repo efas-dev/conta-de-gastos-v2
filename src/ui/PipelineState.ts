@@ -131,21 +131,24 @@ export interface ResultadoProduzir {
 // ---------------------------------------------------------------------------
 
 /**
- * Faz parse do CSV, lê o dicionário (se fornecido), enriquece os lançamentos
+ * Faz parse do CSV, enriquece os lançamentos com o dicionário fornecido
  * e aplica as detecções de investimento/transferência com regra de precedência.
  *
  * Função pura de transformação — sem efeitos colaterais além do retorno.
- * Os avisos acumulados (linhas ignoradas, erros de dicionário) são retornados
- * no campo `avisos` para que o chamador decida como apresentá-los.
+ * Os avisos acumulados (linhas ignoradas) são retornados no campo `avisos`
+ * para que o chamador decida como apresentá-los.
+ *
+ * O dicionário chega já parseado (`DicEntry[]`): a leitura dos bytes do .xlsx
+ * acontece no upload (handler unificado do App), que guarda as entradas no store.
  *
  * @param csvConteudo  Conteúdo do arquivo CSV (já lido como string)
- * @param dicBytes     Bytes do .xlsx de dicionário, ou null se não fornecido
+ * @param dicEntries   Entradas do dicionário já lidas, ou [] se não fornecido
  * @param iniciais     Iniciais do usuário
  * @param nomeUsuario  Nome do usuário (opcional — habilita Pix nominal em `detectarTransferenciaInterna`)
  */
 export function produzirLancamentos(
   csvConteudo: string,
-  dicBytes: Uint8Array | null,
+  dicEntries: DicEntry[],
   iniciais: string,
   nomeUsuario?: string,
 ): ResultadoProduzir {
@@ -160,18 +163,12 @@ export function produzirLancamentos(
     avisos.push(`${linhasIgnoradas} linha${plural} ignorada${plural} no CSV`)
   }
 
-  // 2. Leitura do dicionário (opcional)
-  let dicEntries: DicEntry[] = []
-  if (dicBytes !== null) {
-    dicEntries = lerDicionario(dicBytes, (msg) => avisos.push(`Dicionário: ${msg}`))
-  }
-
-  // 3. Enriquecimento via dicionário
+  // 2. Enriquecimento via dicionário
   const lancamentosEnriquecidos = lancamentos.map((l) =>
     enriquecerLancamento(l, dicEntries, iniciais),
   )
 
-  // 4. Detecção de flags com regra de precedência: investimento vence transferenciaInterna
+  // 3. Detecção de flags com regra de precedência: investimento vence transferenciaInterna
   const lancamentosComFlags = lancamentosEnriquecidos.map((l) => {
     const investimento = detectarInvestimento(l)
     const transferenciaInterna =
@@ -240,7 +237,12 @@ export async function executarPipeline(
   onDownload: (blob: Blob, nome: string) => void,
   onAviso: (msg: string) => void,
 ): Promise<void> {
-  const { lancamentos, dicEntries, avisos } = produzirLancamentos(csvConteudo, dicBytes, iniciais)
+  // A fachada preserva a assinatura por bytes: lê o dicionário aqui e repassa
+  // as entradas já parseadas a `produzirLancamentos`.
+  const dicLido: DicEntry[] =
+    dicBytes !== null ? lerDicionario(dicBytes, (msg) => onAviso(`Dicionário: ${msg}`)) : []
+
+  const { lancamentos, dicEntries, avisos } = produzirLancamentos(csvConteudo, dicLido, iniciais)
 
   for (const aviso of avisos) {
     onAviso(aviso)

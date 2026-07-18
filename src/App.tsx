@@ -285,10 +285,6 @@ export function App() {
 
     clearAvisos()
 
-    // Dicionário já está no store (dicEntries) — carregado pelo handler de upload unificado.
-    // Não há mais dicArquivo local; o dicBytes é derivado do store via produzirLancamentos.
-    const dicBytes: Uint8Array | null = null
-
     let modelo: Uint8Array
     try {
       // BASE_URL resolve o subcaminho do GitHub Pages ('/' em dev)
@@ -302,16 +298,14 @@ export function App() {
 
     // Cada arquivo é parseado independentemente (pode ser de banco/formato
     // diferente — `detectar` roda por arquivo) e os lançamentos são concatenados
-    // na ordem dos arquivos selecionados. O dicionário e as naturezas são os
-    // mesmos para todos (fonte única: o dicionário anterior + o Modelo).
+    // na ordem dos arquivos selecionados. O dicionário (dicEntries do store,
+    // carregado pelo upload unificado) e as naturezas são os mesmos para todos.
     const todosLancamentos: typeof lancamentos = []
-    let dicMesclado: typeof dicEntries = []
     for (const arquivo of csvArquivos) {
       const csvConteudo = await arquivo.text()
-      const { lancamentos: lans, dicEntries: dic, avisos: avs } =
-        produzirLancamentos(csvConteudo, dicBytes, iniciais, nomeUsuario || undefined)
+      const { lancamentos: lans, avisos: avs } =
+        produzirLancamentos(csvConteudo, dicEntries, iniciais, nomeUsuario || undefined)
       todosLancamentos.push(...lans)
-      dicMesclado = dic
       for (const av of avs) {
         addAviso(`${arquivo.name}: ${av}`)
       }
@@ -320,7 +314,6 @@ export function App() {
     const naturezas = lerNaturezas(modelo)
 
     setLancamentos(todosLancamentos)
-    setDic(dicMesclado)
     // `setNaturezasValidas` não é exposto como action nominada no store — usa
     // o setState do Zustand diretamente, que é o mecanismo canônico para campos
     // sem action própria (D5 do ADR — store minimalista).

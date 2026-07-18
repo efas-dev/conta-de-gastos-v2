@@ -51,6 +51,7 @@ vi.mock('../../dominio/aprendizado', () => ({
 
 // Importações tipadas das mocks (disponíveis após vi.mock ser processado)
 import { detectar } from '../../parsers/index'
+import { enriquecerLancamento } from '../../dominio/dicionario'
 import { lerDicionario } from '../../excel/reader/leitor'
 import { gerarXlsx } from '../../excel/writer/gerador'
 import { aprenderDicionario } from '../../dominio/aprendizado'
@@ -111,7 +112,7 @@ describe('produzirLancamentos', () => {
   })
 
   it('retorna { lancamentos, dicEntries, avisos } com array de avisos vazio quando sem linhasIgnoradas', () => {
-    const resultado = produzirLancamentos('csv', null, 'ES')
+    const resultado = produzirLancamentos('csv', [], 'ES')
     expect(resultado).toHaveProperty('lancamentos')
     expect(resultado).toHaveProperty('dicEntries')
     expect(resultado).toHaveProperty('avisos')
@@ -123,31 +124,29 @@ describe('produzirLancamentos', () => {
       aceita: () => true,
       parsear: vi.fn(() => ({ lancamentos: lancamentosMock, linhasIgnoradas: 3 })),
     })
-    const resultado = produzirLancamentos('csv', null, 'ES')
+    const resultado = produzirLancamentos('csv', [], 'ES')
     expect(resultado.avisos).toHaveLength(1)
     expect(resultado.avisos[0]).toMatch(/3/)
   })
 
-  it('retorna aviso prefixado com "Dicionário:" quando lerDicionario emite aviso', () => {
-    vi.mocked(lerDicionario).mockImplementation((_bytes, onAvisoCb) => {
-      onAvisoCb?.('arquivo .xlsx inválido')
-      return []
-    })
-    const resultado = produzirLancamentos('csv', new Uint8Array([0]), 'ES')
-    expect(resultado.avisos.some((a) => a.startsWith('Dicionário:'))).toBe(true)
-  })
-
-  it('retorna dicEntries vindas de lerDicionario', () => {
+  it('retorna as dicEntries passadas (passthrough — item 16 do TODO)', () => {
     const entradas: DicEntry[] = [
       { chave: 'mercado', fonte: 'Nubank', natureza: 'Alimentação', descricao: '', iniciais: 'ES', vezes: 1, ambiguo: false },
     ]
-    vi.mocked(lerDicionario).mockReturnValue(entradas)
-    const resultado = produzirLancamentos('csv', new Uint8Array([0]), 'ES')
+    const resultado = produzirLancamentos('csv', entradas, 'ES')
     expect(resultado.dicEntries).toEqual(entradas)
   })
 
-  it('não chama lerDicionario quando dicBytes é null (sem dicionário)', () => {
-    produzirLancamentos('csv', null, 'ES')
+  it('repassa as dicEntries recebidas a enriquecerLancamento (item 16 do TODO)', () => {
+    const entradas: DicEntry[] = [
+      { chave: 'Mercado', fonte: 'Nubank', natureza: 'SM', descricao: 'Supermercado', iniciais: 'JS', vezes: 1, ambiguo: false },
+    ]
+    produzirLancamentos('csv', entradas, 'ES')
+    expect(enriquecerLancamento).toHaveBeenCalledWith(expect.anything(), entradas, 'ES')
+  })
+
+  it('não chama lerDicionario — a leitura do dicionário acontece no upload, não no pipeline', () => {
+    produzirLancamentos('csv', [], 'ES')
     expect(lerDicionario).not.toHaveBeenCalled()
   })
 })
@@ -184,38 +183,38 @@ describe('produzirLancamentos — flags de detecção', () => {
 
   it('lançamento comum recebe investimento=null', () => {
     mockParsear('Mercado')
-    const { lancamentos } = produzirLancamentos('csv', null, 'ES')
+    const { lancamentos } = produzirLancamentos('csv', [], 'ES')
     expect(lancamentos[0].investimento).toBe(null)
   })
 
   it('lançamento comum recebe transferenciaInterna=false', () => {
     mockParsear('Mercado')
-    const { lancamentos } = produzirLancamentos('csv', null, 'ES')
+    const { lancamentos } = produzirLancamentos('csv', [], 'ES')
     expect(lancamentos[0].transferenciaInterna).toBe(false)
   })
 
   it('transcrição com APLICACAO gera investimento="aplicacao"', () => {
     mockParsear('APLICACAO RDB', -1000)
-    const { lancamentos } = produzirLancamentos('csv', null, 'ES')
+    const { lancamentos } = produzirLancamentos('csv', [], 'ES')
     expect(lancamentos[0].investimento).toBe('aplicacao')
   })
 
   it('transcrição com RESGATE gera investimento="resgate"', () => {
     mockParsear('RESGATE CDB', 2000)
-    const { lancamentos } = produzirLancamentos('csv', null, 'ES')
+    const { lancamentos } = produzirLancamentos('csv', [], 'ES')
     expect(lancamentos[0].investimento).toBe('resgate')
   })
 
   it('transcrição com Open Banking gera transferenciaInterna=true e investimento=null', () => {
     mockParsear('Open Banking transferencia')
-    const { lancamentos } = produzirLancamentos('csv', null, 'ES')
+    const { lancamentos } = produzirLancamentos('csv', [], 'ES')
     expect(lancamentos[0].transferenciaInterna).toBe(true)
     expect(lancamentos[0].investimento).toBe(null)
   })
 
   it('regra de precedência: APLICACAO + Open Banking → investimento vence, transferenciaInterna=false', () => {
     mockParsear('APLICACAO Open Banking', -500)
-    const { lancamentos } = produzirLancamentos('csv', null, 'ES')
+    const { lancamentos } = produzirLancamentos('csv', [], 'ES')
     expect(lancamentos[0].investimento).toBe('aplicacao')
     expect(lancamentos[0].transferenciaInterna).toBe(false)
   })

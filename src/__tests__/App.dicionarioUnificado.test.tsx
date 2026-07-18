@@ -68,6 +68,7 @@ vi.mock('../dominio/mes', async (importOriginal) => {
 // ---------------------------------------------------------------------------
 
 import { lerDicionario, ehDicionario, lerIniciais } from '../excel/reader/leitor'
+import { produzirLancamentos } from '../ui/PipelineState'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -267,6 +268,41 @@ describe('App — input unificado (T3)', () => {
       const avisos = useAppStore.getState().avisos
       expect(avisos.some((a) => a.toLowerCase().includes('último') || a.toLowerCase().includes('ultimo') || a.toLowerCase().includes('vence'))).toBe(true)
     })
+  })
+
+  // TL16-1 (TODO item 16): Produzir usa o dicionário do store e não o apaga
+  it('TL16-1: Produzir passa dicEntries do store a produzirLancamentos e preserva o store', async () => {
+    const entradas = [
+      { chave: 'Mercado', fonte: 'extrato_nubank', natureza: 'SM', descricao: 'Supermercado', iniciais: 'ES', vezes: 1, ambiguo: false },
+    ]
+    useAppStore.setState({ dicEntries: entradas })
+    vi.stubGlobal('fetch', vi.fn(async () => ({ arrayBuffer: async () => new Uint8Array([0]).buffer })))
+
+    try {
+      render(<App />)
+
+      const input = document.querySelector('input[type="file"]') as HTMLInputElement
+      const arquivoCsv = criarFile('extrato.csv', 'Data,Valor,Identificador,Descrição\n', 'text/csv')
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [arquivoCsv] } })
+      })
+
+      const botao = screen.getByText('Produzir revisão')
+      await act(async () => {
+        fireEvent.click(botao)
+      })
+
+      await waitFor(() => {
+        expect(produzirLancamentos).toHaveBeenCalled()
+      })
+      const args = vi.mocked(produzirLancamentos).mock.calls[0]
+      // 2º argumento é o dicionário do store (DicEntry[]), não null
+      expect(args[1]).toEqual(entradas)
+      // O dicionário do store não é apagado pelo Produzir
+      expect(useAppStore.getState().dicEntries).toEqual(entradas)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   // TL3-8: arquivo .csv roteado para pipeline CSV/TXT (não chama ehDicionario)
