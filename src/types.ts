@@ -1,4 +1,5 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
+// ADR: see Docs/specs/colinha-naturezas.adr.md
 
 /**
  * Representa um lançamento financeiro normalizado, independente da fonte de origem.
