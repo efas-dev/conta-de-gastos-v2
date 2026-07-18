@@ -3,19 +3,10 @@
 
 import { create } from 'zustand'
 import { enablePatches, produceWithPatches, applyPatches, current, type Patch } from 'immer'
-import type { Lancamento, DicEntry } from '../../types'
+import type { Lancamento, DicEntry, NaturezaRica } from '../../types'
 import { ratearSplit, type AlvoSplit } from '../../dominio/split'
 
-// ---------------------------------------------------------------------------
-// Tipo local — será unificado com src/types.ts quando T1 for mergeado (D2 do ADR)
-// ---------------------------------------------------------------------------
-
-/**
- * Natureza com dados ricos (sigla, nome completo e descrição curta).
- * Declarado localmente para T2 rodar em paralelo com T1 (que define o tipo em types.ts).
- * O merge posterior resolve a duplicação.
- */
-export type NaturezaRica = { sigla: string; nome: string; descricao: string }
+// NaturezaRica importado de ../../types (unificado em T3 — D2 do ADR colinha-naturezas)
 
 /**
  * Habilita o suporte a patches do Immer (necessário para undo por patches — D3 do ADR).

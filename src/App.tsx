@@ -47,6 +47,7 @@ export function App() {
   const setNomeUsuario = useAppStore((s) => s.setNomeUsuario)
   const setLancamentos = useAppStore((s) => s.setLancamentos)
   const setDic = useAppStore((s) => s.setDic)
+  const setNaturezasRicas = useAppStore((s) => s.setNaturezasRicas)
   const addAviso = useAppStore((s) => s.addAviso)
   const clearAvisos = useAppStore((s) => s.clearAvisos)
   const undo = useAppStore((s) => s.undo)
@@ -327,13 +328,13 @@ export function App() {
       }
     }
 
-    const naturezas = lerNaturezas(modelo)
+    // Parseia naturezas uma única vez e deriva ambos os campos (D2 do ADR colinha-naturezas).
+    const ricas = lerNaturezas(modelo)
 
     setLancamentos(todosLancamentos)
-    // `setNaturezasValidas` não é exposto como action nominada no store — usa
-    // o setState do Zustand diretamente, que é o mecanismo canônico para campos
-    // sem action própria (D5 do ADR — store minimalista).
-    useAppStore.setState({ naturezasValidas: naturezas })
+    setNaturezasRicas(ricas)
+    // `naturezasValidas` derivado das siglas — sem parse adicional (D2 do ADR colinha-naturezas).
+    useAppStore.setState({ naturezasValidas: ricas.map((n) => n.sigla) })
 
     setModeloBytes(modelo)
   }
