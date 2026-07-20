@@ -222,14 +222,16 @@ export function App() {
   }
 
   /**
-   * Drop de arquivos no dropzone — mesmo roteamento do input escondido.
-   * O dragOver precisa de preventDefault para o navegador permitir o drop
-   * (sem ele, soltar o arquivo abre-o na aba).
+   * Arrastar-e-soltar na tela de importação INTEIRA — mesmo roteamento do
+   * input escondido. Os handlers vivem no container da tela (não só no
+   * dropzone): soltar em qualquer ponto funciona, e o dragOver precisa de
+   * preventDefault para o navegador permitir o drop (sem ele, soltar o
+   * arquivo abre-o na aba).
    *
    * Feedback visual (item 21): `arrastando` liga em dragEnter e desliga em
-   * dragLeave/drop. dragEnter/dragLeave disparam também ao atravessar filhos
-   * do label — o contador de profundidade evita o pisca-pisca (só desliga
-   * quando o leave zera as entradas acumuladas).
+   * dragLeave/drop, exibindo um overlay de tela cheia. dragEnter/dragLeave
+   * disparam também ao atravessar filhos — o contador de profundidade evita
+   * o pisca-pisca (só desliga quando o leave zera as entradas acumuladas).
    */
   function handleDragOver(e: React.DragEvent) {
     e.preventDefault()
@@ -424,6 +426,12 @@ export function App() {
       {!emRevisao && (
         <div
           className="dc-card"
+          data-testid="tela-importacao"
+          data-arrastando={arrastando}
+          onDragOver={handleDragOver}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
           style={{
             width: '100%',
             minHeight: '100vh',
@@ -434,6 +442,52 @@ export function App() {
             boxShadow: 'none',
           }}
         >
+          {/* Overlay de tela cheia durante o arrasto (item 21) — pointerEvents:none
+              para o drop atravessar até o container que tem os handlers. */}
+          {arrastando && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: 50,
+                background: 'rgba(239, 243, 239, 0.92)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 18,
+                pointerEvents: 'none',
+              }}
+            >
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 16,
+                  border: '2.5px dashed var(--verde)',
+                  borderRadius: 24,
+                }}
+              />
+              <span
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 18,
+                  background: 'var(--verde)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <IconeUpload cor="#fff" />
+              </span>
+              <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--verde)' }}>
+                Solte os arquivos aqui
+              </div>
+              <div style={{ fontSize: 15, color: 'var(--muted)' }}>
+                CSV, TXT ou dicionário .xlsx — em qualquer lugar da tela
+              </div>
+            </div>
+          )}
           {/* Top bar */}
           <div
             style={{
@@ -489,19 +543,15 @@ export function App() {
               </p>
             </div>
 
-            {/* Dropzone (label clicável envolvendo o input escondido; drop via handlers próprios) */}
+            {/* Dropzone (label clicável envolvendo o input escondido; o arrasto é
+                tratado pela tela inteira — handlers no container tela-importacao) */}
             <label
-              onDragOver={handleDragOver}
-              onDragEnter={handleDragEnter}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              data-arrastando={arrastando}
               style={{
                 width: '100%',
                 maxWidth: 640,
                 marginTop: 30,
-                border: arrastando ? '2px dashed var(--verde)' : '1.5px dashed #c9cfc5',
-                background: arrastando ? 'var(--verde-suave)' : 'var(--branco)',
+                border: '1.5px dashed #c9cfc5',
+                background: 'var(--branco)',
                 borderRadius: 18,
                 padding: '40px 32px',
                 display: 'flex',
@@ -523,19 +573,16 @@ export function App() {
                   width: 56,
                   height: 56,
                   borderRadius: 16,
-                  background: arrastando ? 'var(--branco)' : 'var(--verde-suave)',
+                  background: 'var(--verde-suave)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  // Filhos não capturam dragEnter/dragLeave — o contador do label
-                  // já cobre, mas pointerEvents:none elimina o ruído por completo.
-                  pointerEvents: arrastando ? 'none' : undefined,
                 }}
               >
                 <IconeUpload />
               </span>
               <div style={{ marginTop: 16, fontSize: 17, fontWeight: 700 }}>
-                {arrastando ? 'Solte os arquivos aqui' : 'Arraste extratos e faturas aqui'}
+                Arraste extratos e faturas aqui
               </div>
               <div style={{ marginTop: 6, fontSize: 14, color: 'var(--muted)' }}>
                 ou clique para escolher · CSV ou TXT · vários de uma vez
@@ -861,9 +908,9 @@ function IconeCadeado() {
     </svg>
   )
 }
-function IconeUpload() {
+function IconeUpload({ cor = 'var(--verde)' }: { cor?: string }) {
   return (
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--verde)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={cor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 16V4M7 9l5-5 5 5" />
       <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
     </svg>

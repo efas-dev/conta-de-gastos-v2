@@ -154,55 +154,75 @@ describe('App — arrastar-e-soltar na importação (item 13)', () => {
   })
 })
 
-describe('App — feedback visual de drag-over no dropzone (item 21)', () => {
+describe('App — feedback visual de drag-over em toda a tela de importação (item 21)', () => {
   beforeEach(() => {
     resetarStore()
     vi.clearAllMocks()
   })
 
-  it('TL21-1: dragEnter liga o estado arrastando e mostra "Solte os arquivos aqui"', () => {
+  /** Localiza a tela de importação inteira (container que recebe os handlers de arrasto). */
+  function acharTela(): HTMLElement {
+    return screen.getByTestId('tela-importacao')
+  }
+
+  it('TL21-1: dragEnter em qualquer ponto da tela (fora do dropzone) mostra o overlay "Solte os arquivos aqui"', () => {
     render(<App />)
-    const dropzone = acharDropzone()
 
-    fireEvent.dragEnter(dropzone)
+    // O título da página fica FORA do dropzone — o evento sobe até o container da tela
+    fireEvent.dragEnter(screen.getByText('Importe seus extratos e faturas'))
 
-    expect(dropzone.getAttribute('data-arrastando')).toBe('true')
+    expect(acharTela().getAttribute('data-arrastando')).toBe('true')
     expect(screen.getByText('Solte os arquivos aqui')).toBeDefined()
   })
 
-  it('TL21-2: dragLeave desliga o estado arrastando e restaura o texto original', () => {
+  it('TL21-2: dragLeave desliga o estado arrastando e esconde o overlay', () => {
     render(<App />)
-    const dropzone = acharDropzone()
+    const tela = acharTela()
 
-    fireEvent.dragEnter(dropzone)
-    fireEvent.dragLeave(dropzone)
+    fireEvent.dragEnter(tela)
+    fireEvent.dragLeave(tela)
 
-    expect(dropzone.getAttribute('data-arrastando')).toBe('false')
-    expect(screen.getByText('Arraste extratos e faturas aqui')).toBeDefined()
+    expect(tela.getAttribute('data-arrastando')).toBe('false')
+    expect(screen.queryByText('Solte os arquivos aqui')).toBeNull()
   })
 
   it('TL21-3: atravessar um filho (enter→enter→leave) mantém o estado arrastando ligado', () => {
     render(<App />)
-    const dropzone = acharDropzone()
+    const tela = acharTela()
 
-    // Entrar no dropzone, depois num filho (2º dragEnter), depois sair do filho
-    fireEvent.dragEnter(dropzone)
-    fireEvent.dragEnter(dropzone)
-    fireEvent.dragLeave(dropzone)
+    // Entrar na tela, depois num filho (2º dragEnter), depois sair do filho
+    fireEvent.dragEnter(tela)
+    fireEvent.dragEnter(tela)
+    fireEvent.dragLeave(tela)
 
-    expect(dropzone.getAttribute('data-arrastando')).toBe('true')
+    expect(tela.getAttribute('data-arrastando')).toBe('true')
   })
 
-  it('TL21-4: drop desliga o estado arrastando', async () => {
+  it('TL21-4: drop em qualquer ponto da tela processa os arquivos e desliga o overlay', async () => {
     render(<App />)
-    const dropzone = acharDropzone()
+    const tela = acharTela()
 
-    fireEvent.dragEnter(dropzone)
+    fireEvent.dragEnter(tela)
     const arquivo = criarFile('extrato.csv', 'Data,Valor,Identificador,Descrição\n', 'text/csv')
     await act(async () => {
-      fireEvent.drop(dropzone, { dataTransfer: { files: [arquivo] } })
+      // Drop no título, fora do dropzone — a tela toda aceita
+      fireEvent.drop(screen.getByText('Importe seus extratos e faturas'), {
+        dataTransfer: { files: [arquivo] },
+      })
     })
 
-    expect(dropzone.getAttribute('data-arrastando')).toBe('false')
+    expect(tela.getAttribute('data-arrastando')).toBe('false')
+    await waitFor(() => {
+      expect(screen.getByText('extrato.csv')).toBeDefined()
+    })
+  })
+
+  it('TL21-5: dragOver na tela toda tem preventDefault (drop permitido fora do dropzone)', () => {
+    render(<App />)
+
+    const evento = new Event('dragover', { bubbles: true, cancelable: true })
+    screen.getByText('Importe seus extratos e faturas').dispatchEvent(evento)
+
+    expect(evento.defaultPrevented).toBe(true)
   })
 })
