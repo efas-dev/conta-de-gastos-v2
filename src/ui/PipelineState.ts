@@ -1,11 +1,13 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
+// ADR: see spec/avisos-acionaveis.adr.md
 
-import type { Lancamento, DicEntry } from '../types'
+import type { Lancamento, DicEntry, Aviso } from '../types'
 import { detectar } from '../parsers/index'
 import { enriquecerLancamento } from '../dominio/dicionario'
 import { detectarInvestimento } from '../dominio/investimento'
 import { detectarTransferenciaInterna } from '../dominio/transferencia'
+import { detectarValorPendente, detectarConciliacao } from '../dominio/deteccoes'
 import { aprenderDicionario } from '../dominio/aprendizado'
 import { lerDicionario } from '../excel/reader/leitor'
 import { gerarXlsx } from '../excel/writer/gerador'
@@ -141,22 +143,35 @@ export interface ResultadoProduzir {
  * O dicionário chega já parseado (`DicEntry[]`): a leitura dos bytes do .xlsx
  * acontece no upload (handler unificado do App), que guarda as entradas no store.
  *
- * @param csvConteudo  Conteúdo do arquivo CSV (já lido como string)
- * @param dicEntries   Entradas do dicionário já lidas, ou [] se não fornecido
- * @param iniciais     Iniciais do usuário
- * @param nomeUsuario  Nome do usuário (opcional — habilita Pix nominal em `detectarTransferenciaInterna`)
+ * As detecções de avisos acionáveis (`detectarValorPendente`, `detectarConciliacao` —
+ * ver `src/dominio/deteccoes.ts`) rodam após o parse e são despachadas via `adicionarAvisos`,
+ * um callback injetado — nunca uma importação direta de `avisosSlice` (ver ADR
+ * `avisos-acionaveis`, Decisão 5: parser e este orquestrador não conhecem o store diretamente,
+ * o despacho é por dado/callback, não por acoplamento a módulo).
+ *
+ * @param csvConteudo       Conteúdo do arquivo CSV (já lido como string)
+ * @param dicEntries        Entradas do dicionário já lidas, ou [] se não fornecido
+ * @param iniciais          Iniciais do usuário
+ * @param nomeUsuario       Nome do usuário (opcional — habilita Pix nominal em `detectarTransferenciaInterna`)
+ * @param lancamentosExtrato Lançamentos do extrato a conciliar com esta fatura (opcional).
+ *   Quando vazio, `detectarConciliacao` não é chamado — evita o aviso "fatura não conciliada"
+ *   em importações de um único arquivo sem contraparte de extrato.
+ * @param adicionarAvisos  Callback chamado sempre, com o array de `Aviso[]` combinado das
+ *   detecções (vazio se nenhuma gerar aviso). No-op por padrão.
  */
 export function produzirLancamentos(
   csvConteudo: string,
   dicEntries: DicEntry[],
   iniciais: string,
   nomeUsuario?: string,
+  lancamentosExtrato: Lancamento[] = [],
+  adicionarAvisos: (avisos: Aviso[]) => void = () => {},
 ): ResultadoProduzir {
   const avisos: string[] = []
 
   // 1. Parse CSV (modo best-effort)
   const parser = detectar(csvConteudo)
-  const { lancamentos, linhasIgnoradas } = parser.parsear(csvConteudo)
+  const { lancamentos, linhasIgnoradas, excluidosPendentes } = parser.parsear(csvConteudo)
 
   if (linhasIgnoradas > 0) {
     const plural = linhasIgnoradas > 1 ? 's' : ''
@@ -175,6 +190,14 @@ export function produzirLancamentos(
       investimento !== null ? false : detectarTransferenciaInterna(l, nomeUsuario)
     return { ...l, investimento, transferenciaInterna }
   })
+
+  // 4. Avisos acionáveis: converte excluidosPendentes/conciliação em Aviso[] e despacha.
+  const avisosValorPendente = detectarValorPendente(excluidosPendentes)
+  const avisosConciliacao =
+    lancamentosExtrato.length > 0
+      ? detectarConciliacao(lancamentosComFlags, lancamentosExtrato)
+      : []
+  adicionarAvisos([...avisosValorPendente, ...avisosConciliacao])
 
   return { lancamentos: lancamentosComFlags, dicEntries, avisos }
 }
