@@ -14,6 +14,7 @@ import {
 import { lerNaturezas, lerDicionario, ehDicionario, lerIniciais } from './excel/reader/leitor'
 import { defaultMes, detectarMesSugerido, classificarFonte } from './dominio/mes'
 import { detectar } from './parsers/index'
+import { detectarConciliacao } from './dominio/deteccoes'
 import type { Lancamento } from './types'
 import { ReviewGrid } from './ui/components/ReviewGrid'
 import { FiltroBar } from './ui/components/FiltroBar'
@@ -369,6 +370,39 @@ export function App() {
       todosLancamentos.push(...lans)
       for (const av of avs) {
         addAviso(`${arquivo.name}: ${av}`)
+      }
+    }
+
+    // Task 8 do ADR avisos-acionaveis: correlaciona fatura×extrato pelo campo
+    // `fonte` que os parsers já gravam em cada lançamento — sem heurística de
+    // nome de arquivo (decisão humana, ver spec Task 8). Reutiliza
+    // `classificarFonte` (já usado acima para os rótulos fatura/extrato da
+    // lista de arquivos) como única fonte de verdade, em vez de introduzir
+    // uma segunda heurística. `produzirLancamentos` sempre roda por arquivo
+    // com `lancamentosExtrato=[]` (linha 366: 5º argumento), então
+    // `detectarConciliacao` nunca dispara ali — esta é a única chamada,
+    // evitando dupla emissão de propostas. Só executa quando o lote produzido
+    // tem ao menos uma fonte de cada lado; um único arquivo (só fatura ou só
+    // extrato) fica sem proposta e sem o aviso informativo "não conciliada",
+    // preservando o comportamento anterior.
+    const fontesProduzidas = Array.from(new Set(todosLancamentos.map((l) => l.fonte)))
+    const fontesFaturaProduzidas = fontesProduzidas.filter(
+      (fonte) => classificarFonte(fonte, todosLancamentos, mesEscolhido) === 'fatura',
+    )
+    const fontesExtratoProduzidas = fontesProduzidas.filter(
+      (fonte) => classificarFonte(fonte, todosLancamentos, mesEscolhido) === 'extrato',
+    )
+
+    if (fontesFaturaProduzidas.length > 0 && fontesExtratoProduzidas.length > 0) {
+      const lancamentosExtratoTotal = todosLancamentos.filter((l) =>
+        fontesExtratoProduzidas.includes(l.fonte),
+      )
+      // Par único por fatura (Decisão R2 do ADR): uma chamada de detectarConciliacao
+      // por fonte de fatura, nunca as faturas somadas entre si.
+      for (const fonteFatura of fontesFaturaProduzidas) {
+        const lancamentosDestaFatura = todosLancamentos.filter((l) => l.fonte === fonteFatura)
+        const avisosConciliacao = detectarConciliacao(lancamentosDestaFatura, lancamentosExtratoTotal)
+        adicionarAvisosAcionaveis(avisosConciliacao)
       }
     }
 
