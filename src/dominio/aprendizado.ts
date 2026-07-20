@@ -4,6 +4,15 @@ import type { Lancamento, DicEntry } from '../types'
 import { normalizarChave } from './normalizacao'
 
 /**
+ * Um padrão de classificação só tem valor no dicionário se Natureza E Descrição
+ * estiverem preenchidas (item 24 do TODO) — entrada incompleta volta no próximo
+ * import sem valor de classificação.
+ */
+function classificacaoCompleta(x: { natureza: string; descricao: string }): boolean {
+  return x.natureza.trim() !== '' && x.descricao.trim() !== ''
+}
+
+/**
  * Atualiza o dicionário de classificações com base nos lançamentos fornecidos.
  *
  * Para cada lançamento, computa `chave = normalizarChave(lancamento.transcricao)` e
@@ -13,6 +22,11 @@ import { normalizarChave } from './normalizacao'
  * - Sem entrada existente: cria nova com `vezes: 1` e `ambiguo: false`.
  * - Entrada existente com padrão idêntico (`natureza`, `descricao`, `iniciais`): incrementa `vezes`.
  * - Entrada existente com qualquer divergência no padrão: marca `ambiguo: true`.
+ *
+ * Item 24 do TODO: lançamento com Natureza ou Descrição vazia é ignorado (não
+ * cria entrada, não incrementa, não marca ambíguo), e entradas herdadas de
+ * `dicAnterior` já incompletas são filtradas do retorno — o round-trip de
+ * export não as re-grava.
  *
  * Não muta `dicAnterior`; retorna novo array.
  *
@@ -24,10 +38,14 @@ export function aprenderDicionario(
   lancamentos: Lancamento[],
   dicAnterior: DicEntry[],
 ): DicEntry[] {
-  // Copia do dicionário anterior — nunca mutamos o parâmetro recebido
-  const dic: DicEntry[] = dicAnterior.map((e) => ({ ...e }))
+  // Copia do dicionário anterior — nunca mutamos o parâmetro recebido.
+  // Entradas herdadas incompletas são descartadas aqui (item 24).
+  const dic: DicEntry[] = dicAnterior.filter(classificacaoCompleta).map((e) => ({ ...e }))
 
   for (const lan of lancamentos) {
+    // Item 24: só aprende lançamento com Natureza e Descrição preenchidas
+    if (!classificacaoCompleta(lan)) continue
+
     const chave = normalizarChave(lan.transcricao)
     const idx = dic.findIndex((e) => e.chave === chave && e.fonte === lan.fonte)
 
