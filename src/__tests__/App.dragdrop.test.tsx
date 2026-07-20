@@ -153,3 +153,56 @@ describe('App — arrastar-e-soltar na importação (item 13)', () => {
     expect(evento.defaultPrevented).toBe(true)
   })
 })
+
+describe('App — feedback visual de drag-over no dropzone (item 21)', () => {
+  beforeEach(() => {
+    resetarStore()
+    vi.clearAllMocks()
+  })
+
+  it('TL21-1: dragEnter liga o estado arrastando e mostra "Solte os arquivos aqui"', () => {
+    render(<App />)
+    const dropzone = acharDropzone()
+
+    fireEvent.dragEnter(dropzone)
+
+    expect(dropzone.getAttribute('data-arrastando')).toBe('true')
+    expect(screen.getByText('Solte os arquivos aqui')).toBeDefined()
+  })
+
+  it('TL21-2: dragLeave desliga o estado arrastando e restaura o texto original', () => {
+    render(<App />)
+    const dropzone = acharDropzone()
+
+    fireEvent.dragEnter(dropzone)
+    fireEvent.dragLeave(dropzone)
+
+    expect(dropzone.getAttribute('data-arrastando')).toBe('false')
+    expect(screen.getByText('Arraste extratos e faturas aqui')).toBeDefined()
+  })
+
+  it('TL21-3: atravessar um filho (enter→enter→leave) mantém o estado arrastando ligado', () => {
+    render(<App />)
+    const dropzone = acharDropzone()
+
+    // Entrar no dropzone, depois num filho (2º dragEnter), depois sair do filho
+    fireEvent.dragEnter(dropzone)
+    fireEvent.dragEnter(dropzone)
+    fireEvent.dragLeave(dropzone)
+
+    expect(dropzone.getAttribute('data-arrastando')).toBe('true')
+  })
+
+  it('TL21-4: drop desliga o estado arrastando', async () => {
+    render(<App />)
+    const dropzone = acharDropzone()
+
+    fireEvent.dragEnter(dropzone)
+    const arquivo = criarFile('extrato.csv', 'Data,Valor,Identificador,Descrição\n', 'text/csv')
+    await act(async () => {
+      fireEvent.drop(dropzone, { dataTransfer: { files: [arquivo] } })
+    })
+
+    expect(dropzone.getAttribute('data-arrastando')).toBe('false')
+  })
+})

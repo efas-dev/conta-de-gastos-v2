@@ -111,6 +111,12 @@ export function App() {
   /** Âncora invisível usada para disparar o download sem abrir nova aba. */
   const anchorRef = useRef<HTMLAnchorElement>(null)
 
+  /** Arrasto de arquivos sobre o dropzone em andamento (feedback visual — item 21). */
+  const [arrastando, setArrastando] = useState<boolean>(false)
+
+  /** Profundidade de dragEnter acumulada — evita desligar ao atravessar filhos do label. */
+  const profundidadeArrastoRef = useRef(0)
+
   // ---------------------------------------------------------------------------
   // Derivações
   // ---------------------------------------------------------------------------
@@ -219,13 +225,31 @@ export function App() {
    * Drop de arquivos no dropzone — mesmo roteamento do input escondido.
    * O dragOver precisa de preventDefault para o navegador permitir o drop
    * (sem ele, soltar o arquivo abre-o na aba).
+   *
+   * Feedback visual (item 21): `arrastando` liga em dragEnter e desliga em
+   * dragLeave/drop. dragEnter/dragLeave disparam também ao atravessar filhos
+   * do label — o contador de profundidade evita o pisca-pisca (só desliga
+   * quando o leave zera as entradas acumuladas).
    */
   function handleDragOver(e: React.DragEvent) {
     e.preventDefault()
   }
 
+  function handleDragEnter(e: React.DragEvent) {
+    e.preventDefault()
+    profundidadeArrastoRef.current++
+    setArrastando(true)
+  }
+
+  function handleDragLeave() {
+    profundidadeArrastoRef.current = Math.max(0, profundidadeArrastoRef.current - 1)
+    if (profundidadeArrastoRef.current === 0) setArrastando(false)
+  }
+
   async function handleDrop(e: React.DragEvent) {
     e.preventDefault()
+    profundidadeArrastoRef.current = 0
+    setArrastando(false)
     await processarArquivos(Array.from(e.dataTransfer.files ?? []))
   }
 
@@ -468,13 +492,16 @@ export function App() {
             {/* Dropzone (label clicável envolvendo o input escondido; drop via handlers próprios) */}
             <label
               onDragOver={handleDragOver}
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
               onDrop={handleDrop}
+              data-arrastando={arrastando}
               style={{
                 width: '100%',
                 maxWidth: 640,
                 marginTop: 30,
-                border: '1.5px dashed #c9cfc5',
-                background: 'var(--branco)',
+                border: arrastando ? '2px dashed var(--verde)' : '1.5px dashed #c9cfc5',
+                background: arrastando ? 'var(--verde-suave)' : 'var(--branco)',
                 borderRadius: 18,
                 padding: '40px 32px',
                 display: 'flex',
@@ -496,16 +523,19 @@ export function App() {
                   width: 56,
                   height: 56,
                   borderRadius: 16,
-                  background: 'var(--verde-suave)',
+                  background: arrastando ? 'var(--branco)' : 'var(--verde-suave)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
+                  // Filhos não capturam dragEnter/dragLeave — o contador do label
+                  // já cobre, mas pointerEvents:none elimina o ruído por completo.
+                  pointerEvents: arrastando ? 'none' : undefined,
                 }}
               >
                 <IconeUpload />
               </span>
               <div style={{ marginTop: 16, fontSize: 17, fontWeight: 700 }}>
-                Arraste extratos e faturas aqui
+                {arrastando ? 'Solte os arquivos aqui' : 'Arraste extratos e faturas aqui'}
               </div>
               <div style={{ marginTop: 6, fontSize: 14, color: 'var(--muted)' }}>
                 ou clique para escolher · CSV ou TXT · vários de uma vez
