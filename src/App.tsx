@@ -19,6 +19,7 @@ import { ReviewGrid } from './ui/components/ReviewGrid'
 import { FiltroBar } from './ui/components/FiltroBar'
 import { SplitModal } from './ui/components/SplitModal'
 import { AvisoList } from './ui/components/AvisoList'
+import { CentralDeAvisos } from './ui/components/CentralDeAvisos'
 import { FonteRotulo } from './ui/components/FonteRotulo'
 import { PainelNaturezas } from './ui/components/PainelNaturezas'
 
@@ -52,6 +53,10 @@ export function App() {
   const setDic = useAppStore((s) => s.setDic)
   const setNaturezasRicas = useAppStore((s) => s.setNaturezasRicas)
   const addAviso = useAppStore((s) => s.addAviso)
+  // Callback real do slice de avisos acionáveis — despachado ao pipeline em
+  // handleProduzir (Decisão 5 do ADR avisos-acionaveis: PipelineState não
+  // conhece o store; o call-site em App.tsx é quem faz a ligação real).
+  const adicionarAvisosAcionaveis = useAppStore((s) => s.adicionarAvisos)
   const clearAvisos = useAppStore((s) => s.clearAvisos)
   const undo = useAppStore((s) => s.undo)
   const redo = useAppStore((s) => s.redo)
@@ -353,8 +358,14 @@ export function App() {
     const todosLancamentos: typeof lancamentos = []
     for (const arquivo of csvArquivos) {
       const csvConteudo = await arquivo.text()
-      const { lancamentos: lans, avisos: avs } =
-        produzirLancamentos(csvConteudo, dicEntries, iniciais, nomeUsuario || undefined)
+      const { lancamentos: lans, avisos: avs } = produzirLancamentos(
+        csvConteudo,
+        dicEntries,
+        iniciais,
+        nomeUsuario || undefined,
+        [],
+        adicionarAvisosAcionaveis,
+      )
       todosLancamentos.push(...lans)
       for (const av of avs) {
         addAviso(`${arquivo.name}: ${av}`)
@@ -874,6 +885,12 @@ export function App() {
               <AvisoList avisos={avisos} />
             </div>
           )}
+
+          {/* Central de avisos acionáveis (T6) — convive com o AvisoList legado acima,
+              sem substituí-lo (ver ADR avisos-acionaveis, aviso de escopo da Task 6). */}
+          <div style={{ padding: '0 28px 16px' }}>
+            <CentralDeAvisos />
+          </div>
 
           {/* Modal de split — abre quando onSplitDetectado dispara */}
           {splitIndice !== null && splitLancamento && (
