@@ -397,12 +397,32 @@ export function App() {
       const lancamentosExtratoTotal = todosLancamentos.filter((l) =>
         fontesExtratoProduzidas.includes(l.fonte),
       )
+      // `detectarConciliacao` (T3, função pura) devolve `aviso.alvo` como índice
+      // posicional relativo ao array `lancamentosExtrato` que ela recebeu — aqui,
+      // o subconjunto filtrado `lancamentosExtratoTotal`, não `todosLancamentos`
+      // inteiro. `avisosSlice.aplicar` (T4), por sua vez, interpreta `alvo` como
+      // índice posicional em `state.lancamentos`, que é `todosLancamentos` sem
+      // filtro (ver `setLancamentos(todosLancamentos)` abaixo). Os dois contratos
+      // são internamente corretos, mas divergem no índice-base; sem remapear
+      // aqui, `aplicar` removeria o item errado sempre que a fatura precedesse o
+      // extrato no lote (evidência: Docs/.harness/iteracao-log-spec-20260720-avisos-acionaveis.md,
+      // bloco "Debugging gate" da Task 7, 2ª tentativa). `indicesExtratoNoTotal[i]`
+      // traduz o índice i dentro do subconjunto filtrado para o índice real em
+      // `todosLancamentos`.
+      const indicesExtratoNoTotal = todosLancamentos
+        .map((l, indice) => ({ l, indice }))
+        .filter(({ l }) => fontesExtratoProduzidas.includes(l.fonte))
+        .map(({ indice }) => indice)
       // Par único por fatura (Decisão R2 do ADR): uma chamada de detectarConciliacao
       // por fonte de fatura, nunca as faturas somadas entre si.
       for (const fonteFatura of fontesFaturaProduzidas) {
         const lancamentosDestaFatura = todosLancamentos.filter((l) => l.fonte === fonteFatura)
         const avisosConciliacao = detectarConciliacao(lancamentosDestaFatura, lancamentosExtratoTotal)
-        adicionarAvisosAcionaveis(avisosConciliacao)
+        const avisosRemapeados = avisosConciliacao.map((aviso) => ({
+          ...aviso,
+          alvo: aviso.alvo.map((indiceStr) => String(indicesExtratoNoTotal[Number(indiceStr)])),
+        }))
+        adicionarAvisosAcionaveis(avisosRemapeados)
       }
     }
 
