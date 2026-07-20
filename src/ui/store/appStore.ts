@@ -1,11 +1,18 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
 // ADR: see Docs/specs/grid-ux-filtros.adr.md
 // ADR: see Docs/specs/colinha-naturezas.adr.md
+// ADR: see spec/avisos-acionaveis.adr.md
 
 import { create } from 'zustand'
 import { enablePatches, produceWithPatches, applyPatches, current, type Patch } from 'immer'
 import type { Lancamento, DicEntry, NaturezaRica } from '../../types'
 import { ratearSplit, type AlvoSplit } from '../../dominio/split'
+import {
+  criarAvisosSlice,
+  estadoInicialAvisos,
+  type AcoesAvisosSlice,
+  type EstadoAvisosSlice,
+} from './avisosSlice'
 
 // NaturezaRica importado de ../../types (unificado em T3 — D2 do ADR colinha-naturezas)
 
@@ -64,6 +71,17 @@ export interface EstadoApp {
   dicEntries: DicEntry[]
   /** Mensagens de aviso acumuladas para exibição. */
   avisos: string[]
+  /**
+   * Estado do módulo de avisos acionáveis (Decisão 5 do ADR `avisos-acionaveis`) —
+   * central de propostas/informativos consultável separadamente do array legado
+   * `avisos: string[]` acima. Namespace escolhido para não colidir com esse campo
+   * legado: o slice próprio (`avisosSlice.ts`) declara `avisos: Aviso[]` no seu
+   * contrato isolado; aqui ele é exposto como sub-objeto para coexistir com o
+   * legado sem renomeá-lo (fora de escopo desta task — ver `App.tsx`/`AvisoList.tsx`,
+   * Task 6). Fora do histórico de undo/redo do grid (ver `EstadoMutavel` abaixo):
+   * `aplicar`/`desfazer` têm seu próprio mecanismo de reversão.
+   */
+  avisosAcionaveis: EstadoAvisosSlice
   /**
    * Pilha de undo. Cada entrada guarda os patches diretos e inversos de uma
    * mutação, permitindo tanto desfazer (aplicar `inversas`) quanto refazer
@@ -148,6 +166,7 @@ type EstadoMutavel = Omit<
   | 'ordenacaoDirecao'
   | 'lancamentosVisiveis'
   | 'mapaIndiceVisualReal'
+  | 'avisosAcionaveis'
 >
 
 // ---------------------------------------------------------------------------
@@ -155,7 +174,7 @@ type EstadoMutavel = Omit<
 // ---------------------------------------------------------------------------
 
 /** Actions expostas pelo store. */
-export interface AcoesApp {
+export interface AcoesApp extends AcoesAvisosSlice {
   /**
    * Edita um campo editável de um lançamento na posição `indice`.
    *
@@ -355,6 +374,7 @@ const estadoInicial: EstadoApp = {
   naturezasRicas: [],
   dicEntries: [],
   avisos: [],
+  avisosAcionaveis: estadoInicialAvisos,
   historico: [],
   futuro: [],
   csvArquivo: null,
@@ -381,6 +401,7 @@ function extrairEstado(store: AppStore): EstadoApp {
     naturezasRicas: store.naturezasRicas,
     dicEntries: store.dicEntries,
     avisos: store.avisos,
+    avisosAcionaveis: store.avisosAcionaveis,
     historico: store.historico,
     futuro: store.futuro,
     csvArquivo: store.csvArquivo,
@@ -431,6 +452,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
       ordenacaoDirecao: _od,
       lancamentosVisiveis: _lv,
       mapaIndiceVisualReal: _miv,
+      avisosAcionaveis: _av,
       ...estadoMutavel
     } = extrairEstado(get())
     const [novoEstado, diretas, inversas] = produceWithPatches(
@@ -456,9 +478,18 @@ export const useAppStore = create<AppStore>()((set, get) => {
     })
   }
 
+  // Ações do slice de avisos acionáveis (avisosSlice.ts) — não rastreiam undo
+  // do grid; `aplicar`/`desfazer` têm mecanismo de reversão próprio (D4 do ADR).
+  const acoesAvisos = criarAvisosSlice(set, get)
+
   return {
     // Estado inicial
     ...estadoInicial,
+
+    // -------------------------------------------------------------------
+    // Ações do slice de avisos acionáveis — ver avisosSlice.ts
+    // -------------------------------------------------------------------
+    ...acoesAvisos,
 
     // -------------------------------------------------------------------
     // Actions mutativas — rastreiam patches para undo
