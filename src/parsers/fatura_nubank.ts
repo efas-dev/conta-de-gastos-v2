@@ -1,8 +1,12 @@
 // ADR: see Docs/specs/parsers-fatura-nubank-extrato-itau.adr.md
 
 import type { Lancamento, ResultadoParse } from '../types'
+import { normalizarParaBusca } from '../dominio/normalizacao'
 
 const CABECALHO_ESPERADO = 'date,title,amount'
+
+const TITULO_PAGAMENTO_RECEBIDO = normalizarParaBusca('Pagamento recebido')
+const TITULO_VALOR_PENDENTE = normalizarParaBusca('Valor pendente do mês anterior')
 
 /**
  * Retorna true se o conteúdo começa com o cabeçalho da fatura Nubank CC.
@@ -63,7 +67,10 @@ function parsearValorFatura(valorStr: string): number {
  *
  * Regras:
  * - Pular header (primeira linha)
- * - Ignorar linhas com título "pagamento recebido" (case-insensitive)
+ * - "Pagamento recebido" e "Valor pendente do mês anterior" (matching NFD+lowercase,
+ *   precedente: leitor do dicionário) não são descartados: saem em `excluidosPendentes`
+ *   em vez de `lancamentos` (Decisão 4/5 do ADR avisos-acionaveis) — nenhum descarte silencioso
+ * - "Multa por fatura atrasada" e "IOF por fatura atrasada" permanecem em `lancamentos`
  * - Inverter sinal: cobrança positiva no arquivo → valor negativo; estorno negativo → positivo
  * - Linhas malformadas (< 3 colunas) são puladas e contadas em linhasIgnoradas
  * - fonte: 'fatura_nubank_cc'
@@ -71,6 +78,7 @@ function parsearValorFatura(valorStr: string): number {
 function parsear(conteudo: string): ResultadoParse {
   const linhas = conteudo.split('\n')
   const lancamentos: Lancamento[] = []
+  const excluidosPendentes: Lancamento[] = []
   let linhasIgnoradas = 0
 
   for (let i = 1; i < linhas.length; i++) {
@@ -87,18 +95,13 @@ function parsear(conteudo: string): ResultadoParse {
     const titulo = campos[1].trim()
     const valorStr = campos[2].trim()
 
-    // Ignorar pagamento recebido (case-insensitive)
-    if (titulo.toLowerCase() === 'pagamento recebido') {
-      continue
-    }
-
     const valor = parsearValorFatura(valorStr)
     if (isNaN(valor)) {
       linhasIgnoradas++
       continue
     }
 
-    lancamentos.push({
+    const lancamento: Lancamento = {
       fonte: 'fatura_nubank_cc',
       data: dataStr,
       transcricao: titulo,
@@ -106,10 +109,21 @@ function parsear(conteudo: string): ResultadoParse {
       iniciais: '',
       natureza: '',
       descricao: '',
-    })
+    }
+
+    const tituloNormalizado = normalizarParaBusca(titulo)
+    if (
+      tituloNormalizado === TITULO_PAGAMENTO_RECEBIDO ||
+      tituloNormalizado === TITULO_VALOR_PENDENTE
+    ) {
+      excluidosPendentes.push(lancamento)
+      continue
+    }
+
+    lancamentos.push(lancamento)
   }
 
-  return { lancamentos, linhasIgnoradas, excluidosPendentes: [] }
+  return { lancamentos, linhasIgnoradas, excluidosPendentes }
 }
 
 export const faturaNumbank = { aceita, parsear }
