@@ -1,7 +1,6 @@
 // ADR: see Docs/specs/parsers-fatura-nubank-extrato-itau.adr.md
 
-import type { Lancamento } from '../types'
-import type { ResultadoParse } from './extrato_nubank'
+import type { Lancamento, ResultadoParse } from '../types'
 
 const CABECALHO_ESPERADO = 'date,title,amount'
 
@@ -110,7 +109,7 @@ function parsear(conteudo: string): ResultadoParse {
     })
   }
 
-  return { lancamentos, linhasIgnoradas }
+  return { lancamentos, linhasIgnoradas, excluidosPendentes: [] }
 }
 
 export const faturaNumbank = { aceita, parsear }

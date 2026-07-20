@@ -1,7 +1,7 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
 // ADR: see Docs/specs/parsers-fatura-nubank-extrato-itau.adr.md
 
-import type { Lancamento } from '../types'
+import type { Lancamento, ResultadoParse } from '../types'
 
 const CABECALHO_ESPERADO = 'Data,Valor,Identificador,Descrição'
 
@@ -15,12 +15,6 @@ export class ErroArquivoNaoReconhecido extends Error {
     super(mensagem)
     this.name = 'ErroArquivoNaoReconhecido'
   }
-}
-
-/** Resultado do parse: lançamentos válidos + contagem de linhas puladas (D6 do ADR). */
-export interface ResultadoParse {
-  lancamentos: Lancamento[]
-  linhasIgnoradas: number
 }
 
 /**
@@ -143,7 +137,7 @@ function parsear(conteudo: string): ResultadoParse {
     })
   }
 
-  return { lancamentos, linhasIgnoradas }
+  return { lancamentos, linhasIgnoradas, excluidosPendentes: [] }
 }
 
 export const extratoNubank = { aceita, parsear }

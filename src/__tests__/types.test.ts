@@ -1,6 +1,7 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
+// ADR: see spec/avisos-acionaveis.adr.md
 import { describe, it, expect } from 'vitest'
-import type { Lancamento, DicEntry } from '../types'
+import type { Lancamento, DicEntry, ResultadoParse, Aviso } from '../types'
 
 // TL-01 a TL-07: Lancamento possui todos os campos esperados com os tipos corretos
 describe('Lancamento', () => {
@@ -200,5 +201,114 @@ describe('DicEntry', () => {
       ambiguo: true,
     }
     expect(typeof e.ambiguo).toBe('boolean')
+  })
+})
+
+// TL-23 a TL-25: ResultadoParse possui excluidosPendentes: Lancamento[]
+describe('ResultadoParse', () => {
+  it('aceita excluidosPendentes preenchido com Lancamento[] (TL-23)', () => {
+    const excluido: Lancamento = {
+      fonte: 'Nubank',
+      data: '2024-01-15',
+      transcricao: 'Pagamento recebido',
+      valor: 100,
+      iniciais: '',
+      natureza: '',
+      descricao: '',
+    }
+    const resultado: ResultadoParse = {
+      lancamentos: [],
+      linhasIgnoradas: 0,
+      excluidosPendentes: [excluido],
+    }
+    expect(resultado.excluidosPendentes).toHaveLength(1)
+    expect(resultado.excluidosPendentes[0].transcricao).toBe('Pagamento recebido')
+  })
+
+  it('aceita excluidosPendentes vazio (default dos parsers sem exclusão) (TL-24)', () => {
+    const resultado: ResultadoParse = {
+      lancamentos: [],
+      linhasIgnoradas: 0,
+      excluidosPendentes: [],
+    }
+    expect(resultado.excluidosPendentes).toEqual([])
+  })
+
+  it('mantém lancamentos e linhasIgnoradas inalterados (TL-25)', () => {
+    const resultado: ResultadoParse = {
+      lancamentos: [],
+      linhasIgnoradas: 3,
+      excluidosPendentes: [],
+    }
+    expect(resultado.linhasIgnoradas).toBe(3)
+  })
+})
+
+// TL-26 a TL-30: Aviso possui id, tipo, origem, mensagem, alvo, estado
+describe('Aviso', () => {
+  it('pode ser instanciado com todos os campos, tipo informativo (TL-26)', () => {
+    const aviso: Aviso = {
+      id: 'aviso-1',
+      tipo: 'informativo',
+      origem: 'valor-pendente',
+      mensagem: 'Valor pendente do mês anterior detectado',
+      alvo: ['lanc-1'],
+      estado: 'pendente',
+    }
+    expect(aviso.id).toBe('aviso-1')
+    expect(aviso.tipo).toBe('informativo')
+    expect(aviso.origem).toBe('valor-pendente')
+    expect(aviso.mensagem).toBe('Valor pendente do mês anterior detectado')
+    expect(aviso.alvo).toEqual(['lanc-1'])
+    expect(aviso.estado).toBe('pendente')
+  })
+
+  it("campo tipo aceita 'proposta' (TL-27)", () => {
+    const aviso: Aviso = {
+      id: 'aviso-2',
+      tipo: 'proposta',
+      origem: 'conciliacao',
+      mensagem: 'Fatura conciliável com pagamento do extrato',
+      alvo: ['lanc-2'],
+      estado: 'pendente',
+    }
+    expect(aviso.tipo).toBe('proposta')
+  })
+
+  it("campo estado aceita 'aplicado' (TL-28)", () => {
+    const aviso: Aviso = {
+      id: 'aviso-3',
+      tipo: 'proposta',
+      origem: 'conciliacao',
+      mensagem: 'teste',
+      alvo: [],
+      estado: 'aplicado',
+    }
+    expect(aviso.estado).toBe('aplicado')
+  })
+
+  it("campo estado aceita 'dispensado' (TL-29)", () => {
+    const aviso: Aviso = {
+      id: 'aviso-4',
+      tipo: 'proposta',
+      origem: 'conciliacao',
+      mensagem: 'teste',
+      alvo: [],
+      estado: 'dispensado',
+    }
+    expect(aviso.estado).toBe('dispensado')
+  })
+
+  it('campo alvo é string[] de ids de Lancamento (TL-30)', () => {
+    const aviso: Aviso = {
+      id: 'aviso-5',
+      tipo: 'informativo',
+      origem: 'valor-pendente',
+      mensagem: 'teste',
+      alvo: ['id-a', 'id-b'],
+      estado: 'pendente',
+    }
+    expect(Array.isArray(aviso.alvo)).toBe(true)
+    expect(aviso.alvo.every(id => typeof id === 'string')).toBe(true)
   })
 })

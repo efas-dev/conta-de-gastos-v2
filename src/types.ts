@@ -1,5 +1,6 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
 // ADR: see Docs/specs/colinha-naturezas.adr.md
+// ADR: see spec/avisos-acionaveis.adr.md
 
 /**
  * Representa um lançamento financeiro normalizado, independente da fonte de origem.
@@ -75,4 +76,41 @@ export interface DicEntry {
   vezes: number
   /** `true` quando a chave apresentou classificações conflitantes — não auto-preenche */
   ambiguo: boolean
+}
+
+/**
+ * Resultado do parse: lançamentos válidos + contagem de linhas puladas (D6 do ADR
+ * `parsers-fatura-nubank-extrato-itau`) + lançamentos excluídos de forma explícita
+ * (`excluidosPendentes`, Decisão 4/5 do ADR `avisos-acionaveis`).
+ *
+ * `excluidosPendentes` substitui o descarte silencioso: lançamentos como "Pagamento
+ * recebido" ou "Valor pendente do mês anterior" saem aqui em vez de desaparecer sem
+ * rastro. Todo parser deve preencher este campo (`[]` quando não há exclusão).
+ */
+export interface ResultadoParse {
+  lancamentos: Lancamento[]
+  linhasIgnoradas: number
+  excluidosPendentes: Lancamento[]
+}
+
+/**
+ * Aviso acionável exibido na Central de Avisos (ver ADR `avisos-acionaveis`, Decisão 5).
+ *
+ * `tipo: 'informativo'` é somente leitura; `tipo: 'proposta'` pode ser aceita/ignorada.
+ * `alvo` carrega os ids dos lançamentos afetados como dado — quem decide o que fazer
+ * com esses ids é o consumidor (`avisosSlice`), nunca o produtor do aviso.
+ */
+export interface Aviso {
+  /** Identificador único do aviso */
+  id: string
+  /** 'informativo' = somente leitura; 'proposta' = pode ser aceita/dispensada */
+  tipo: 'informativo' | 'proposta'
+  /** Origem/detector que gerou o aviso (ex.: 'valor-pendente', 'conciliacao') */
+  origem: string
+  /** Mensagem exibida ao usuário na Central de Avisos */
+  mensagem: string
+  /** Ids dos lançamentos afetados pelo aviso */
+  alvo: string[]
+  /** Estado do ciclo de vida do aviso */
+  estado: 'pendente' | 'aplicado' | 'dispensado'
 }
