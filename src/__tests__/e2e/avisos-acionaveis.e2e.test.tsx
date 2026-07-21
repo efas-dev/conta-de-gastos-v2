@@ -1,4 +1,4 @@
-// ADR: see spec/avisos-acionaveis.adr.md
+// ADR: see Docs/specs/avisos-acionaveis.adr.md
 
 /**
  * Teste E2E — Task 7 do spec `avisos-acionaveis`: import fatura+extrato →

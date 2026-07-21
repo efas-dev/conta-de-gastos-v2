@@ -1,7 +1,7 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
 // ADR: see Docs/specs/grid-ux-filtros.adr.md
 // ADR: see Docs/specs/colinha-naturezas.adr.md
-// ADR: see spec/avisos-acionaveis.adr.md
+// ADR: see Docs/specs/avisos-acionaveis.adr.md
 
 import { create } from 'zustand'
 import { enablePatches, produceWithPatches, applyPatches, current, type Patch } from 'immer'

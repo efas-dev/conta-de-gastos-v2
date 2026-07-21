@@ -1,4 +1,4 @@
-// ADR: see spec/avisos-acionaveis.adr.md
+// ADR: see Docs/specs/avisos-acionaveis.adr.md
 
 import type { Aviso, Lancamento } from '../types'
 

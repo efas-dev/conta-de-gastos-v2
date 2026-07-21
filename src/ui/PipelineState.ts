@@ -1,6 +1,6 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
-// ADR: see spec/avisos-acionaveis.adr.md
+// ADR: see Docs/specs/avisos-acionaveis.adr.md
 
 import type { Lancamento, DicEntry, Aviso } from '../types'
 import { detectar } from '../parsers/index'

@@ -1,4 +1,4 @@
-// ADR: see spec/avisos-acionaveis.adr.md
+// ADR: see Docs/specs/avisos-acionaveis.adr.md
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useAppStore } from '../appStore'

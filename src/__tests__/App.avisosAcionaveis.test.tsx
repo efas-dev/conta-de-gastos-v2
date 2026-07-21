@@ -1,4 +1,4 @@
-// ADR: see spec/avisos-acionaveis.adr.md
+// ADR: see Docs/specs/avisos-acionaveis.adr.md
 
 /**
  * Testes de integração para T6 — CentralDeAvisos conectada ao slice em App.tsx,

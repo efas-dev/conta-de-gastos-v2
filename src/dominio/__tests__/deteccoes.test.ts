@@ -1,4 +1,4 @@
-// ADR: see spec/avisos-acionaveis.adr.md
+// ADR: see Docs/specs/avisos-acionaveis.adr.md
 
 import { describe, it, expect } from 'vitest'
 import { detectarValorPendente, detectarConciliacao } from '../deteccoes'

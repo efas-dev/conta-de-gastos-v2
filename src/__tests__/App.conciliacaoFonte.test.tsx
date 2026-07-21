@@ -1,4 +1,4 @@
-// ADR: see spec/avisos-acionaveis.adr.md
+// ADR: see Docs/specs/avisos-acionaveis.adr.md
 
 /**
  * Testes de integração para a Task 8 do spec `avisos-acionaveis` — correlação
