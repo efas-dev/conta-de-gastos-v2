@@ -183,3 +183,43 @@ describe('App — correlação fatura×extrato por fonte alimenta detectarConcil
     expect(propostas).toHaveLength(0)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Task T5 (spec inspecao-proposta-conciliacao) — remapeamento de `aviso.permanece`
+// Dívida: Docs/debt/tecnica/remapeamento-permanece-ausente-app-tsx.md
+// ---------------------------------------------------------------------------
+
+describe('App — remapeamento de aviso.permanece quando a fatura NÃO é o primeiro arquivo (T5)', () => {
+  it('extrato enviado antes da fatura no lote — permanece aponta para os índices reais dos itens da fatura', async () => {
+    const extrato = criarFileTexto('extrato-sintetico.csv', EXTRATO_CSV)
+    const fatura = criarFileTexto('fatura-sintetica.csv', FATURA_CSV)
+
+    // Ordem deliberada: extrato ANTES da fatura — reproduz o cenário da dívida
+    // (`todosLancamentos` = [extrato..., fatura...]; sem o remapeamento, `permanece`
+    // continuaria com índices relativos a `lancamentosDestaFatura`, que aqui NÃO
+    // coincidem com os índices reais em `state.lancamentos`).
+    await produzirComArquivos([extrato, fatura])
+
+    const lancamentos = useAppStore.getState().lancamentos
+    const proposta = useAppStore
+      .getState()
+      .avisosAcionaveis.avisos.find((a) => a.tipo === 'proposta' && a.origem === 'conciliacao')
+    expect(proposta).toBeDefined()
+
+    // Os 2 lançamentos da fatura (Livraria/Farmácia) devem estar em `permanece`,
+    // identificados pelos seus índices REAIS em `state.lancamentos` — não pelos
+    // índices 0/1 relativos ao subconjunto da fatura isolado.
+    const indicesPermanece = proposta!.permanece.map(Number)
+    const transcricoesPermanece = indicesPermanece.map((i) => lancamentos[i]?.transcricao)
+    expect(transcricoesPermanece).toContain('Livraria Fictícia')
+    expect(transcricoesPermanece).toContain('Farmácia Fictícia')
+
+    // Nenhum índice de `permanece` deve apontar para um lançamento do extrato.
+    expect(transcricoesPermanece).not.toContain('Pagamento de fatura')
+    expect(transcricoesPermanece).not.toContain('Outro débito fictício')
+
+    // `alvo` continua correto (já coberto pela Task 8) — aponta para o item do extrato.
+    const indicesAlvo = proposta!.alvo.map(Number)
+    expect(indicesAlvo.map((i) => lancamentos[i]?.transcricao)).toEqual(['Pagamento de fatura'])
+  })
+})

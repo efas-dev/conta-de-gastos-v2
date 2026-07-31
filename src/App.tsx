@@ -3,6 +3,7 @@
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
 // ADR: see Docs/specs/dicionario-ponta-a-ponta.adr.md
 // ADR: see Docs/specs/colinha-naturezas.adr.md
+// ADR: see spec/inspecao-proposta-conciliacao.adr.md
 
 import { useState, useRef, useEffect } from 'react'
 import { useAppStore } from './ui/store/appStore'
@@ -417,10 +418,22 @@ export function App() {
       // por fonte de fatura, nunca as faturas somadas entre si.
       for (const fonteFatura of fontesFaturaProduzidas) {
         const lancamentosDestaFatura = todosLancamentos.filter((l) => l.fonte === fonteFatura)
+        // Mesmo padrão de `indicesExtratoNoTotal` acima, agora para o lado da fatura:
+        // `aviso.permanece` (T0, ADR `inspecao-proposta-conciliacao`) também é um índice
+        // posicional relativo ao subconjunto filtrado que `detectarConciliacao` recebeu —
+        // aqui, `lancamentosDestaFatura` — não a `todosLancamentos` inteiro. Sem este
+        // remapeamento, `permanece` aponta para a linha errada sempre que a fatura não é o
+        // primeiro arquivo do lote (dívida registrada em
+        // Docs/debt/tecnica/remapeamento-permanece-ausente-app-tsx.md).
+        const indicesFaturaNoTotal = todosLancamentos
+          .map((l, indice) => ({ l, indice }))
+          .filter(({ l }) => l.fonte === fonteFatura)
+          .map(({ indice }) => indice)
         const avisosConciliacao = detectarConciliacao(lancamentosDestaFatura, lancamentosExtratoTotal)
         const avisosRemapeados = avisosConciliacao.map((aviso) => ({
           ...aviso,
           alvo: aviso.alvo.map((indiceStr) => String(indicesExtratoNoTotal[Number(indiceStr)])),
+          permanece: aviso.permanece.map((indiceStr) => String(indicesFaturaNoTotal[Number(indiceStr)])),
         }))
         adicionarAvisosAcionaveis(avisosRemapeados)
       }

@@ -157,17 +157,32 @@ describe('E2E — Task 7: import fatura+extrato → avisos → conciliação →
     })
   }
 
-  it('upload fatura+extrato sintéticos → aviso de valor pendente aparece na CentralDeAvisos', async () => {
+  /**
+   * Abre o sheet lateral colapsável (D12 do ADR `inspecao-proposta-conciliacao`,
+   * Task T3a) — a seção "Propostas"/"Informativos" só existe no DOM quando
+   * expandido. Mesmo padrão de `CentralDeAvisos.test.tsx`/`App.avisosAcionaveis.test.tsx`.
+   */
+  function abrirCentralDeAvisos(): void {
+    fireEvent.click(screen.getByRole('button', { name: /abrir central de avisos/i }))
+  }
+
+  it('upload fatura+extrato sintéticos → proposta de valor pendente aparece na CentralDeAvisos', async () => {
     await produzirFaturaEExtrato()
 
-    // Aviso informativo de "valor pendente do mês anterior" — não depende de
+    // Task T2 do spec `inspecao-proposta-conciliacao` (D10 do ADR): valor-pendente
+    // promovido de `tipo:'informativo'` para `tipo:'proposta'` — não depende de
     // correlação entre arquivos, roda por arquivo (detectarValorPendente).
     await waitFor(() => {
-      expect(useAppStore.getState().avisosAcionaveis.avisos.length).toBeGreaterThan(0)
+      const propostas = useAppStore
+        .getState()
+        .avisosAcionaveis.avisos.filter((a) => a.tipo === 'proposta' && a.origem === 'valor-pendente')
+      expect(propostas).toHaveLength(1)
     })
 
-    const secaoInformativos = screen.getByRole('region', { name: 'Avisos informativos' })
-    expect(within(secaoInformativos).getByText(/valor pendente do mês anterior/i)).toBeInTheDocument()
+    abrirCentralDeAvisos()
+
+    const secaoPropostas = screen.getByRole('region', { name: 'Propostas' })
+    expect(within(secaoPropostas).getByText(/valor pendente do mês anterior/i)).toBeInTheDocument()
   })
 
   it('upload fatura+extrato sintéticos → proposta de conciliação aparece na CentralDeAvisos', async () => {
@@ -180,13 +195,23 @@ describe('E2E — Task 7: import fatura+extrato → avisos → conciliação →
       expect(propostas).toHaveLength(1)
     })
 
+    abrirCentralDeAvisos()
+
     const secaoPropostas = screen.getByRole('region', { name: 'Propostas' })
     expect(
       within(secaoPropostas).getByText(/pagamento de fatura/i),
     ).toBeInTheDocument()
   })
 
-  it('aplicar a proposta de conciliação remove o lançamento do extrato (não um da fatura)', async () => {
+  /** Localiza o card (li) da proposta de conciliação pelo texto da mensagem, dentro da seção "Propostas". */
+  function cardConciliacao(): HTMLElement {
+    const secaoPropostas = screen.getByRole('region', { name: 'Propostas' })
+    const item = within(secaoPropostas).getByText(/pagamento de fatura/i).closest('li')
+    expect(item).not.toBeNull()
+    return item as HTMLElement
+  }
+
+  it('aplicar (Aprovar) a proposta de conciliação remove o lançamento do extrato (não um da fatura)', async () => {
     await produzirFaturaEExtrato()
 
     await waitFor(() => {
@@ -199,10 +224,10 @@ describe('E2E — Task 7: import fatura+extrato → avisos → conciliação →
     const lancamentosAntes = useAppStore.getState().lancamentos
     expect(lancamentosAntes.some((l) => /pagamento de fatura/i.test(l.transcricao))).toBe(true)
 
-    const secaoPropostas = screen.getByRole('region', { name: 'Propostas' })
-    const botaoAplicar = within(secaoPropostas).getByText('Aplicar')
+    abrirCentralDeAvisos()
+    const botaoAprovar = within(cardConciliacao()).getByRole('button', { name: /aprovar/i })
     await act(async () => {
-      fireEvent.click(botaoAplicar)
+      fireEvent.click(botaoAprovar)
     })
 
     await waitFor(() => {
@@ -224,7 +249,7 @@ describe('E2E — Task 7: import fatura+extrato → avisos → conciliação →
     expect(lancamentosDepois).toHaveLength(lancamentosAntes.length - 1)
   })
 
-  it('export .xlsx roda sem erro após aplicar a proposta de conciliação', async () => {
+  it('export .xlsx roda sem erro após aprovar a proposta de conciliação', async () => {
     await produzirFaturaEExtrato()
 
     await waitFor(() => {
@@ -234,10 +259,10 @@ describe('E2E — Task 7: import fatura+extrato → avisos → conciliação →
       expect(propostas).toHaveLength(1)
     })
 
-    const secaoPropostas = screen.getByRole('region', { name: 'Propostas' })
-    const botaoAplicar = within(secaoPropostas).getByText('Aplicar')
+    abrirCentralDeAvisos()
+    const botaoAprovar = within(cardConciliacao()).getByRole('button', { name: /aprovar/i })
     await act(async () => {
-      fireEvent.click(botaoAplicar)
+      fireEvent.click(botaoAprovar)
     })
 
     await waitFor(() => {

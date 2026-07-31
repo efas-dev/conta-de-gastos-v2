@@ -23,7 +23,7 @@ function lerFixture(nome: string): string {
 describe('produzirLancamentos — pipeline completo com fatura sintética (integração T5)', () => {
   const csvAvisosPendentes = lerFixture('fatura_nubank_avisos_pendentes.csv')
 
-  it('despacha um aviso informativo de valor pendente via adicionarAvisos, sem chamar detectarConciliacao (sem extrato)', () => {
+  it('despacha um aviso de proposta de valor pendente via adicionarAvisos, sem chamar detectarConciliacao (sem extrato)', () => {
     const avisosCapturados: Aviso[] = []
 
     const resultado = produzirLancamentos(csvAvisosPendentes, [], 'ES', undefined, [], (avisos) => {
@@ -31,11 +31,15 @@ describe('produzirLancamentos — pipeline completo com fatura sintética (integ
     })
 
     expect(avisosCapturados).toHaveLength(1)
+    // Task T2 do spec `inspecao-proposta-conciliacao` (D10 do ADR): valor-pendente
+    // promovido de `tipo:'informativo'` para `tipo:'proposta'` acionável, `alvo: []`.
     expect(avisosCapturados[0]).toMatchObject({
-      tipo: 'informativo',
+      tipo: 'proposta',
       origem: 'valor-pendente',
+      alvo: [],
       estado: 'pendente',
     })
+    expect(avisosCapturados[0].resumo).toBeUndefined()
     expect(avisosCapturados[0].mensagem).toMatch(/valor pendente do mês anterior/i)
 
     // "Pagamento recebido" e "Valor pendente" saem em excluidosPendentes — não entram
