@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   criarAvisosSlice,
   estadoInicialAvisos,
+  selecionarContagemPendentes,
   type StoreComAvisos,
 } from '../avisosSlice'
 import type { Aviso, Lancamento } from '../../../types'
@@ -84,7 +85,7 @@ describe('avisosSlice', () => {
     })
 
     it('parte de estadoInicialAvisos vazio', () => {
-      expect(estadoInicialAvisos).toEqual({ avisos: [], removidos: {} })
+      expect(estadoInicialAvisos).toEqual({ avisos: [], removidos: {}, avisoEmInspecao: null })
     })
   })
 
@@ -209,6 +210,122 @@ describe('avisosSlice', () => {
       acoes.dispensar('a1')
 
       expect(get().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('aplicado')
+    })
+  })
+
+  describe('inspeção (D14/D15 do ADR inspecao-proposta-conciliacao)', () => {
+    it('entrarInspecao define o aviso ativo; sairInspecao volta a nenhum', () => {
+      const { get, acoes } = criarStoreDeTeste()
+      acoes.adicionarAvisos([proposta({ id: 'a1' })])
+
+      acoes.entrarInspecao('a1')
+      expect(get().avisosAcionaveis.avisoEmInspecao).toBe('a1')
+
+      acoes.sairInspecao()
+      expect(get().avisosAcionaveis.avisoEmInspecao).toBeNull()
+    })
+
+    it('entrar em inspeção de outro aviso troca a ativa — nunca duas simultâneas', () => {
+      const { get, acoes } = criarStoreDeTeste()
+      acoes.adicionarAvisos([proposta({ id: 'a1' }), proposta({ id: 'a2' })])
+
+      acoes.entrarInspecao('a1')
+      acoes.entrarInspecao('a2')
+
+      expect(get().avisosAcionaveis.avisoEmInspecao).toBe('a2')
+    })
+
+    it('aplicar sobre o aviso inspecionado encerra a inspeção', () => {
+      const l0 = lancamento()
+      const { get, acoes } = criarStoreDeTeste([l0])
+      acoes.adicionarAvisos([proposta({ id: 'a1', alvo: ['0'] })])
+      acoes.entrarInspecao('a1')
+
+      acoes.aplicar('a1')
+
+      expect(get().avisosAcionaveis.avisoEmInspecao).toBeNull()
+    })
+
+    it('dispensar sobre o aviso inspecionado encerra a inspeção', () => {
+      const l0 = lancamento()
+      const { get, acoes } = criarStoreDeTeste([l0])
+      acoes.adicionarAvisos([proposta({ id: 'a1', alvo: ['0'] })])
+      acoes.entrarInspecao('a1')
+
+      acoes.dispensar('a1')
+
+      expect(get().avisosAcionaveis.avisoEmInspecao).toBeNull()
+    })
+
+    it('desfazer sobre o aviso inspecionado encerra a inspeção', () => {
+      const l0 = lancamento()
+      const { get, acoes } = criarStoreDeTeste([l0])
+      acoes.adicionarAvisos([proposta({ id: 'a1', alvo: ['0'] })])
+      acoes.aplicar('a1')
+      acoes.entrarInspecao('a1')
+
+      acoes.desfazer('a1')
+
+      expect(get().avisosAcionaveis.avisoEmInspecao).toBeNull()
+    })
+
+    it('aplicar/dispensar/desfazer sobre um aviso diferente do inspecionado não encerram a inspeção ativa', () => {
+      const l0 = lancamento()
+      const l1 = lancamento()
+      const { get, acoes } = criarStoreDeTeste([l0, l1])
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', alvo: ['0'] }),
+        proposta({ id: 'a2', alvo: ['1'] }),
+      ])
+      acoes.entrarInspecao('a1')
+
+      acoes.dispensar('a2')
+
+      expect(get().avisosAcionaveis.avisoEmInspecao).toBe('a1')
+    })
+  })
+
+  describe('desfazer de dispensa (D14 do ADR inspecao-proposta-conciliacao)', () => {
+    it('trata dispensado→pendente como transição pura, sem tocar lancamentos nem removidos', () => {
+      const l0 = lancamento()
+      const { get, acoes } = criarStoreDeTeste([l0])
+      acoes.adicionarAvisos([proposta({ id: 'a1', alvo: ['0'] })])
+      acoes.dispensar('a1')
+
+      acoes.desfazer('a1')
+
+      expect(get().lancamentos).toEqual([l0])
+      expect(get().avisosAcionaveis.removidos).toEqual({})
+      expect(get().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('pendente')
+    })
+
+    it('não regride o comportamento existente de desfazer aplicado→pendente restaurando removidos', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const l1 = lancamento({ transcricao: 'Item 1' })
+      const { get, acoes } = criarStoreDeTeste([l0, l1])
+      acoes.adicionarAvisos([proposta({ id: 'a1', alvo: ['0'] })])
+      acoes.aplicar('a1')
+
+      acoes.desfazer('a1')
+
+      expect(get().lancamentos).toEqual([l0, l1])
+      expect(get().avisosAcionaveis.removidos['a1']).toBeUndefined()
+      expect(get().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('pendente')
+    })
+  })
+
+  describe('selecionarContagemPendentes (D15 do ADR inspecao-proposta-conciliacao)', () => {
+    it('conta só propostas pendentes em um cenário misto', () => {
+      const { get, acoes } = criarStoreDeTeste()
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', estado: 'pendente' }),
+        proposta({ id: 'a2', estado: 'aplicado' }),
+        proposta({ id: 'a3', estado: 'dispensado' }),
+        proposta({ id: 'a4', estado: 'pendente' }),
+        informativo({ id: 'info-1', estado: 'pendente' }),
+      ])
+
+      expect(selecionarContagemPendentes(get())).toBe(2)
     })
   })
 
