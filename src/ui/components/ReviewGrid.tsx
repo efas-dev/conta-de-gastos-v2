@@ -1,5 +1,6 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
 // ADR: see Docs/specs/grid-ux-filtros.adr.md
+// ADR: see spec/inspecao-proposta-conciliacao.adr.md
 
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import {
@@ -16,11 +17,12 @@ import {
   type GridCell,
   type NumberCell,
   type FillPatternEventArgs,
+  type DataEditorRef,
 } from '@glideapps/glide-data-grid'
 import '@glideapps/glide-data-grid/dist/index.css'
 import { useAppStore } from '../store/appStore'
 import { validarLinha } from '../../dominio/validacao'
-import type { Lancamento } from '../../types'
+import type { Lancamento, Aviso } from '../../types'
 import { GhostEditorCore } from './GhostEditor'
 
 // ---------------------------------------------------------------------------
@@ -207,6 +209,25 @@ export const TEMA_TRANSFERENCIA = { bgCell: '#d5e4f2' }
 export const TEMA_INVESTIMENTO = { bgCell: '#dcedd3' }
 
 /**
+ * Linha "sai" durante inspeção de proposta de conciliação (D4/D5 do ADR
+ * `inspecao-proposta-conciliacao`). Vermelho saturado — deliberadamente mais
+ * saturado que `TEMA_ERRO` (pêssego pálido `#f9e2d6`) para não ser confundido
+ * com o realce de atenção. Precedência sobre erro/transferência/investimento
+ * enquanto a inspeção está ativa (D4). Validação de contraste no app real
+ * fica registrada como checklist manual na Task T5 (D6 do ADR).
+ */
+export const TEMA_INSPECAO_SAI = { bgCell: '#e8555a' }
+
+/**
+ * Linha "fica" durante inspeção de proposta de conciliação (D4/D5 do ADR
+ * `inspecao-proposta-conciliacao`). Verde-menta deliberadamente mais saturado
+ * e mais azulado que `TEMA_INVESTIMENTO` (verde pálido/amarelado `#dcedd3`)
+ * para evitar colisão visual entre os dois papéis. Validação de contraste no
+ * app real fica registrada como checklist manual na Task T5 (D6 do ADR).
+ */
+export const TEMA_INSPECAO_FICA = { bgCell: '#4fd1a5' }
+
+/**
  * Tema base da grid Glide — alinhado à direção visual do handoff de design
  * (paleta terrosa/serena, fonte Manrope, acento verde).
  */
@@ -258,6 +279,127 @@ export function calcularTemaLinha(
   return undefined
 }
 
+// ---------------------------------------------------------------------------
+// Inspeção de conciliação (Task T4 — ADR `inspecao-proposta-conciliacao`)
+// ---------------------------------------------------------------------------
+
+/** Conjuntos de identidade (índice real em `lancamentos`) para os dois papéis de conciliação. */
+export interface ContextoInspecaoConciliacao {
+  alvoSet: Set<string>
+  permaneceSet: Set<string>
+}
+
+/**
+ * Deriva o contexto de inspeção de conciliação a partir do aviso atualmente em inspeção.
+ *
+ * Retorna `undefined` quando não há aviso em inspeção OU quando o aviso não é de origem
+ * `'conciliacao'` — a grid permanece 100% inalterada para qualquer outra origem, incluindo
+ * `'valor-pendente'` (D11 do ADR: comportamento intencional, não uma lacuna).
+ */
+export function derivarContextoInspecao(
+  aviso: Aviso | undefined,
+): ContextoInspecaoConciliacao | undefined {
+  if (!aviso || aviso.origem !== 'conciliacao') return undefined
+  return {
+    alvoSet: new Set(aviso.alvo),
+    permaneceSet: new Set(aviso.permanece),
+  }
+}
+
+/**
+ * Ids (índices reais em `lancamentos`) de todas as linhas envolvidas na inspeção ativa —
+ * união de `alvo` (sai) e `permanece` (fica). Vazio quando não há inspeção de conciliação
+ * ativa (D11: `valor-pendente` nunca envolve linhas da grid).
+ */
+export function indicesEnvolvidos(aviso: Aviso | undefined): number[] {
+  if (!aviso || aviso.origem !== 'conciliacao') return []
+  return [...aviso.alvo, ...aviso.permanece].map(Number)
+}
+
+/**
+ * Tema visual de uma linha considerando o modo inspeção (D4/D7 do ADR
+ * `inspecao-proposta-conciliacao`).
+ *
+ * Casa por identidade — o índice REAL do lançamento em `lancamentos`, nunca a posição
+ * visual/ordenada — o que torna o destaque robusto a filtro/ordenação ativos (D7). Quando o
+ * índice real está em `alvoSet`/`permaneceSet` do contexto, o tema de inspeção tem precedência
+ * sobre erro/transferência/investimento (D4). Sem contexto (`undefined` — nenhuma inspeção de
+ * conciliação ativa), delega integralmente para `calcularTemaLinha` (regressão preservada).
+ */
+export function calcularTemaLinhaComInspecao(
+  l: Lancamento,
+  indiceReal: number,
+  naturezasValidas: string[],
+  contextoInspecao: ContextoInspecaoConciliacao | undefined,
+):
+  | typeof TEMA_INSPECAO_SAI
+  | typeof TEMA_INSPECAO_FICA
+  | typeof TEMA_ERRO
+  | typeof TEMA_TRANSFERENCIA
+  | typeof TEMA_INVESTIMENTO
+  | undefined {
+  if (contextoInspecao) {
+    const id = String(indiceReal)
+    if (contextoInspecao.alvoSet.has(id)) return TEMA_INSPECAO_SAI
+    if (contextoInspecao.permaneceSet.has(id)) return TEMA_INSPECAO_FICA
+  }
+  return calcularTemaLinha(l, naturezasValidas)
+}
+
+/**
+ * Posição visual (índice em `lancamentosVisiveis`/`mapaIndiceVisualReal`) da linha-âncora
+ * ("sai", `alvo[0]`) para o auto-scroll da inspeção (D3 do ADR). Busca por identidade em
+ * `mapaIndiceVisualReal`, robusto a ordenação ativa (D7). Retorna `undefined` quando não há
+ * aviso de conciliação em inspeção, quando `alvo` está vazio, ou quando o índice-âncora não
+ * está (ainda) presente no mapa — o chamador é responsável por revelar a linha antes de rolar
+ * (`aplicarRevelacaoInspecao`).
+ */
+export function calcularLinhaAncoraVisual(
+  mapaIndiceVisualReal: number[],
+  aviso: Aviso | undefined,
+): number | undefined {
+  if (!aviso || aviso.origem !== 'conciliacao' || aviso.alvo.length === 0) return undefined
+  const indiceRealAncora = Number(aviso.alvo[0])
+  const posicaoVisual = mapaIndiceVisualReal.indexOf(indiceRealAncora)
+  return posicaoVisual >= 0 ? posicaoVisual : undefined
+}
+
+/**
+ * Revela, durante a inspeção ativa, as linhas envolvidas que estão ocultas pelo filtro atual
+ * (D8 do ADR). Recebe os índices reais envolvidos (`indicesEnvolvidos`); para cada um ausente
+ * de `mapaIndiceVisualReal`, anexa a linha correspondente de `lancamentos` ao final da visão
+ * exibida. Sem índices envolvidos (`[]` — inspeção inativa ou origem sem efeito de grid),
+ * retorna a MESMA referência de `lancamentosVisiveis`/`mapaIndiceVisualReal` recebidos,
+ * desfazendo qualquer revelação anterior (o chamador nunca preserva estado extra de revelação
+ * entre chamadas — cada render recalcula a partir do estado de inspeção atual).
+ */
+export function aplicarRevelacaoInspecao(
+  lancamentos: Lancamento[],
+  lancamentosVisiveis: Lancamento[],
+  mapaIndiceVisualReal: number[],
+  indicesEnvolvidosReais: number[],
+): { linhas: Lancamento[]; mapa: number[] } {
+  if (indicesEnvolvidosReais.length === 0) {
+    return { linhas: lancamentosVisiveis, mapa: mapaIndiceVisualReal }
+  }
+
+  const jaVisiveis = new Set(mapaIndiceVisualReal)
+  const ocultos = indicesEnvolvidosReais.filter((i) => !jaVisiveis.has(i))
+  if (ocultos.length === 0) {
+    return { linhas: lancamentosVisiveis, mapa: mapaIndiceVisualReal }
+  }
+
+  const linhasOcultas = ocultos
+    .map((i) => lancamentos[i])
+    .filter((l): l is Lancamento => l !== undefined)
+  const indicesOcultosValidos = ocultos.filter((i) => lancamentos[i] !== undefined)
+
+  return {
+    linhas: [...lancamentosVisiveis, ...linhasOcultas],
+    mapa: [...mapaIndiceVisualReal, ...indicesOcultosValidos],
+  }
+}
+
 /**
  * Calcula a soma dos valores dos lançamentos nos índices informados.
  *
@@ -294,12 +436,19 @@ export interface ReviewGridProps {
  * - Vermelho (`TEMA_ERRO`): linhas onde `validarLinha` retorna `true`.
  * - Azul (`TEMA_TRANSFERENCIA`): lançamentos com `transferenciaInterna === true`.
  * - Verde (`TEMA_INVESTIMENTO`): lançamentos com `investimento != null`.
+ * - Vermelho/verde-menta (`TEMA_INSPECAO_SAI`/`TEMA_INSPECAO_FICA`): enquanto uma proposta de
+ *   conciliação está em inspeção (`avisosAcionaveis.avisoEmInspecao`), com precedência sobre os
+ *   três temas acima (Task T4, D4 do ADR `inspecao-proposta-conciliacao`). Linhas envolvidas
+ *   ocultas pelo filtro ativo são reveladas enquanto a inspeção dura (D8) e a grid rola até a
+ *   linha "sai" (D3). Inspecionar um aviso de origem `'valor-pendente'` não tem efeito algum
+ *   aqui (D11).
  *
  * Seleção múltipla: exibe a soma dos valores das linhas selecionadas abaixo da grid.
  *
  * Detecção de split: ao editar Iniciais com `'/'`, chama `onSplitDetectado(indice)`.
  */
 export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
+  const lancamentos = useAppStore((s) => s.lancamentos)
   const lancamentosVisiveis = useAppStore((s) => s.lancamentosVisiveis)
   const mapaIndiceVisualReal = useAppStore((s) => s.mapaIndiceVisualReal)
   const naturezasValidas = useAppStore((s) => s.naturezasValidas)
@@ -309,6 +458,47 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   const ordenacaoColuna = useAppStore((s) => s.ordenacaoColuna)
   const ordenacaoDirecao = useAppStore((s) => s.ordenacaoDirecao)
   const ciclarOrdenacao = useAppStore((s) => s.ciclarOrdenacao)
+  const avisos = useAppStore((s) => s.avisosAcionaveis.avisos)
+  const avisoEmInspecaoId = useAppStore((s) => s.avisosAcionaveis.avisoEmInspecao)
+
+  // -----------------------------------------------------------------
+  // Inspeção de conciliação (Task T4 — D3/D4/D7/D8/D11 do ADR
+  // `inspecao-proposta-conciliacao`). Deriva o aviso ativo, o contexto de
+  // sai/fica e a visão revelada (linhas ocultas pelo filtro envolvidas na
+  // proposta) a partir do estado do slice — puramente reativo, sem estado
+  // local próprio (a revelação nunca sobrevive além do render corrente).
+  // -----------------------------------------------------------------
+
+  const avisoEmInspecao = useMemo(
+    () => avisos.find((a) => a.id === avisoEmInspecaoId),
+    [avisos, avisoEmInspecaoId],
+  )
+  const contextoInspecao = useMemo(
+    () => derivarContextoInspecao(avisoEmInspecao),
+    [avisoEmInspecao],
+  )
+  const envolvidosInspecao = useMemo(
+    () => indicesEnvolvidos(avisoEmInspecao),
+    [avisoEmInspecao],
+  )
+  const { linhas: lancamentosExibidos, mapa: mapaExibidoReal } = useMemo(
+    () =>
+      aplicarRevelacaoInspecao(
+        lancamentos,
+        lancamentosVisiveis,
+        mapaIndiceVisualReal,
+        envolvidosInspecao,
+      ),
+    [lancamentos, lancamentosVisiveis, mapaIndiceVisualReal, envolvidosInspecao],
+  )
+
+  // Auto-scroll até a linha-âncora ("sai") ao entrar em inspeção de conciliação (D3).
+  const dataEditorRef = useRef<DataEditorRef | null>(null)
+  useEffect(() => {
+    const linhaAncora = calcularLinhaAncoraVisual(mapaExibidoReal, avisoEmInspecao)
+    if (linhaAncora === undefined) return
+    dataEditorRef.current?.scrollTo(0, linhaAncora, 'vertical')
+  }, [mapaExibidoReal, avisoEmInspecao])
 
   // -----------------------------------------------------------------
   // Estado local de larguras de coluna — D16/D17/D18 do ADR grid-ux-filtros
@@ -369,9 +559,10 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   const editorContextRef = useRef<{ col: number; row: number }>({ col: -1, row: -1 })
 
   // Refs de dados para o editor — permitem leituras sempre frescas sem re-criar o componente.
-  // O GhostEditor usa lancamentosRef[row] onde row é índice VISUAL; usamos lancamentosVisiveis.
-  const lancamentosRef = useRef(lancamentosVisiveis)
-  lancamentosRef.current = lancamentosVisiveis
+  // O GhostEditor usa lancamentosRef[row] onde row é índice VISUAL; usamos lancamentosExibidos
+  // (visão com revelação de inspeção aplicada — Task T4).
+  const lancamentosRef = useRef(lancamentosExibidos)
+  lancamentosRef.current = lancamentosExibidos
   const dicEntriesRef = useRef(dicEntries)
   dicEntriesRef.current = dicEntries
 
@@ -483,7 +674,7 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
 
   const getCellContent = useCallback(
     ([col, row]: Item) => {
-      const l = lancamentosVisiveis[row]
+      const l = lancamentosExibidos[row]
 
       if (!l) {
         return {
@@ -574,7 +765,7 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
           } as const
       }
     },
-    [lancamentosVisiveis],
+    [lancamentosExibidos],
   )
 
   // -----------------------------------------------------------------
@@ -587,8 +778,9 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
       // Colunas somente leitura nunca chegam aqui, mas a guarda é defensiva
       if (COLUNAS_SOMENTE_LEITURA.has(col)) return
 
-      // Tradução índice visual → índice real (D14 do ADR grid-ux-filtros)
-      const indiceReal = mapaIndiceVisualReal[row] ?? row
+      // Tradução índice visual → índice real (D14 do ADR grid-ux-filtros); usa o mapa exibido
+      // (revelação de inspeção aplicada — Task T4) para permanecer correto em linhas reveladas.
+      const indiceReal = mapaExibidoReal[row] ?? row
 
       switch (col) {
         case COL_INICIAIS: {
@@ -619,20 +811,22 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
       // Agenda recálculo de larguras após edição (D18 do ADR)
       agendarRecalculoLarguras(lancamentosVisiveis)
     },
-    [editarCelula, onSplitDetectado, mapaIndiceVisualReal, lancamentosVisiveis, agendarRecalculoLarguras],
+    [editarCelula, onSplitDetectado, mapaExibidoReal, lancamentosVisiveis, agendarRecalculoLarguras],
   )
 
   // -----------------------------------------------------------------
-  // getRowThemeOverride: realce visual por linha (D2 do ADR)
+  // getRowThemeOverride: realce visual por linha (D2 do ADR; D4/D7 — inspeção
+  // de conciliação tem precedência, Task T4)
   // -----------------------------------------------------------------
 
   const getRowThemeOverride: GetRowThemeCallback = useCallback(
     (row) => {
-      const l = lancamentosVisiveis[row]
+      const l = lancamentosExibidos[row]
       if (!l) return undefined
-      return calcularTemaLinha(l, naturezasValidas)
+      const indiceReal = mapaExibidoReal[row] ?? row
+      return calcularTemaLinhaComInspecao(l, indiceReal, naturezasValidas, contextoInspecao)
     },
-    [lancamentosVisiveis, naturezasValidas],
+    [lancamentosExibidos, mapaExibidoReal, naturezasValidas, contextoInspecao],
   )
 
   // -----------------------------------------------------------------
@@ -647,7 +841,7 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
         draw()
         return
       }
-      const l = lancamentosVisiveis[args.row]
+      const l = lancamentosExibidos[args.row]
       if (!l) {
         draw()
         return
@@ -672,7 +866,7 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
       ctx.fillText(numero, rect.x + rect.width - pad, y)
       ctx.restore()
     },
-    [lancamentosVisiveis],
+    [lancamentosExibidos],
   )
 
   // -----------------------------------------------------------------
@@ -753,9 +947,9 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
         }
       }
 
-      setSomaSelecao(indices.length > 0 ? calcularSomaSelecionados(lancamentosVisiveis, indices) : null)
+      setSomaSelecao(indices.length > 0 ? calcularSomaSelecionados(lancamentosExibidos, indices) : null)
     },
-    [lancamentosVisiveis],
+    [lancamentosExibidos],
   )
 
   // -----------------------------------------------------------------
@@ -766,8 +960,9 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ flex: 1, minHeight: 0 }}>
         <DataEditor
+          ref={dataEditorRef}
           columns={colunas}
-          rows={lancamentosVisiveis.length}
+          rows={lancamentosExibidos.length}
           getCellContent={getCellContent}
           onCellEdited={onCellEdited}
           getRowThemeOverride={getRowThemeOverride}
