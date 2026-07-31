@@ -930,19 +930,24 @@ export function App() {
             </span>
           </div>
 
-          <div style={{ flex: 1, minHeight: 0 }}>
-            <ReviewGrid onSplitDetectado={(indice) => setSplitIndice(indice)} />
-          </div>
+          {/* Corpo: grid à esquerda + Central de avisos como sheet lateral à direita
+              (D12 do ADR inspecao-proposta-conciliacao — redesign do container, fusão
+              do item 25 do TODO.md; substitui o antigo empilhamento vertical). */}
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <ReviewGrid onSplitDetectado={(indice) => setSplitIndice(indice)} />
+              </div>
 
-          {avisos.length > 0 && (
-            <div style={{ padding: '0 28px 16px' }}>
-              <AvisoList avisos={avisos} />
+              {avisos.length > 0 && (
+                <div style={{ padding: '0 28px 16px' }}>
+                  <AvisoList avisos={avisos} />
+                </div>
+              )}
             </div>
-          )}
 
-          {/* Central de avisos acionáveis (T6) — convive com o AvisoList legado acima,
-              sem substituí-lo (ver ADR avisos-acionaveis, aviso de escopo da Task 6). */}
-          <div style={{ padding: '0 28px 16px' }}>
+            {/* Central de avisos acionáveis — convive com o AvisoList legado acima,
+                sem substituí-lo (ver ADR avisos-acionaveis, aviso de escopo da Task 6). */}
             <CentralDeAvisos />
           </div>
 

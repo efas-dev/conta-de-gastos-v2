@@ -140,7 +140,10 @@ describe('App — CentralDeAvisos coexiste com AvisoList legado (T6)', () => {
 
     // Canal legado (AvisoList) — role="alert"
     expect(screen.getByRole('alert')).toHaveTextContent('1 linha ignorada no CSV')
-    // Canal novo (CentralDeAvisos) — mensagem da proposta
+
+    // Canal novo (CentralDeAvisos) — sheet colapsado por padrão (D15); abre
+    // manualmente antes de checar a mensagem da proposta.
+    fireEvent.click(screen.getByRole('button', { name: /abrir central de avisos/i }))
     expect(screen.getByText('Fatura conciliável com pagamento do extrato.')).toBeInTheDocument()
   })
 })
@@ -159,18 +162,22 @@ describe('App — ciclo completo aviso → aplicar via store real (T6)', () => {
 
     render(<App />)
 
+    // Sheet colapsado por padrão (D15) — abre manualmente antes de agir sobre
+    // a proposta.
+    fireEvent.click(screen.getByRole('button', { name: /abrir central de avisos/i }))
+
     // Escopo restrito à seção "Propostas" — o topo da tela de revisão já tem
     // botões "Desfazer"/"Refazer" de undo/redo do grid, com o mesmo nome acessível.
     const secaoPropostas = screen.getByRole('region', { name: 'Propostas' })
-    expect(within(secaoPropostas).getByRole('button', { name: /aplicar/i })).toBeInTheDocument()
+    expect(within(secaoPropostas).getByRole('button', { name: /aprovar/i })).toBeInTheDocument()
 
-    fireEvent.click(within(secaoPropostas).getByRole('button', { name: /aplicar/i }))
+    fireEvent.click(within(secaoPropostas).getByRole('button', { name: /aprovar/i }))
 
     await waitFor(() => {
       expect(useAppStore.getState().avisosAcionaveis.avisos[0].estado).toBe('aplicado')
     })
-    // Não há mais botão "Aplicar" pendente para esse aviso — vira "Desfazer"
-    expect(within(secaoPropostas).queryByRole('button', { name: /aplicar/i })).toBeNull()
+    // Não há mais botão "Aprovar" pendente para esse aviso — vira "Desfazer"
+    expect(within(secaoPropostas).queryByRole('button', { name: /aprovar/i })).toBeNull()
     expect(within(secaoPropostas).getByRole('button', { name: /desfazer/i })).toBeInTheDocument()
   })
 })
