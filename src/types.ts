@@ -111,6 +111,19 @@ export interface Aviso {
   mensagem: string
   /** Ids dos lançamentos afetados pelo aviso */
   alvo: string[]
+  /**
+   * Ids dos lançamentos que permanecem — "quem fica" — como complemento de `alvo` ("quem sai").
+   * Campo aditivo (ver ADR `inspecao-proposta-conciliacao`, Decisão 2): `alvo` não muda de
+   * semântica. Populado por `detectarConciliacao` com os ids da fatura que compõem a soma
+   * casada; vazio (`[]`) quando não há casamento.
+   */
+  permanece: string[]
+  /**
+   * Resumo textual da regra de casamento aplicada (ex.: "somatório da fatura R$ X ↔ pagamento
+   * R$ Y, diferença ≤ R$ 0,05"). `undefined` quando não há regra de tolerância nesse caminho
+   * (ex.: `detectarValorPendente`) ou quando o aviso não representa um casamento.
+   */
+  resumo?: string
   /** Estado do ciclo de vida do aviso */
   estado: 'pendente' | 'aplicado' | 'dispensado'
 }

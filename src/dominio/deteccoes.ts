@@ -22,6 +22,22 @@ function paraCentavos(valor: number): number {
   return Math.round(valor * 100)
 }
 
+/** Formata centavos inteiros como reais em pt-BR (vírgula decimal), sem o prefixo "R$". */
+function formatarReais(centavos: number): string {
+  return (centavos / 100).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+/**
+ * Resumo textual da regra de casamento aplicada em `detectarConciliacao` (ver ADR
+ * `inspecao-proposta-conciliacao`, Decisão 2) — usado em `Aviso.resumo`.
+ */
+function formatarResumoConciliacao(somaFaturaCentavos: number, pagamentoCentavos: number): string {
+  return `somatório da fatura R$ ${formatarReais(somaFaturaCentavos)} ↔ pagamento R$ ${formatarReais(pagamentoCentavos)}, diferença ≤ R$ 0,05`
+}
+
 /**
  * Detecta, entre os lançamentos excluídos do parser (`ResultadoParse.excluidosPendentes`),
  * quais correspondem a "Valor pendente do mês anterior" e gera um aviso informativo para
@@ -46,6 +62,7 @@ export function detectarValorPendente(excluidosPendentes: Lancamento[]): Aviso[]
       origem: 'valor-pendente',
       mensagem: `Valor pendente do mês anterior: "${lancamento.transcricao}" (R$ ${Math.abs(lancamento.valor).toFixed(2)}).`,
       alvo: [String(index)],
+      permanece: [],
       estado: 'pendente',
     })
   })
@@ -54,35 +71,49 @@ export function detectarValorPendente(excluidosPendentes: Lancamento[]): Aviso[]
 }
 
 /**
- * Verifica se existe algum subconjunto de `valoresCentavos` (todos > 0) cuja soma seja
- * exatamente igual a `alvoCentavos`. Programação dinâmica clássica de subset-sum sobre um
- * `Set` de somas alcançáveis — O(n × alvo), adequado ao volume de itens de uma fatura.
+ * Encontra os índices (posição em `lancamentosFatura`) de algum subconjunto cuja soma em
+ * centavos seja exatamente igual a `alvoCentavos`, ou `null` se não existir. Mesma programação
+ * dinâmica de subset-sum de antes (soma alcançável em ordem), agora guardando a composição de
+ * índices que atinge cada soma alcançável — a decisão de "existe casamento" continua idêntica
+ * (deriva de "achou composição, sim ou não"), zero mudança na lógica de casamento.
  */
-function subsetSomaExiste(valoresCentavos: number[], alvoCentavos: number): boolean {
-  if (alvoCentavos <= 0) return false
+function subsetComposicaoIndices(
+  lancamentosFatura: Lancamento[],
+  alvoCentavos: number,
+): number[] | null {
+  if (alvoCentavos <= 0) return null
 
-  const alcancaveis = new Set<number>([0])
-  for (const valor of valoresCentavos) {
+  const alcancaveis = new Map<number, number[]>([[0, []]])
+  for (let indice = 0; indice < lancamentosFatura.length; indice++) {
+    const valor = Math.abs(paraCentavos(lancamentosFatura[indice].valor))
     if (valor <= 0) continue
-    const novos: number[] = []
-    for (const soma of alcancaveis) {
+    const entradas = Array.from(alcancaveis.entries())
+    for (const [soma, indices] of entradas) {
       const proxima = soma + valor
-      if (proxima <= alvoCentavos && !alcancaveis.has(proxima)) novos.push(proxima)
+      if (proxima <= alvoCentavos && !alcancaveis.has(proxima)) {
+        alcancaveis.set(proxima, [...indices, indice])
+      }
     }
-    for (const nova of novos) alcancaveis.add(nova)
-    if (alcancaveis.has(alvoCentavos)) return true
+    if (alcancaveis.has(alvoCentavos)) break
   }
-  return false
+  return alcancaveis.get(alvoCentavos) ?? null
 }
 
 /** Monta o Aviso de proposta de conciliação apontando para o lançamento do extrato. */
-function propostaConciliacao(lancamento: Lancamento, indexExtrato: number): Aviso {
+function propostaConciliacao(
+  lancamento: Lancamento,
+  indexExtrato: number,
+  permanece: string[],
+  resumo: string,
+): Aviso {
   return {
     id: `conciliacao-${indexExtrato}`,
     tipo: 'proposta',
     origem: 'conciliacao',
     mensagem: `Fatura conciliada com "${lancamento.transcricao}" do extrato — deseja remover esse lançamento?`,
     alvo: [String(indexExtrato)],
+    permanece,
+    resumo,
     estado: 'pendente',
   }
 }
@@ -125,21 +156,41 @@ export function detectarConciliacao(
     )
 
   if (candidatosTotal.length === 1) {
-    return [propostaConciliacao(candidatosTotal[0].lancamento, candidatosTotal[0].index)]
+    const { lancamento, index } = candidatosTotal[0]
+    const permanece = lancamentosFatura.map((_, i) => String(i))
+    const resumo = formatarResumoConciliacao(
+      somaFaturaCentavos,
+      Math.abs(paraCentavos(lancamento.valor)),
+    )
+    return [propostaConciliacao(lancamento, index, permanece, resumo)]
   }
   if (candidatosTotal.length >= 2) {
     return []
   }
 
-  const valoresFaturaCentavos = lancamentosFatura.map((l) => Math.abs(paraCentavos(l.valor)))
   const candidatosSubset = lancamentosExtrato
-    .map((lancamento, index) => ({ lancamento, index }))
-    .filter(({ lancamento }) =>
-      subsetSomaExiste(valoresFaturaCentavos, Math.abs(paraCentavos(lancamento.valor))),
+    .map((lancamento, index) => ({
+      lancamento,
+      index,
+      composicao: subsetComposicaoIndices(lancamentosFatura, Math.abs(paraCentavos(lancamento.valor))),
+    }))
+    .filter(
+      (candidato): candidato is typeof candidato & { composicao: number[] } =>
+        candidato.composicao !== null,
     )
 
   if (candidatosSubset.length === 1) {
-    return [propostaConciliacao(candidatosSubset[0].lancamento, candidatosSubset[0].index)]
+    const { lancamento, index, composicao } = candidatosSubset[0]
+    const permanece = composicao.map((i) => String(i))
+    const somaSubsetCentavos = composicao.reduce(
+      (acc, i) => acc + Math.abs(paraCentavos(lancamentosFatura[i].valor)),
+      0,
+    )
+    const resumo = formatarResumoConciliacao(
+      somaSubsetCentavos,
+      Math.abs(paraCentavos(lancamento.valor)),
+    )
+    return [propostaConciliacao(lancamento, index, permanece, resumo)]
   }
   if (candidatosSubset.length >= 2) {
     return []
@@ -152,6 +203,7 @@ export function detectarConciliacao(
       origem: 'conciliacao',
       mensagem: 'Aviso: fatura não conciliada — nenhum lançamento do extrato corresponde ao somatório da fatura.',
       alvo: [],
+      permanece: [],
       estado: 'pendente',
     },
   ]
