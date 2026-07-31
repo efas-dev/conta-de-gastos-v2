@@ -18,13 +18,19 @@ function lancamento(overrides: Partial<Lancamento>): Lancamento {
 }
 
 describe('detectarValorPendente', () => {
-  it('retorna aviso informativo para transcrição "Valor pendente do mês anterior" (TL-1)', () => {
+  it('retorna aviso proposta para transcrição "Valor pendente do mês anterior" (TL-1, TL-14, TL-16)', () => {
     const excluidos = [lancamento({ transcricao: 'Valor pendente do mês anterior', valor: -120.5 })]
     const avisos = detectarValorPendente(excluidos)
     expect(avisos).toHaveLength(1)
-    expect(avisos[0].tipo).toBe('informativo')
+    expect(avisos[0].tipo).toBe('proposta')
     expect(avisos[0].origem).toBe('valor-pendente')
     expect(avisos[0].estado).toBe('pendente')
+  })
+
+  it('alvo vazio — não há linha física em lancamentos para remover (TL-15)', () => {
+    const excluidos = [lancamento({ transcricao: 'Valor pendente do mês anterior', valor: -120.5 })]
+    const avisos = detectarValorPendente(excluidos)
+    expect(avisos[0].alvo).toEqual([])
   })
 
   it('ignora lançamentos com outra transcrição, ex. "Pagamento recebido" (TL-2)', () => {

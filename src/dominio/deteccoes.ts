@@ -40,15 +40,21 @@ function formatarResumoConciliacao(somaFaturaCentavos: number, pagamentoCentavos
 
 /**
  * Detecta, entre os lançamentos excluídos do parser (`ResultadoParse.excluidosPendentes`),
- * quais correspondem a "Valor pendente do mês anterior" e gera um aviso informativo para
+ * quais correspondem a "Valor pendente do mês anterior" e gera uma proposta acionável para
  * cada um — tornando auditável um valor que, se tratado como lançamento comum, duplicaria
  * despesa já contada no ciclo anterior (ver ADR `avisos-acionaveis`, Contexto).
+ *
+ * `alvo: []` — o lançamento nunca esteve em `state.lancamentos` (ficou em
+ * `excluidosPendentes`, excluído no parse), então não há linha física para `aplicar()`
+ * remover; Aprovar/Dispensar funcionam como reconhecimento/arquivamento sem efeito em
+ * `lancamentos` (ver ADR `inspecao-proposta-conciliacao`, Decisão 10). `resumo` permanece
+ * `undefined` — não há regra de tolerância nesse caminho.
  *
  * Função pura: não faz I/O, não tem efeito colateral, não referencia o store.
  *
  * @param excluidosPendentes - Lançamentos excluídos pelo parser (mistura possível de
  *   "valor pendente" e "pagamento recebido" — apenas o primeiro é reportado aqui).
- * @returns Um `Aviso` informativo por lançamento casado; array vazio se nenhum casar.
+ * @returns Um `Aviso` proposta por lançamento casado; array vazio se nenhum casar.
  */
 export function detectarValorPendente(excluidosPendentes: Lancamento[]): Aviso[] {
   const avisos: Aviso[] = []
@@ -58,10 +64,10 @@ export function detectarValorPendente(excluidosPendentes: Lancamento[]): Aviso[]
 
     avisos.push({
       id: `valor-pendente-${index}`,
-      tipo: 'informativo',
+      tipo: 'proposta',
       origem: 'valor-pendente',
       mensagem: `Valor pendente do mês anterior: "${lancamento.transcricao}" (R$ ${Math.abs(lancamento.valor).toFixed(2)}).`,
-      alvo: [String(index)],
+      alvo: [],
       permanece: [],
       estado: 'pendente',
     })
