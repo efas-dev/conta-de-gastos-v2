@@ -13,17 +13,26 @@ import type { Aviso } from '../../../types'
 const mockAplicar = vi.fn()
 const mockDesfazer = vi.fn()
 const mockDispensar = vi.fn()
+const mockEntrarInspecao = vi.fn((id: string) => {
+  avisoEmInspecaoMock = id
+})
+const mockSairInspecao = vi.fn(() => {
+  avisoEmInspecaoMock = null
+})
 
 let avisosMock: Aviso[] = []
+let avisoEmInspecaoMock: string | null = null
 
 vi.mock('../../store/appStore', () => ({
   useAppStore: (selector: (state: Record<string, unknown>) => unknown) =>
     selector({
-      avisosAcionaveis: { avisos: avisosMock, removidos: {}, avisoEmInspecao: null },
+      avisosAcionaveis: { avisos: avisosMock, removidos: {}, avisoEmInspecao: avisoEmInspecaoMock },
       lancamentos: [],
       aplicar: mockAplicar,
       desfazer: mockDesfazer,
       dispensar: mockDispensar,
+      entrarInspecao: mockEntrarInspecao,
+      sairInspecao: mockSairInspecao,
     }),
 }))
 
@@ -62,9 +71,16 @@ function abrirSheet() {
 
 beforeEach(() => {
   avisosMock = []
+  avisoEmInspecaoMock = null
   mockAplicar.mockReset()
   mockDesfazer.mockReset()
   mockDispensar.mockReset()
+  mockEntrarInspecao.mockReset().mockImplementation((id: string) => {
+    avisoEmInspecaoMock = id
+  })
+  mockSairInspecao.mockReset().mockImplementation(() => {
+    avisoEmInspecaoMock = null
+  })
 })
 
 describe('CentralDeAvisos — lista vazia', () => {
@@ -241,5 +257,147 @@ describe('CentralDeAvisos — rótulos e ações por estado de proposta (D13, D1
 
     expect(mockAplicar).toHaveBeenCalledWith('prop-b')
     expect(mockAplicar).not.toHaveBeenCalledWith('prop-a')
+  })
+})
+
+describe('CentralDeAvisos — modo inspeção (D5, T3b)', () => {
+  it('clicar no corpo do card de uma proposta fora de inspeção chama entrarInspecao(id)', () => {
+    avisosMock = [proposta({ id: 'prop-1' })]
+    render(<CentralDeAvisos />)
+    abrirSheet()
+
+    fireEvent.click(screen.getByText('Fatura conciliável com pagamento do extrato.'))
+
+    expect(mockEntrarInspecao).toHaveBeenCalledWith('prop-1')
+    expect(mockSairInspecao).not.toHaveBeenCalled()
+  })
+
+  it('clicar novamente no card já em inspeção chama sairInspecao()', () => {
+    avisosMock = [proposta({ id: 'prop-1' })]
+    avisoEmInspecaoMock = 'prop-1'
+    render(<CentralDeAvisos />)
+    abrirSheet()
+
+    fireEvent.click(screen.getByText('Fatura conciliável com pagamento do extrato.'))
+
+    expect(mockSairInspecao).toHaveBeenCalled()
+    expect(mockEntrarInspecao).not.toHaveBeenCalled()
+  })
+
+  it('clicar em "Aprovar" não dispara o toggle de inspeção (stopPropagation)', () => {
+    avisosMock = [proposta({ id: 'prop-1', estado: 'pendente' })]
+    render(<CentralDeAvisos />)
+    abrirSheet()
+
+    fireEvent.click(screen.getByRole('button', { name: /aprovar/i }))
+
+    expect(mockAplicar).toHaveBeenCalledWith('prop-1')
+    expect(mockEntrarInspecao).not.toHaveBeenCalled()
+    expect(mockSairInspecao).not.toHaveBeenCalled()
+  })
+
+  it('clicar em "Dispensar" não dispara o toggle de inspeção (stopPropagation)', () => {
+    avisosMock = [proposta({ id: 'prop-1', estado: 'pendente' })]
+    render(<CentralDeAvisos />)
+    abrirSheet()
+
+    fireEvent.click(screen.getByRole('button', { name: /dispensar/i }))
+
+    expect(mockDispensar).toHaveBeenCalledWith('prop-1')
+    expect(mockEntrarInspecao).not.toHaveBeenCalled()
+    expect(mockSairInspecao).not.toHaveBeenCalled()
+  })
+
+  it('clicar em "Desfazer" não dispara o toggle de inspeção (stopPropagation)', () => {
+    avisosMock = [proposta({ id: 'prop-1', estado: 'aplicado' })]
+    render(<CentralDeAvisos />)
+    abrirSheet()
+
+    fireEvent.click(screen.getByRole('button', { name: /desfazer/i }))
+
+    expect(mockDesfazer).toHaveBeenCalledWith('prop-1')
+    expect(mockEntrarInspecao).not.toHaveBeenCalled()
+    expect(mockSairInspecao).not.toHaveBeenCalled()
+  })
+
+  it('em inspeção, proposta de conciliação mostra os 2 papéis (sai + fica)', () => {
+    avisosMock = [
+      proposta({ id: 'prop-1', origem: 'conciliacao', alvo: ['0'], permanece: ['1', '2'] }),
+    ]
+    avisoEmInspecaoMock = 'prop-1'
+    render(<CentralDeAvisos />)
+    abrirSheet()
+
+    expect(screen.getByLabelText('Papel: sai')).toBeInTheDocument()
+    expect(screen.getByLabelText('Papel: fica')).toBeInTheDocument()
+  })
+
+  it('em inspeção, proposta de valor-pendente mostra só o papel "sai", sem bloco de "fica"', () => {
+    avisosMock = [
+      proposta({
+        id: 'prop-1',
+        origem: 'valor-pendente',
+        alvo: [],
+        permanece: [],
+        mensagem: 'Valor pendente detectado como proposta.',
+      }),
+    ]
+    avisoEmInspecaoMock = 'prop-1'
+    render(<CentralDeAvisos />)
+    abrirSheet()
+
+    expect(screen.getByLabelText('Papel: sai')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Papel: fica')).toBeNull()
+  })
+
+  it('renderiza aviso.resumo quando presente, em modo inspeção', () => {
+    avisosMock = [
+      proposta({
+        id: 'prop-1',
+        resumo: 'somatório da fatura R$ 100,00 ↔ pagamento R$ 100,00, diferença ≤ R$ 0,05',
+      }),
+    ]
+    avisoEmInspecaoMock = 'prop-1'
+    render(<CentralDeAvisos />)
+    abrirSheet()
+
+    expect(screen.getByLabelText('Resumo da regra')).toHaveTextContent(/somatório da fatura/i)
+  })
+
+  it('não renderiza bloco de resumo quando resumo é undefined', () => {
+    avisosMock = [proposta({ id: 'prop-1', resumo: undefined })]
+    avisoEmInspecaoMock = 'prop-1'
+    render(<CentralDeAvisos />)
+    abrirSheet()
+
+    expect(screen.queryByLabelText('Resumo da regra')).toBeNull()
+  })
+
+  it('card fora do modo inspeção não mostra papéis nem resumo', () => {
+    avisosMock = [proposta({ id: 'prop-1', resumo: 'algum resumo', permanece: ['1'] })]
+    render(<CentralDeAvisos />)
+    abrirSheet()
+
+    expect(screen.queryByLabelText('Papel: sai')).toBeNull()
+    expect(screen.queryByLabelText('Papel: fica')).toBeNull()
+    expect(screen.queryByLabelText('Resumo da regra')).toBeNull()
+  })
+
+  it('card de uma proposta não mostra papéis/resumo quando OUTRO aviso está em inspeção', () => {
+    avisosMock = [
+      proposta({ id: 'prop-a', resumo: 'resumo de A', permanece: ['1'], mensagem: 'Proposta A' }),
+      proposta({ id: 'prop-b', resumo: 'resumo de B', permanece: ['2'], mensagem: 'Proposta B' }),
+    ]
+    avisoEmInspecaoMock = 'prop-b'
+    render(<CentralDeAvisos />)
+    abrirSheet()
+
+    const itemA = screen.getByText('Proposta A').closest('li') as HTMLElement
+    const itemB = screen.getByText('Proposta B').closest('li') as HTMLElement
+
+    expect(within(itemA).queryByLabelText('Papel: sai')).toBeNull()
+    expect(within(itemA).queryByLabelText('Resumo da regra')).toBeNull()
+    expect(within(itemB).getByLabelText('Papel: sai')).toBeInTheDocument()
+    expect(within(itemB).getByLabelText('Resumo da regra')).toHaveTextContent('resumo de B')
   })
 })

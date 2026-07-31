@@ -32,6 +32,9 @@ export function CentralDeAvisos() {
   const desfazer = useAppStore((s) => s.desfazer)
   const dispensar = useAppStore((s) => s.dispensar)
   const contagemPendentes = useAppStore(selecionarContagemPendentes)
+  const avisoEmInspecao = useAppStore((s) => s.avisosAcionaveis.avisoEmInspecao)
+  const entrarInspecao = useAppStore((s) => s.entrarInspecao)
+  const sairInspecao = useAppStore((s) => s.sairInspecao)
 
   const [aberto, setAberto] = useState(false)
 
@@ -129,6 +132,9 @@ export function CentralDeAvisos() {
                     aplicar={aplicar}
                     desfazer={desfazer}
                     dispensar={dispensar}
+                    emInspecao={avisoEmInspecao === aviso.id}
+                    entrarInspecao={entrarInspecao}
+                    sairInspecao={sairInspecao}
                   />
                 ))}
               </ul>
@@ -147,21 +153,59 @@ interface AcoesPropostaProps {
   dispensar: (id: string) => void
 }
 
-/** Card de uma proposta — mensagem + ações que variam conforme `aviso.estado`. */
-function CartaoProposta({ aviso, aplicar, desfazer, dispensar }: AcoesPropostaProps) {
+interface CartaoPropostaProps extends AcoesPropostaProps {
+  /** `true` quando este é o aviso atualmente em modo inspeção (D5, ADR `inspecao-proposta-conciliacao`). */
+  emInspecao: boolean
+  entrarInspecao: (id: string) => void
+  sairInspecao: () => void
+}
+
+/**
+ * Card de uma proposta — mensagem + ações que variam conforme `aviso.estado`, mais o modo
+ * inspeção (D5): clicar no corpo do card alterna `entrarInspecao`/`sairInspecao`; os botões de
+ * ação usam `stopPropagation` para não disparar o toggle acidentalmente. Em inspeção, mostra os
+ * papéis "sai"/"fica" (D2: `alvo`/`permanece`) e o `resumo` da regra quando presente.
+ */
+function CartaoProposta({
+  aviso,
+  aplicar,
+  desfazer,
+  dispensar,
+  emInspecao,
+  entrarInspecao,
+  sairInspecao,
+}: CartaoPropostaProps) {
   return (
     <li
+      onClick={() => (emInspecao ? sairInspecao() : entrarInspecao(aviso.id))}
       style={{
         display: 'flex',
         flexDirection: 'column',
         gap: 8,
         padding: 10,
         borderRadius: 8,
-        border: '1px solid var(--borda-2)',
+        border: emInspecao ? '1px solid var(--acento, #2563eb)' : '1px solid var(--borda-2)',
         fontSize: 13.5,
+        cursor: 'pointer',
       }}
     >
       <span>{aviso.mensagem}</span>
+
+      {emInspecao && (
+        <div
+          aria-label="Papéis da proposta"
+          style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12.5 }}
+        >
+          <span aria-label="Papel: sai">
+            Sai{aviso.alvo.length > 0 ? ` — ${aviso.alvo.length} lançamento(s)` : ''}
+          </span>
+          {aviso.origem === 'conciliacao' && (
+            <span aria-label="Papel: fica">Fica — {aviso.permanece.length} lançamento(s)</span>
+          )}
+          {aviso.resumo && <p aria-label="Resumo da regra" style={{ margin: 0 }}>{aviso.resumo}</p>}
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 8 }}>
         <AcoesProposta aviso={aviso} aplicar={aplicar} desfazer={desfazer} dispensar={dispensar} />
       </div>
@@ -174,10 +218,24 @@ function AcoesProposta({ aviso, aplicar, desfazer, dispensar }: AcoesPropostaPro
   if (aviso.estado === 'pendente') {
     return (
       <>
-        <button type="button" className="dc-btn dc-btn-secundario" onClick={() => aplicar(aviso.id)}>
+        <button
+          type="button"
+          className="dc-btn dc-btn-secundario"
+          onClick={(e) => {
+            e.stopPropagation()
+            aplicar(aviso.id)
+          }}
+        >
           Aprovar
         </button>
-        <button type="button" className="dc-btn dc-btn-secundario" onClick={() => dispensar(aviso.id)}>
+        <button
+          type="button"
+          className="dc-btn dc-btn-secundario"
+          onClick={(e) => {
+            e.stopPropagation()
+            dispensar(aviso.id)
+          }}
+        >
           Dispensar
         </button>
       </>
@@ -187,7 +245,14 @@ function AcoesProposta({ aviso, aplicar, desfazer, dispensar }: AcoesPropostaPro
   // 'aplicado' e 'dispensado' — ambos reversíveis via "Desfazer" (D14).
   if (aviso.estado === 'aplicado' || aviso.estado === 'dispensado') {
     return (
-      <button type="button" className="dc-btn dc-btn-secundario" onClick={() => desfazer(aviso.id)}>
+      <button
+        type="button"
+        className="dc-btn dc-btn-secundario"
+        onClick={(e) => {
+          e.stopPropagation()
+          desfazer(aviso.id)
+        }}
+      >
         Desfazer
       </button>
     )
