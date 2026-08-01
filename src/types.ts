@@ -1,6 +1,7 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
 // ADR: see Docs/specs/colinha-naturezas.adr.md
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
+// ADR: see spec/inspecao-proposta-conciliacao.adr.md
 
 /**
  * Representa um lançamento financeiro normalizado, independente da fonte de origem.
@@ -37,6 +38,16 @@ export interface Lancamento {
    * Preenchida pelo pipeline via `detectarInvestimento`.
    */
   investimento?: 'aplicacao' | 'resgate' | null
+  /**
+   * Marca as linhas de fatura que antes eram excluídas silenciosamente no parser
+   * (`excluidosPendentes`) e agora entram em `lancamentos` como lançamentos normais
+   * (ver ADR `inspecao-proposta-conciliacao`, Decisões 16/17).
+   * `'valor-pendente'` = "Valor pendente do mês anterior"; `'pagamento-recebido'` =
+   * "Pagamento recebido". `undefined` = lançamento comum, sem origem especial.
+   * Consumida pela detecção (`detectarValorPendente`/`detectarPagamentoRecebido`) para
+   * localizar a linha real em `lancamentos` sem depender de reconhecimento por texto.
+   */
+  origemEspecial?: 'valor-pendente' | 'pagamento-recebido'
 }
 
 /**

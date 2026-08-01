@@ -1,4 +1,5 @@
 // ADR: see Docs/specs/parsers-fatura-nubank-extrato-itau.adr.md
+// ADR: see spec/inspecao-proposta-conciliacao.adr.md
 
 import type { Lancamento, ResultadoParse } from '../types'
 import { normalizarParaBusca } from '../dominio/normalizacao'
@@ -68,8 +69,10 @@ function parsearValorFatura(valorStr: string): number {
  * Regras:
  * - Pular header (primeira linha)
  * - "Pagamento recebido" e "Valor pendente do mês anterior" (matching NFD+lowercase,
- *   precedente: leitor do dicionário) não são descartados: saem em `excluidosPendentes`
- *   em vez de `lancamentos` (Decisão 4/5 do ADR avisos-acionaveis) — nenhum descarte silencioso
+ *   precedente: leitor do dicionário) entram em `lancamentos` como lançamentos normais,
+ *   marcados com `origemEspecial` ('pagamento-recebido'/'valor-pendente' — ver ADR
+ *   `inspecao-proposta-conciliacao`, Decisões 16/17); `excluidosPendentes` fica vazio para
+ *   este parser (nenhum descarte silencioso, nenhuma exclusão do parse)
  * - "Multa por fatura atrasada" e "IOF por fatura atrasada" permanecem em `lancamentos`
  * - Inverter sinal: cobrança positiva no arquivo → valor negativo; estorno negativo → positivo
  * - Linhas malformadas (< 3 colunas) são puladas e contadas em linhasIgnoradas
@@ -101,6 +104,14 @@ function parsear(conteudo: string): ResultadoParse {
       continue
     }
 
+    const tituloNormalizado = normalizarParaBusca(titulo)
+    let origemEspecial: Lancamento['origemEspecial']
+    if (tituloNormalizado === TITULO_PAGAMENTO_RECEBIDO) {
+      origemEspecial = 'pagamento-recebido'
+    } else if (tituloNormalizado === TITULO_VALOR_PENDENTE) {
+      origemEspecial = 'valor-pendente'
+    }
+
     const lancamento: Lancamento = {
       fonte: 'fatura_nubank_cc',
       data: dataStr,
@@ -109,15 +120,7 @@ function parsear(conteudo: string): ResultadoParse {
       iniciais: '',
       natureza: '',
       descricao: '',
-    }
-
-    const tituloNormalizado = normalizarParaBusca(titulo)
-    if (
-      tituloNormalizado === TITULO_PAGAMENTO_RECEBIDO ||
-      tituloNormalizado === TITULO_VALOR_PENDENTE
-    ) {
-      excluidosPendentes.push(lancamento)
-      continue
+      ...(origemEspecial ? { origemEspecial } : {}),
     }
 
     lancamentos.push(lancamento)
