@@ -17,6 +17,14 @@ import type { Aviso } from '../../types'
 // D16/D17) o parser não exclui mais essas linhas: elas entram em `lancamentos` como
 // lançamentos normais e viram propostas de remoção acionáveis (`alvo` aponta o índice real).
 //
+// Revisado na Task T11 (correção de bug multi-arquivo achado na validação visual): as duas
+// detecções deixaram de rodar dentro de `produzirLancamentos` — que processa a sublista
+// per-arquivo, gerando `alvo` relativo a ela, nunca ao array total — e passaram para
+// `App.tsx` (`handleProduzir`), que as roda sobre `todosLancamentos` já concatenado (mesmo
+// padrão de `detectarConciliacao`). `produzirLancamentos` agora só despacha `detectarConciliacao`
+// (quando `lancamentosExtrato` é fornecido) e os avisos informativos migrados — ver
+// `App.valorPendenteOffset.test.tsx` para a cobertura do fluxo real via `App.tsx`.
+//
 // Fixture reaproveitada de T2 (`fatura_nubank_avisos_pendentes.csv`): dados sintéticos,
 // sem qualquer valor de data_sample/ (Decisão 7 do ADR avisos-acionaveis).
 
@@ -29,34 +37,26 @@ function lerFixture(nome: string): string {
 describe('produzirLancamentos — pipeline completo com fatura sintética (integração T5/T9)', () => {
   const csvAvisosPendentes = lerFixture('fatura_nubank_avisos_pendentes.csv')
 
-  it('despacha propostas de valor-pendente e pagamento-recebido via adicionarAvisos, sem chamar detectarConciliacao (sem extrato)', () => {
+  it('NÃO despacha propostas de valor-pendente/pagamento-recebido (rewire T11) — só entrega as linhas em resultado.lancamentos', () => {
     const avisosCapturados: Aviso[] = []
 
     const resultado = produzirLancamentos(csvAvisosPendentes, [], 'ES', undefined, [], (avisos) => {
       avisosCapturados.push(...avisos)
     })
 
-    // Task T7 do spec `inspecao-proposta-conciliacao` (D16/D17): valor-pendente e
-    // pagamento-recebido viram propostas de remoção acionáveis, uma para cada linha
-    // marcada com `origemEspecial` na fatura sintética.
+    // Task T11 do spec `inspecao-proposta-conciliacao`: a detecção de valor-pendente/
+    // pagamento-recebido saiu de `produzirLancamentos` (que processa a sublista
+    // per-arquivo, e geraria `alvo` relativo a ela) — o call-site real
+    // (`App.tsx`/`handleProduzir`) agora as detecta sobre o array total já concatenado.
     const origens = avisosCapturados.map((a) => a.origem)
-    expect(origens).toContain('valor-pendente')
-    expect(origens).toContain('pagamento-recebido')
-    expect(avisosCapturados).toHaveLength(2)
+    expect(origens).not.toContain('valor-pendente')
+    expect(origens).not.toContain('pagamento-recebido')
+    expect(avisosCapturados).toHaveLength(0)
 
-    const avisoValorPendente = avisosCapturados.find((a) => a.origem === 'valor-pendente')
-    expect(avisoValorPendente).toMatchObject({ tipo: 'proposta', estado: 'pendente' })
-    expect(avisoValorPendente?.alvo).not.toEqual([]) // aponta o índice real da linha (D16)
-    expect(avisoValorPendente?.resumo).toBeDefined()
-    expect(avisoValorPendente?.mensagem).toMatch(/valor pendente do mês anterior/i)
-
-    const avisoPagamentoRecebido = avisosCapturados.find((a) => a.origem === 'pagamento-recebido')
-    expect(avisoPagamentoRecebido).toMatchObject({ tipo: 'proposta', estado: 'pendente' })
-    expect(avisoPagamentoRecebido?.alvo).not.toEqual([])
-
-    // Rewire T9 (D18): a linha deixou de ser excluída no parse (T6) — "Pagamento
-    // recebido" e "Valor pendente" agora entram em `lancamentos` como lançamentos
-    // normais, junto com multa e IOF de atraso.
+    // Rewire T6 (D16/D17): a linha deixou de ser excluída no parse — "Pagamento
+    // recebido" e "Valor pendente" continuam entrando em `lancamentos` como
+    // lançamentos normais, junto com multa e IOF de atraso; só a EMISSÃO da proposta
+    // saiu daqui.
     const transcricoes = resultado.lancamentos.map((l) => l.transcricao)
     expect(transcricoes).toContain('Valor pendente do mês anterior')
     expect(transcricoes).toContain('Pagamento recebido')
@@ -64,7 +64,7 @@ describe('produzirLancamentos — pipeline completo com fatura sintética (integ
     expect(transcricoes).toContain('IOF por fatura atrasada')
   })
 
-  it('inclui também aviso de conciliação quando lancamentosExtrato conciliável é fornecido', () => {
+  it('inclui aviso de conciliação quando lancamentosExtrato conciliável é fornecido (detectarValorPendente/PagamentoRecebido seguem fora daqui, T11)', () => {
     const avisosCapturados: Aviso[] = []
 
     // Somatório do subconjunto multa 15.00 + IOF 8.50 + Loja Exemplo 60.00 = 83.50 —
@@ -72,7 +72,7 @@ describe('produzirLancamentos — pipeline completo com fatura sintética (integ
     // "Pagamento recebido"/"Valor pendente" presentes em `lancamentosComFlags` (o
     // casamento do somatório TOTAL não bate, cai no fallback de subset-sum que
     // encontra exatamente o trio multa+IOF+loja — comportamento herdado de T5,
-        // fora do escopo de T9: nenhuma mudança em `detectarConciliacao`).
+        // fora do escopo de T9/T11: nenhuma mudança em `detectarConciliacao`).
     const lancamentosExtrato = [
       {
         fonte: 'extrato',
@@ -90,8 +90,8 @@ describe('produzirLancamentos — pipeline completo com fatura sintética (integ
     })
 
     const origens = avisosCapturados.map((a) => a.origem)
-    expect(origens).toContain('valor-pendente')
-    expect(origens).toContain('pagamento-recebido')
+    expect(origens).not.toContain('valor-pendente')
+    expect(origens).not.toContain('pagamento-recebido')
     expect(origens).toContain('conciliacao')
 
     const avisoConciliacao = avisosCapturados.find((a) => a.origem === 'conciliacao')

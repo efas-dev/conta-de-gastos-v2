@@ -15,7 +15,7 @@ import {
 import { lerNaturezas, lerDicionario, ehDicionario, lerIniciais } from './excel/reader/leitor'
 import { defaultMes, detectarMesSugerido, classificarFonte } from './dominio/mes'
 import { detectar } from './parsers/index'
-import { detectarConciliacao } from './dominio/deteccoes'
+import { detectarConciliacao, detectarValorPendente, detectarPagamentoRecebido } from './dominio/deteccoes'
 import type { Aviso, Lancamento } from './types'
 import { ReviewGrid } from './ui/components/ReviewGrid'
 import { FiltroBar } from './ui/components/FiltroBar'
@@ -420,6 +420,20 @@ export function App() {
         addAviso(`${arquivo.name}: ${av}`)
       }
     }
+
+    // Task T11 do ADR `inspecao-proposta-conciliacao`: valor-pendente/pagamento-recebido
+    // precisam ser detectados sobre o array TOTAL já concatenado (`todosLancamentos`),
+    // não a sublista per-arquivo — `produzirLancamentos` (acima) parava de fazer isso
+    // internamente por rodar por arquivo (T11, ver PipelineState.ts). Como
+    // `origemEspecial` está presente em cada lançamento do total, `alvo` já nasce como
+    // índice real, sem remapeamento de offset (mesmo padrão de `detectarConciliacao`
+    // abaixo, mas sem precisar de `indicesFaturaNoTotal`/`indicesExtratoNoTotal` porque
+    // a detecção já roda direto sobre o total). Corrige o bug achado na validação
+    // visual manual (2026-08-01): quando a fatura não é o 1º arquivo do lote, o `alvo`
+    // relativo à sublista per-arquivo casava com a linha errada em `state.lancamentos`.
+    const avisosValorPendente = detectarValorPendente(todosLancamentos)
+    const avisosPagamentoRecebido = detectarPagamentoRecebido(todosLancamentos)
+    adicionarAvisosAcionaveis([...avisosValorPendente, ...avisosPagamentoRecebido])
 
     // Task 8 do ADR avisos-acionaveis: correlaciona fatura×extrato pelo campo
     // `fonte` que os parsers já gravam em cada lançamento — sem heurística de

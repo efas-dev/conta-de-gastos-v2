@@ -249,26 +249,6 @@ describe('produzirLancamentos — avisos acionáveis (T5)', () => {
     },
   ]
 
-  const avisoValorPendenteMock: Aviso = {
-    id: 'valor-pendente-0',
-    tipo: 'proposta',
-    origem: 'valor-pendente',
-    mensagem: 'Valor pendente do mês anterior: mock',
-    alvo: ['0'],
-    permanece: [],
-    estado: 'pendente',
-  }
-
-  const avisoPagamentoRecebidoMock: Aviso = {
-    id: 'pagamento-recebido-1',
-    tipo: 'proposta',
-    origem: 'pagamento-recebido',
-    mensagem: 'Pagamento recebido: mock',
-    alvo: ['1'],
-    permanece: [],
-    estado: 'pendente',
-  }
-
   const avisoConciliacaoMock: Aviso = {
     id: 'conciliacao-0',
     tipo: 'proposta',
@@ -295,21 +275,17 @@ describe('produzirLancamentos — avisos acionáveis (T5)', () => {
     vi.mocked(detectarConciliacao).mockReturnValue([])
   })
 
-  // Rewire T9 (canal único de avisos, D18): excluidosPendentes está sempre vazio desde
-  // T6 (o parser deixou de excluir essas linhas — elas entram em `lancamentos`), então
-  // as detecções especiais passam a rodar sobre `lancamentosComFlags` (o mesmo array
-  // enriquecido/com-flags que já é passado a `detectarConciliacao`).
-  it('chama detectarValorPendente com lancamentosComFlags (não mais excluidosPendentes)', () => {
+  // T11 (correção de bug multi-arquivo achado na validação visual): `detectarValorPendente`/
+  // `detectarPagamentoRecebido` deixaram de rodar dentro de `produzirLancamentos` — esta
+  // função processa a sublista per-arquivo, então o `alvo` gerado seria relativo a ela, nunca
+  // ao array total (`todosLancamentos`/`state.lancamentos`); o call-site real
+  // (`App.tsx`/`handleProduzir`) passou a chamá-las sobre o total já concatenado, onde
+  // `alvo` já nasce como índice real. Ver `src/__tests__/App.valorPendenteOffset.test.tsx`
+  // para a cobertura de regressão do bug de offset.
+  it('NÃO chama detectarValorPendente/detectarPagamentoRecebido (rewire T11 — call-site real é App.tsx)', () => {
     produzirLancamentos('csv', [], 'ES')
-    const [chamadoCom] = vi.mocked(detectarValorPendente).mock.calls[0]
-    expect(chamadoCom).toHaveLength(lancamentosMock.length)
-    expect(detectarValorPendente).not.toHaveBeenCalledWith(excluidosPendentesMock)
-  })
-
-  it('chama detectarPagamentoRecebido com lancamentosComFlags', () => {
-    produzirLancamentos('csv', [], 'ES')
-    const [chamadoCom] = vi.mocked(detectarPagamentoRecebido).mock.calls[0]
-    expect(chamadoCom).toHaveLength(lancamentosMock.length)
+    expect(detectarValorPendente).not.toHaveBeenCalled()
+    expect(detectarPagamentoRecebido).not.toHaveBeenCalled()
   })
 
   it('chama detectarConciliacao com lancamentosComFlags e lancamentosExtrato quando lancamentosExtrato não está vazio', () => {
@@ -328,9 +304,9 @@ describe('produzirLancamentos — avisos acionáveis (T5)', () => {
     expect(detectarConciliacao).not.toHaveBeenCalled()
   })
 
-  it('despacha adicionarAvisos com o array combinado dos avisos das três detecções', () => {
-    vi.mocked(detectarValorPendente).mockReturnValue([avisoValorPendenteMock])
-    vi.mocked(detectarPagamentoRecebido).mockReturnValue([avisoPagamentoRecebidoMock])
+  // Rewire T11: só `detectarConciliacao` é despachada por `produzirLancamentos` agora
+  // (valor-pendente/pagamento-recebido saíram — ver teste acima).
+  it('despacha adicionarAvisos com o array de avisos de detectarConciliacao (T11)', () => {
     vi.mocked(detectarConciliacao).mockReturnValue([avisoConciliacaoMock])
     const adicionarAvisos = vi.fn()
     const lancamentosExtrato: Lancamento[] = [
@@ -339,11 +315,7 @@ describe('produzirLancamentos — avisos acionáveis (T5)', () => {
 
     produzirLancamentos('csv', [], 'ES', undefined, lancamentosExtrato, adicionarAvisos)
 
-    expect(adicionarAvisos).toHaveBeenCalledWith([
-      avisoValorPendenteMock,
-      avisoPagamentoRecebidoMock,
-      avisoConciliacaoMock,
-    ])
+    expect(adicionarAvisos).toHaveBeenCalledWith([avisoConciliacaoMock])
   })
 
   it('despacha adicionarAvisos com array vazio quando nenhuma detecção retorna avisos', () => {
