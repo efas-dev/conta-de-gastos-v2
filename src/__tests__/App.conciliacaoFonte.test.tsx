@@ -54,8 +54,13 @@ vi.mock('../dominio/mes', async (importOriginal) => {
   return {
     ...original,
     // Impede que a leitura antecipada sobrescreva mesEscolhido — mantém o
-    // default '2026-06' (mês anterior a hoje) estável durante o teste.
+    // default '2026-06' estável durante o teste.
     detectarMesSugerido: vi.fn(() => null),
+    // Fixa o mês de referência independentemente do relógio da máquina: as
+    // fixtures são datadas de maio/junho/2026 e assumem mesEscolhido='2026-06'.
+    // Sem este mock, defaultMes() usa a data corrente (mês anterior a hoje) e os
+    // testes quebram quando o dia real sai de julho/2026 (bug de teste flaky).
+    defaultMes: vi.fn(() => '2026-06'),
   }
 })
 
