@@ -482,6 +482,26 @@ export const useAppStore = create<AppStore>()((set, get) => {
   // do grid; `aplicar`/`desfazer` têm mecanismo de reversão próprio (D4 do ADR).
   const acoesAvisos = criarAvisosSlice(set, get)
 
+  // `aplicar`/`desfazer` do slice mutam `lancamentos`, mas o slice é genérico
+  // (só conhece `lancamentos` e `avisosAcionaveis`) e não recomputa a visão
+  // derivada `lancamentosVisiveis`/`mapaIndiceVisualReal` de que a grid depende
+  // — ao contrário de `setLancamentos`/`mutarComHistorico`. Sem isso a linha some
+  // de `lancamentos` mas continua desenhada na grid. Envolvemos as duas ações
+  // aqui, onde `calcularVisao` e os campos de filtro são acessíveis.
+  function recalcularVisaoAposAviso() {
+    const s = get()
+    set(
+      calcularVisao(
+        s.lancamentos,
+        s.filtroFontes,
+        s.filtroNaturezas,
+        s.filtroSoIncompletos,
+        s.ordenacaoColuna,
+        s.ordenacaoDirecao,
+      ) as Partial<AppStore>,
+    )
+  }
+
   return {
     // Estado inicial
     ...estadoInicial,
@@ -490,6 +510,17 @@ export const useAppStore = create<AppStore>()((set, get) => {
     // Ações do slice de avisos acionáveis — ver avisosSlice.ts
     // -------------------------------------------------------------------
     ...acoesAvisos,
+
+    // Sobrescreve aplicar/desfazer para propagar a remoção/reinserção de
+    // lançamentos para a visão derivada que a grid renderiza.
+    aplicar: (id: string) => {
+      acoesAvisos.aplicar(id)
+      recalcularVisaoAposAviso()
+    },
+    desfazer: (id: string) => {
+      acoesAvisos.desfazer(id)
+      recalcularVisaoAposAviso()
+    },
 
     // -------------------------------------------------------------------
     // Actions mutativas — rastreiam patches para undo
