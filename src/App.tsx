@@ -2,6 +2,8 @@
 // ADR: see Docs/specs/grid-ux-filtros.adr.md
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
 // ADR: see Docs/specs/dicionario-ponta-a-ponta.adr.md
+// ADR: see Docs/specs/colinha-naturezas.adr.md
+// ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 
 import { useState, useRef, useEffect } from 'react'
 import { useAppStore } from './ui/store/appStore'
@@ -13,12 +15,32 @@ import {
 import { lerNaturezas, lerDicionario, ehDicionario, lerIniciais } from './excel/reader/leitor'
 import { defaultMes, detectarMesSugerido, classificarFonte } from './dominio/mes'
 import { detectar } from './parsers/index'
-import type { Lancamento } from './types'
+import { detectarConciliacao, detectarValorPendente, detectarPagamentoRecebido } from './dominio/deteccoes'
+import type { Aviso, Lancamento } from './types'
 import { ReviewGrid } from './ui/components/ReviewGrid'
 import { FiltroBar } from './ui/components/FiltroBar'
 import { SplitModal } from './ui/components/SplitModal'
-import { AvisoList } from './ui/components/AvisoList'
+import { CentralDeAvisos } from './ui/components/CentralDeAvisos'
 import { FonteRotulo } from './ui/components/FonteRotulo'
+import { PainelNaturezas } from './ui/components/PainelNaturezas'
+
+/**
+ * Constrói um `Aviso` informativo dispensável para os 5 avisos legados migrados ao
+ * canal único (sheet `CentralDeAvisos`, D18 do ADR `inspecao-proposta-conciliacao`
+ * — Task T9). Convive com o canal legado `avisos: string[]` (`addAviso`/`clearAvisos`)
+ * nos call-sites que ainda o alimentam — este helper só adiciona a via nova.
+ */
+function criarAvisoInformativo(id: string, origem: string, mensagem: string): Aviso {
+  return {
+    id,
+    tipo: 'informativo',
+    origem,
+    mensagem,
+    alvo: [],
+    permanece: [],
+    estado: 'pendente',
+  }
+}
 
 /**
  * App — Orquestra o fluxo de três etapas:
@@ -38,16 +60,21 @@ export function App() {
   const lancamentos = useAppStore((s) => s.lancamentos)
   const iniciais = useAppStore((s) => s.iniciais)
   const nomeUsuario = useAppStore((s) => s.nomeUsuario)
-  const avisos = useAppStore((s) => s.avisos)
   const dicEntries = useAppStore((s) => s.dicEntries)
   const sujo = useAppStore((s) => s.sujo)
+  const naturezasRicas = useAppStore((s) => s.naturezasRicas)
 
   // Actions do store
   const setIniciais = useAppStore((s) => s.setIniciais)
   const setNomeUsuario = useAppStore((s) => s.setNomeUsuario)
   const setLancamentos = useAppStore((s) => s.setLancamentos)
   const setDic = useAppStore((s) => s.setDic)
+  const setNaturezasRicas = useAppStore((s) => s.setNaturezasRicas)
   const addAviso = useAppStore((s) => s.addAviso)
+  // Callback real do slice de avisos acionáveis — despachado ao pipeline em
+  // handleProduzir (Decisão 5 do ADR avisos-acionaveis: PipelineState não
+  // conhece o store; o call-site em App.tsx é quem faz a ligação real).
+  const adicionarAvisosAcionaveis = useAppStore((s) => s.adicionarAvisos)
   const clearAvisos = useAppStore((s) => s.clearAvisos)
   const undo = useAppStore((s) => s.undo)
   const redo = useAppStore((s) => s.redo)
@@ -107,6 +134,12 @@ export function App() {
   /** Âncora invisível usada para disparar o download sem abrir nova aba. */
   const anchorRef = useRef<HTMLAnchorElement>(null)
 
+  /** Arrasto de arquivos sobre o dropzone em andamento (feedback visual — item 21). */
+  const [arrastando, setArrastando] = useState<boolean>(false)
+
+  /** Profundidade de dragEnter acumulada — evita desligar ao atravessar filhos do label. */
+  const profundidadeArrastoRef = useRef(0)
+
   // ---------------------------------------------------------------------------
   // Derivações
   // ---------------------------------------------------------------------------
@@ -115,6 +148,10 @@ export function App() {
   const podaGerar = lancamentos.length > 0 && modeloBytes !== null
   const emRevisao = lancamentos.length > 0
   const splitLancamento = splitIndice !== null ? lancamentos[splitIndice] : null
+
+  // D5 do ADR colinha-naturezas: lista filtrada — somente naturezas com descrição preenchida.
+  // PainelNaturezas retorna null quando lista vazia (botão não aparece).
+  const naturezasDescritas = naturezasRicas.filter((n) => n.descricao !== '')
 
   // ---------------------------------------------------------------------------
   // Atalhos de teclado (estilo Google Sheets) — desfazer/refazer
@@ -184,7 +221,22 @@ export function App() {
     useAppStore.setState((state) => ({
       avisos: [...state.avisos, mensagem],
     }))
-  }, [lancamentos, mesEscolhido])
+
+    // Canal único (T9, D18): mesma mensagem, migrada para o slice como informativo
+    // dispensável, id fixo `'fatura-aviso'` — se um aviso com esse id já existe
+    // (pendente ou já dispensado pelo usuário), NÃO recria: a dispensa precisa
+    // persistir na sessão mesmo com o efeito rodando de novo a cada re-render/mudança
+    // de mesEscolhido (mecanismo decidido localmente, ver iteração-log de T9).
+    const jaExisteAvisoDeFatura = useAppStore
+      .getState()
+      .avisosAcionaveis.avisos.some((a) => a.id === 'fatura-aviso')
+    if (!jaExisteAvisoDeFatura) {
+      const mensagemSemPrefixo = mensagem.slice(PREFIXO_FATURA.length)
+      adicionarAvisosAcionaveis([
+        criarAvisoInformativo('fatura-aviso', 'fatura-aviso', mensagemSemPrefixo),
+      ])
+    }
+  }, [lancamentos, mesEscolhido, adicionarAvisosAcionaveis])
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -208,16 +260,36 @@ export function App() {
   }
 
   /**
-   * Drop de arquivos no dropzone — mesmo roteamento do input escondido.
-   * O dragOver precisa de preventDefault para o navegador permitir o drop
-   * (sem ele, soltar o arquivo abre-o na aba).
+   * Arrastar-e-soltar na tela de importação INTEIRA — mesmo roteamento do
+   * input escondido. Os handlers vivem no container da tela (não só no
+   * dropzone): soltar em qualquer ponto funciona, e o dragOver precisa de
+   * preventDefault para o navegador permitir o drop (sem ele, soltar o
+   * arquivo abre-o na aba).
+   *
+   * Feedback visual (item 21): `arrastando` liga em dragEnter e desliga em
+   * dragLeave/drop, exibindo um overlay de tela cheia. dragEnter/dragLeave
+   * disparam também ao atravessar filhos — o contador de profundidade evita
+   * o pisca-pisca (só desliga quando o leave zera as entradas acumuladas).
    */
   function handleDragOver(e: React.DragEvent) {
     e.preventDefault()
   }
 
+  function handleDragEnter(e: React.DragEvent) {
+    e.preventDefault()
+    profundidadeArrastoRef.current++
+    setArrastando(true)
+  }
+
+  function handleDragLeave() {
+    profundidadeArrastoRef.current = Math.max(0, profundidadeArrastoRef.current - 1)
+    if (profundidadeArrastoRef.current === 0) setArrastando(false)
+  }
+
   async function handleDrop(e: React.DragEvent) {
     e.preventDefault()
+    profundidadeArrastoRef.current = 0
+    setArrastando(false)
     await processarArquivos(Array.from(e.dataTransfer.files ?? []))
   }
 
@@ -236,7 +308,11 @@ export function App() {
         const reconhecido = await ehDicionario(bytes)
         if (reconhecido) {
           if (dicCarregado) {
-            addAviso(`${arquivo.name}: dicionário substituído — último vence`)
+            const mensagem = `${arquivo.name}: dicionário substituído — último vence`
+            addAviso(mensagem)
+            adicionarAvisosAcionaveis([
+              criarAvisoInformativo(crypto.randomUUID(), 'dic-ultimo-vence', mensagem),
+            ])
           }
           const entradas = lerDicionario(bytes)
           setDic(entradas)
@@ -246,11 +322,19 @@ export function App() {
             setIniciais(inicialsDoDic)
           }
         } else {
-          addAviso(`${arquivo.name}: arquivo .xlsx não reconhecido como dicionário — ignorado`)
+          const mensagem = `${arquivo.name}: arquivo .xlsx não reconhecido como dicionário — ignorado`
+          addAviso(mensagem)
+          adicionarAvisosAcionaveis([
+            criarAvisoInformativo(crypto.randomUUID(), 'xlsx-nao-reconhecido', mensagem),
+          ])
         }
       } catch {
         // best-effort: erro silenciado — não quebra o fluxo
-        addAviso(`${arquivo.name}: erro ao processar arquivo .xlsx — ignorado`)
+        const mensagem = `${arquivo.name}: erro ao processar arquivo .xlsx — ignorado`
+        addAviso(mensagem)
+        adicionarAvisosAcionaveis([
+          criarAvisoInformativo(crypto.randomUUID(), 'erro-processar-xlsx', mensagem),
+        ])
       }
     }
 
@@ -308,7 +392,11 @@ export function App() {
       modelo = new Uint8Array(await resp.arrayBuffer())
     } catch (err) {
       console.error('[App] Falha ao carregar Modelo.xlsx:', err)
-      addAviso('Erro ao carregar Modelo.xlsx — verifique o servidor')
+      const mensagem = 'Erro ao carregar Modelo.xlsx — verifique o servidor'
+      addAviso(mensagem)
+      adicionarAvisosAcionaveis([
+        criarAvisoInformativo(crypto.randomUUID(), 'erro-modelo-xlsx', mensagem),
+      ])
       return
     }
 
@@ -319,21 +407,106 @@ export function App() {
     const todosLancamentos: typeof lancamentos = []
     for (const arquivo of csvArquivos) {
       const csvConteudo = await arquivo.text()
-      const { lancamentos: lans, avisos: avs } =
-        produzirLancamentos(csvConteudo, dicEntries, iniciais, nomeUsuario || undefined)
+      const { lancamentos: lans, avisos: avs } = produzirLancamentos(
+        csvConteudo,
+        dicEntries,
+        iniciais,
+        nomeUsuario || undefined,
+        [],
+        adicionarAvisosAcionaveis,
+      )
       todosLancamentos.push(...lans)
       for (const av of avs) {
         addAviso(`${arquivo.name}: ${av}`)
       }
     }
 
-    const naturezas = lerNaturezas(modelo)
+    // Task T11 do ADR `inspecao-proposta-conciliacao`: valor-pendente/pagamento-recebido
+    // precisam ser detectados sobre o array TOTAL já concatenado (`todosLancamentos`),
+    // não a sublista per-arquivo — `produzirLancamentos` (acima) parava de fazer isso
+    // internamente por rodar por arquivo (T11, ver PipelineState.ts). Como
+    // `origemEspecial` está presente em cada lançamento do total, `alvo` já nasce como
+    // índice real, sem remapeamento de offset (mesmo padrão de `detectarConciliacao`
+    // abaixo, mas sem precisar de `indicesFaturaNoTotal`/`indicesExtratoNoTotal` porque
+    // a detecção já roda direto sobre o total). Corrige o bug achado na validação
+    // visual manual (2026-08-01): quando a fatura não é o 1º arquivo do lote, o `alvo`
+    // relativo à sublista per-arquivo casava com a linha errada em `state.lancamentos`.
+    const avisosValorPendente = detectarValorPendente(todosLancamentos)
+    const avisosPagamentoRecebido = detectarPagamentoRecebido(todosLancamentos)
+    adicionarAvisosAcionaveis([...avisosValorPendente, ...avisosPagamentoRecebido])
+
+    // Task 8 do ADR avisos-acionaveis: correlaciona fatura×extrato pelo campo
+    // `fonte` que os parsers já gravam em cada lançamento — sem heurística de
+    // nome de arquivo (decisão humana, ver spec Task 8). Reutiliza
+    // `classificarFonte` (já usado acima para os rótulos fatura/extrato da
+    // lista de arquivos) como única fonte de verdade, em vez de introduzir
+    // uma segunda heurística. `produzirLancamentos` sempre roda por arquivo
+    // com `lancamentosExtrato=[]` (linha 366: 5º argumento), então
+    // `detectarConciliacao` nunca dispara ali — esta é a única chamada,
+    // evitando dupla emissão de propostas. Só executa quando o lote produzido
+    // tem ao menos uma fonte de cada lado; um único arquivo (só fatura ou só
+    // extrato) fica sem proposta e sem o aviso informativo "não conciliada",
+    // preservando o comportamento anterior.
+    const fontesProduzidas = Array.from(new Set(todosLancamentos.map((l) => l.fonte)))
+    const fontesFaturaProduzidas = fontesProduzidas.filter(
+      (fonte) => classificarFonte(fonte, todosLancamentos, mesEscolhido) === 'fatura',
+    )
+    const fontesExtratoProduzidas = fontesProduzidas.filter(
+      (fonte) => classificarFonte(fonte, todosLancamentos, mesEscolhido) === 'extrato',
+    )
+
+    if (fontesFaturaProduzidas.length > 0 && fontesExtratoProduzidas.length > 0) {
+      const lancamentosExtratoTotal = todosLancamentos.filter((l) =>
+        fontesExtratoProduzidas.includes(l.fonte),
+      )
+      // `detectarConciliacao` (T3, função pura) devolve `aviso.alvo` como índice
+      // posicional relativo ao array `lancamentosExtrato` que ela recebeu — aqui,
+      // o subconjunto filtrado `lancamentosExtratoTotal`, não `todosLancamentos`
+      // inteiro. `avisosSlice.aplicar` (T4), por sua vez, interpreta `alvo` como
+      // índice posicional em `state.lancamentos`, que é `todosLancamentos` sem
+      // filtro (ver `setLancamentos(todosLancamentos)` abaixo). Os dois contratos
+      // são internamente corretos, mas divergem no índice-base; sem remapear
+      // aqui, `aplicar` removeria o item errado sempre que a fatura precedesse o
+      // extrato no lote (evidência: Docs/.harness/iteracao-log-spec-20260720-avisos-acionaveis.md,
+      // bloco "Debugging gate" da Task 7, 2ª tentativa). `indicesExtratoNoTotal[i]`
+      // traduz o índice i dentro do subconjunto filtrado para o índice real em
+      // `todosLancamentos`.
+      const indicesExtratoNoTotal = todosLancamentos
+        .map((l, indice) => ({ l, indice }))
+        .filter(({ l }) => fontesExtratoProduzidas.includes(l.fonte))
+        .map(({ indice }) => indice)
+      // Par único por fatura (Decisão R2 do ADR): uma chamada de detectarConciliacao
+      // por fonte de fatura, nunca as faturas somadas entre si.
+      for (const fonteFatura of fontesFaturaProduzidas) {
+        const lancamentosDestaFatura = todosLancamentos.filter((l) => l.fonte === fonteFatura)
+        // Mesmo padrão de `indicesExtratoNoTotal` acima, agora para o lado da fatura:
+        // `aviso.permanece` (T0, ADR `inspecao-proposta-conciliacao`) também é um índice
+        // posicional relativo ao subconjunto filtrado que `detectarConciliacao` recebeu —
+        // aqui, `lancamentosDestaFatura` — não a `todosLancamentos` inteiro. Sem este
+        // remapeamento, `permanece` aponta para a linha errada sempre que a fatura não é o
+        // primeiro arquivo do lote (dívida registrada em
+        // Docs/debt/tecnica/remapeamento-permanece-ausente-app-tsx.md).
+        const indicesFaturaNoTotal = todosLancamentos
+          .map((l, indice) => ({ l, indice }))
+          .filter(({ l }) => l.fonte === fonteFatura)
+          .map(({ indice }) => indice)
+        const avisosConciliacao = detectarConciliacao(lancamentosDestaFatura, lancamentosExtratoTotal)
+        const avisosRemapeados = avisosConciliacao.map((aviso) => ({
+          ...aviso,
+          alvo: aviso.alvo.map((indiceStr) => String(indicesExtratoNoTotal[Number(indiceStr)])),
+          permanece: aviso.permanece.map((indiceStr) => String(indicesFaturaNoTotal[Number(indiceStr)])),
+        }))
+        adicionarAvisosAcionaveis(avisosRemapeados)
+      }
+    }
+
+    // Parseia naturezas uma única vez e deriva ambos os campos (D2 do ADR colinha-naturezas).
+    const ricas = lerNaturezas(modelo)
 
     setLancamentos(todosLancamentos)
-    // `setNaturezasValidas` não é exposto como action nominada no store — usa
-    // o setState do Zustand diretamente, que é o mecanismo canônico para campos
-    // sem action própria (D5 do ADR — store minimalista).
-    useAppStore.setState({ naturezasValidas: naturezas })
+    setNaturezasRicas(ricas)
+    // `naturezasValidas` derivado das siglas — sem parse adicional (D2 do ADR colinha-naturezas).
+    useAppStore.setState({ naturezasValidas: ricas.map((n) => n.sigla) })
 
     setModeloBytes(modelo)
   }
@@ -392,6 +565,12 @@ export function App() {
       {!emRevisao && (
         <div
           className="dc-card"
+          data-testid="tela-importacao"
+          data-arrastando={arrastando}
+          onDragOver={handleDragOver}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
           style={{
             width: '100%',
             minHeight: '100vh',
@@ -402,6 +581,52 @@ export function App() {
             boxShadow: 'none',
           }}
         >
+          {/* Overlay de tela cheia durante o arrasto (item 21) — pointerEvents:none
+              para o drop atravessar até o container que tem os handlers. */}
+          {arrastando && (
+            <div
+              style={{
+                position: 'fixed',
+                inset: 0,
+                zIndex: 50,
+                background: 'rgba(239, 243, 239, 0.92)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 18,
+                pointerEvents: 'none',
+              }}
+            >
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 16,
+                  border: '2.5px dashed var(--verde)',
+                  borderRadius: 24,
+                }}
+              />
+              <span
+                style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 18,
+                  background: 'var(--verde)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <IconeUpload cor="#fff" />
+              </span>
+              <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--verde)' }}>
+                Solte os arquivos aqui
+              </div>
+              <div style={{ fontSize: 15, color: 'var(--muted)' }}>
+                CSV, TXT ou dicionário .xlsx — em qualquer lugar da tela
+              </div>
+            </div>
+          )}
           {/* Top bar */}
           <div
             style={{
@@ -432,234 +657,240 @@ export function App() {
                 Conta de Gastos
               </span>
             </div>
-            <span className="dc-pill-privado">
-              <IconeCadeado />
-              Seus dados nunca saem do seu computador
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {/* Central de avisos — botão "Avisos" na top bar da importação
+                  (esta tela não tem a barra de ações com Colinha); mesmo sheet
+                  lateral fixo. Oculto quando não há avisos. */}
+              <CentralDeAvisos />
+              <span className="dc-pill-privado">
+                <IconeCadeado />
+                Seus dados nunca saem do seu computador
+              </span>
+            </div>
           </div>
 
-          {/* Body */}
-          <div
-            style={{
-              flex: 1,
-              padding: '40px 48px 48px',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <div style={{ maxWidth: 560, textAlign: 'center' }}>
-              <h1 className="dc-titulo">Importe seus extratos e faturas</h1>
-              <p className="dc-subtitulo">
-                Solte os arquivos, confira num piscar de olhos e exporte a planilha pronta. Sem
-                copiar e colar, sem enviar nada para lugar nenhum.
-              </p>
-            </div>
-
-            {/* Dropzone (label clicável envolvendo o input escondido; drop via handlers próprios) */}
-            <label
-              onDragOver={handleDragOver}
-              onDrop={handleDrop}
+          {/* Body — corpo à esquerda + Central de avisos como sheet lateral à direita,
+              mesmo padrão da Etapa 2 (T9, D18: canal único de avisos nas 2 telas). */}
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
+            <div
               style={{
-                width: '100%',
-                maxWidth: 640,
-                marginTop: 30,
-                border: '1.5px dashed #c9cfc5',
-                background: 'var(--branco)',
-                borderRadius: 18,
-                padding: '40px 32px',
+                flex: 1,
+                minHeight: 0,
+                overflowY: 'auto',
+                padding: '40px 48px 48px',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                textAlign: 'center',
-                cursor: 'pointer',
+                justifyContent: 'center',
               }}
             >
-              <input
-                type="file"
-                accept=".csv,.txt,.xlsx"
-                multiple
-                onChange={handleUploadChange}
-                style={{ display: 'none' }}
-              />
-              <span
+              <div style={{ maxWidth: 560, textAlign: 'center' }}>
+                <h1 className="dc-titulo">Importe seus extratos e faturas</h1>
+                <p className="dc-subtitulo">
+                  Solte os arquivos, confira num piscar de olhos e exporte a planilha pronta. Sem
+                  copiar e colar, sem enviar nada para lugar nenhum.
+                </p>
+              </div>
+
+              {/* Dropzone (label clicável envolvendo o input escondido; o arrasto é
+                  tratado pela tela inteira — handlers no container tela-importacao) */}
+              <label
                 style={{
-                  width: 56,
-                  height: 56,
-                  borderRadius: 16,
-                  background: 'var(--verde-suave)',
+                  width: '100%',
+                  maxWidth: 640,
+                  marginTop: 30,
+                  border: '1.5px dashed #c9cfc5',
+                  background: 'var(--branco)',
+                  borderRadius: 18,
+                  padding: '40px 32px',
                   display: 'flex',
+                  flexDirection: 'column',
                   alignItems: 'center',
-                  justifyContent: 'center',
+                  textAlign: 'center',
+                  cursor: 'pointer',
                 }}
               >
-                <IconeUpload />
-              </span>
-              <div style={{ marginTop: 16, fontSize: 17, fontWeight: 700 }}>
-                Arraste extratos e faturas aqui
-              </div>
-              <div style={{ marginTop: 6, fontSize: 14, color: 'var(--muted)' }}>
-                ou clique para escolher · CSV ou TXT · vários de uma vez
-              </div>
-            </label>
+                <input
+                  type="file"
+                  accept=".csv,.txt,.xlsx"
+                  multiple
+                  onChange={handleUploadChange}
+                  style={{ display: 'none' }}
+                />
+                <span
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: 16,
+                    background: 'var(--verde-suave)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <IconeUpload />
+                </span>
+                <div style={{ marginTop: 16, fontSize: 17, fontWeight: 700 }}>
+                  Arraste extratos e faturas aqui
+                </div>
+                <div style={{ marginTop: 6, fontSize: 14, color: 'var(--muted)' }}>
+                  ou clique para escolher · CSV ou TXT · vários de uma vez
+                </div>
+              </label>
 
-            {/* Lista de arquivos selecionados */}
-            {csvArquivos.length > 0 && (
+              {/* Lista de arquivos selecionados */}
+              {csvArquivos.length > 0 && (
+                <div
+                  style={{
+                    width: '100%',
+                    maxWidth: 640,
+                    marginTop: 20,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 10,
+                  }}
+                >
+                  {csvArquivos.map((f) => {
+                    // Fontes distintas detectadas na leitura antecipada deste arquivo.
+                    // Recalcula sempre que mesEscolhido muda (D10, D11 do ADR).
+                    const lansArquivo = lancamentosAntecipados[f.name] ?? []
+                    const fontesArquivo = Array.from(new Set(lansArquivo.map((l) => l.fonte)))
+
+                    return (
+                    <div
+                      key={f.name}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 14,
+                        background: 'var(--branco)',
+                        border: '1px solid var(--borda-2)',
+                        borderRadius: 13,
+                        padding: '14px 16px',
+                      }}
+                    >
+                      <span
+                        style={{
+                          width: 38,
+                          height: 38,
+                          borderRadius: 10,
+                          background: 'var(--verde-suave)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <IconeArquivo />
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {f.name}
+                        </div>
+                        <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 4 }}>
+                          {fontesArquivo.length > 0 ? (
+                            <span style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                              {fontesArquivo.map((fonte) => (
+                                <FonteRotulo
+                                  key={fonte}
+                                  fonte={fonte}
+                                  tipo={classificarFonte(fonte, lansArquivo, mesEscolhido)}
+                                />
+                              ))}
+                            </span>
+                          ) : (
+                            'Pronto para revisar'
+                          )}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault()
+                          setCsvArquivos((prev) => prev.filter((x) => x !== f))
+                        }}
+                        style={{
+                          border: 'none',
+                          background: 'none',
+                          color: 'var(--terracota)',
+                          fontSize: 13,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  )
+                  })}
+                </div>
+              )}
+
+              {/* Config: iniciais + nome */}
               <div
                 style={{
                   width: '100%',
                   maxWidth: 640,
-                  marginTop: 20,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 10,
+                  marginTop: 26,
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 16,
                 }}
               >
-                {csvArquivos.map((f) => {
-                  // Fontes distintas detectadas na leitura antecipada deste arquivo.
-                  // Recalcula sempre que mesEscolhido muda (D10, D11 do ADR).
-                  const lansArquivo = lancamentosAntecipados[f.name] ?? []
-                  const fontesArquivo = Array.from(new Set(lansArquivo.map((l) => l.fonte)))
-
-                  return (
-                  <div
-                    key={f.name}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 14,
-                      background: 'var(--branco)',
-                      border: '1px solid var(--borda-2)',
-                      borderRadius: 13,
-                      padding: '14px 16px',
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <span className="dc-rotulo">
+                    Suas iniciais <span style={{ color: 'var(--terracota)' }}>*</span>
+                  </span>
+                  <input
+                    className="dc-input"
+                    type="text"
+                    value={iniciais}
+                    placeholder="Ex.: ES"
+                    onChange={(e) => {
+                      setIniciais(e.target.value.trim().toUpperCase())
+                      setUsuarioEditouIniciais(true)
                     }}
-                  >
-                    <span
-                      style={{
-                        width: 38,
-                        height: 38,
-                        borderRadius: 10,
-                        background: 'var(--verde-suave)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <IconeArquivo />
-                    </span>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {f.name}
-                      </div>
-                      <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 4 }}>
-                        {fontesArquivo.length > 0 ? (
-                          <span style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                            {fontesArquivo.map((fonte) => (
-                              <FonteRotulo
-                                key={fonte}
-                                fonte={fonte}
-                                tipo={classificarFonte(fonte, lansArquivo, mesEscolhido)}
-                              />
-                            ))}
-                          </span>
-                        ) : (
-                          'Pronto para revisar'
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault()
-                        setCsvArquivos((prev) => prev.filter((x) => x !== f))
-                      }}
-                      style={{
-                        border: 'none',
-                        background: 'none',
-                        color: 'var(--terracota)',
-                        fontSize: 13,
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        flexShrink: 0,
-                      }}
-                    >
-                      Remover
-                    </button>
-                  </div>
-                )
-                })}
+                  />
+                </label>
+                <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <span className="dc-rotulo">
+                    Seu nome <span className="dc-opcional">(opcional)</span>
+                  </span>
+                  <input
+                    className="dc-input"
+                    type="text"
+                    value={nomeUsuario}
+                    placeholder="Ex.: Eduardo"
+                    onChange={(e) => setNomeUsuario(e.target.value)}
+                  />
+                </label>
               </div>
-            )}
 
-            {/* Config: iniciais + nome */}
-            <div
-              style={{
-                width: '100%',
-                maxWidth: 640,
-                marginTop: 26,
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: 16,
-              }}
-            >
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <span className="dc-rotulo">
-                  Suas iniciais <span style={{ color: 'var(--terracota)' }}>*</span>
+              {/* Campo de mês de referência — D5, D6 do ADR */}
+              <div style={{ width: '100%', maxWidth: 640, marginTop: 14 }}>
+                <span className="dc-rotulo" style={{ display: 'block', marginBottom: 8 }}>
+                  Mês de referência
                 </span>
-                <input
-                  className="dc-input"
-                  type="text"
-                  value={iniciais}
-                  placeholder="Ex.: ES"
-                  onChange={(e) => {
-                    setIniciais(e.target.value.trim().toUpperCase())
-                    setUsuarioEditouIniciais(true)
+                <SeletorMesReferencia
+                  mesEscolhido={mesEscolhido}
+                  onChange={(novoMes) => {
+                    setMesEscolhido(novoMes)
+                    setUsuarioEditou(true)
                   }}
                 />
-              </label>
-              <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <span className="dc-rotulo">
-                  Seu nome <span className="dc-opcional">(opcional)</span>
-                </span>
-                <input
-                  className="dc-input"
-                  type="text"
-                  value={nomeUsuario}
-                  placeholder="Ex.: Eduardo"
-                  onChange={(e) => setNomeUsuario(e.target.value)}
-                />
-              </label>
-            </div>
+              </div>
 
-            {/* Campo de mês de referência — D5, D6 do ADR */}
-            <div style={{ width: '100%', maxWidth: 640, marginTop: 14 }}>
-              <span className="dc-rotulo" style={{ display: 'block', marginBottom: 8 }}>
-                Mês de referência
-              </span>
-              <SeletorMesReferencia
-                mesEscolhido={mesEscolhido}
-                onChange={(novoMes) => {
-                  setMesEscolhido(novoMes)
-                  setUsuarioEditou(true)
-                }}
-              />
-            </div>
-
-            {/* CTA */}
-            <button
-              className="dc-btn dc-btn-primario dc-btn-cta"
-              onClick={handleProduzir}
-              disabled={!podaProduzir}
-              style={{ maxWidth: 640, marginTop: 30 }}
-            >
-              Produzir revisão
-              <IconeSeta />
-            </button>
-
-            <div style={{ width: '100%', maxWidth: 640 }}>
-              <AvisoList avisos={avisos} />
+              {/* CTA */}
+              <button
+                className="dc-btn dc-btn-primario dc-btn-cta"
+                onClick={handleProduzir}
+                disabled={!podaProduzir}
+                style={{ maxWidth: 640, marginTop: 30 }}
+              >
+                Produzir revisão
+                <IconeSeta />
+              </button>
             </div>
           </div>
         </div>
@@ -730,6 +961,14 @@ export function App() {
                   setUsuarioEditou(true)
                 }}
               />
+              {/* Colinha de naturezas — D5 do ADR colinha-naturezas: botão oculto quando lista filtrada é vazia */}
+              <PainelNaturezas
+                naturezas={naturezasDescritas}
+                onClose={() => {}}
+              />
+              {/* Central de avisos — mesmo padrão da Colinha: botão "Avisos" ao
+                  lado, sheet lateral fixo à direita. Oculto quando não há avisos. */}
+              <CentralDeAvisos />
               <button
                 className="dc-btn dc-btn-primario"
                 onClick={handleGerar}
@@ -775,15 +1014,18 @@ export function App() {
             </span>
           </div>
 
-          <div style={{ flex: 1, minHeight: 0 }}>
-            <ReviewGrid onSplitDetectado={(indice) => setSplitIndice(indice)} />
-          </div>
-
-          {avisos.length > 0 && (
-            <div style={{ padding: '0 28px 16px' }}>
-              <AvisoList avisos={avisos} />
+          {/* Corpo: grid ocupa toda a largura. A Central de avisos deixou de ser
+              uma coluna inline — agora é acionada pelo botão "Avisos" na barra de
+              ações (ao lado da Colinha) e abre como sheet lateral fixo à direita,
+              mesmo padrão de `PainelNaturezas`. Canal único (T9, D18): o footer
+              `AvisoList` foi aposentado; os avisos legados migraram para o slice. */}
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
+            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <ReviewGrid onSplitDetectado={(indice) => setSplitIndice(indice)} />
+              </div>
             </div>
-          )}
+          </div>
 
           {/* Modal de split — abre quando onSplitDetectado dispara */}
           {splitIndice !== null && splitLancamento && (
@@ -818,9 +1060,9 @@ function IconeCadeado() {
     </svg>
   )
 }
-function IconeUpload() {
+function IconeUpload({ cor = 'var(--verde)' }: { cor?: string }) {
   return (
-    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="var(--verde)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={cor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 16V4M7 9l5-5 5 5" />
       <path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
     </svg>

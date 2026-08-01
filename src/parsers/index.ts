@@ -2,7 +2,7 @@
 // ADR: see Docs/specs/parsers-fatura-nubank-extrato-itau.adr.md
 
 import { extratoNubank, ErroArquivoNaoReconhecido } from './extrato_nubank'
-import type { ResultadoParse } from './extrato_nubank'
+import type { ResultadoParse } from '../types'
 import { faturaNumbank } from './fatura_nubank'
 import { extratoItau } from './extrato_itau'
 

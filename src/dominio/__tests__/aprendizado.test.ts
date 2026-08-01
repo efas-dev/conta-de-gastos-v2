@@ -131,6 +131,87 @@ describe('aprenderDicionario', () => {
     expect(resultado[0].vezes).toBe(2)
   })
 
+  it('TL24-1: lançamento com natureza vazia não é aprendido', () => {
+    const lan: Lancamento = {
+      fonte: 'Nubank',
+      data: '2025-08-01',
+      transcricao: 'IFOOD',
+      valor: -45.0,
+      iniciais: 'ES',
+      natureza: '',
+      descricao: 'Delivery',
+    }
+    expect(aprenderDicionario([lan], [])).toHaveLength(0)
+  })
+
+  it('TL24-2: lançamento com descrição vazia (ou só espaços) não é aprendido', () => {
+    const lan: Lancamento = {
+      fonte: 'Nubank',
+      data: '2025-08-01',
+      transcricao: 'IFOOD',
+      valor: -45.0,
+      iniciais: 'ES',
+      natureza: 'AL',
+      descricao: '   ',
+    }
+    expect(aprenderDicionario([lan], [])).toHaveLength(0)
+  })
+
+  it('TL24-3: lançamento incompleto não incrementa vezes nem marca ambíguo em entrada existente', () => {
+    const dicAnterior: DicEntry[] = [
+      {
+        chave: 'IFOOD',
+        fonte: 'Nubank',
+        natureza: 'AL',
+        descricao: 'Delivery',
+        iniciais: 'ES',
+        vezes: 3,
+        ambiguo: false,
+      },
+    ]
+    const lanIncompleto: Lancamento = {
+      fonte: 'Nubank',
+      data: '2025-08-01',
+      transcricao: 'IFOOD',
+      valor: -45.0,
+      iniciais: 'ES',
+      natureza: '',
+      descricao: 'Delivery',
+    }
+    const resultado = aprenderDicionario([lanIncompleto], dicAnterior)
+
+    expect(resultado).toHaveLength(1)
+    expect(resultado[0].vezes).toBe(3)
+    expect(resultado[0].ambiguo).toBe(false)
+  })
+
+  it('TL24-4: entrada herdada com natureza/descrição vazia é filtrada do retorno (round-trip não re-grava)', () => {
+    const dicAnterior: DicEntry[] = [
+      {
+        chave: 'ENTRADA VELHA VAZIA',
+        fonte: 'Nubank',
+        natureza: '',
+        descricao: '',
+        iniciais: 'ES',
+        vezes: 2,
+        ambiguo: false,
+      },
+      {
+        chave: 'SPOTIFY',
+        fonte: 'Nubank',
+        natureza: 'Lazer',
+        descricao: 'Música',
+        iniciais: 'ES',
+        vezes: 1,
+        ambiguo: false,
+      },
+    ]
+    const resultado = aprenderDicionario([], dicAnterior)
+
+    expect(resultado).toHaveLength(1)
+    expect(resultado[0].chave).toBe('SPOTIFY')
+  })
+
   it('TL-8: dicAnterior não é mutado pela função', () => {
     const dicAnterior: DicEntry[] = [
       {

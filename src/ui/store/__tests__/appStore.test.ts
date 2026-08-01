@@ -53,6 +53,7 @@ function resetarStore(): void {
     iniciais: '',
     nomeUsuario: '',
     naturezasValidas: [],
+    naturezasRicas: [],
     dicEntries: [],
     avisos: [],
     historico: [],
@@ -841,5 +842,107 @@ describe('ciclarOrdenacao', () => {
     const antes = useAppStore.getState().historico.length
     useAppStore.getState().ciclarOrdenacao('valor')
     expect(useAppStore.getState().historico.length).toBe(antes)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// naturezasRicas — campo rico do store (spec-20260718-colinha-naturezas T2)
+// ---------------------------------------------------------------------------
+
+describe('naturezasRicas — estado inicial', () => {
+  beforeEach(resetarStore)
+
+  it('estado inicial é array vazio', () => {
+    expect(useAppStore.getState().naturezasRicas).toEqual([])
+  })
+})
+
+describe('setNaturezasRicas', () => {
+  beforeEach(resetarStore)
+
+  it('persiste lista de naturezas ricas no estado', () => {
+    const lista = [
+      { sigla: 'ALM', nome: 'Alimentação', descricao: 'Gastos com alimentação' },
+      { sigla: 'TRN', nome: 'Transporte', descricao: '' },
+    ]
+    useAppStore.getState().setNaturezasRicas(lista)
+    expect(useAppStore.getState().naturezasRicas).toEqual(lista)
+  })
+
+  it('aceita array vazio para limpar a lista', () => {
+    useAppStore.getState().setNaturezasRicas([
+      { sigla: 'ALM', nome: 'Alimentação', descricao: 'Gastos com alimentação' },
+    ])
+    useAppStore.getState().setNaturezasRicas([])
+    expect(useAppStore.getState().naturezasRicas).toEqual([])
+  })
+
+  it('não altera naturezasValidas ao setar naturezasRicas', () => {
+    useAppStore.setState({ naturezasValidas: ['ALM', 'TRN'] })
+    useAppStore.getState().setNaturezasRicas([
+      { sigla: 'EDU', nome: 'Educação', descricao: 'Cursos e livros' },
+    ])
+    expect(useAppStore.getState().naturezasValidas).toEqual(['ALM', 'TRN'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Regressão: aplicar/desfazer de proposta propagam para a visão derivada
+// (lancamentosVisiveis) — a grid renderiza da visão, não de `lancamentos`.
+// Bug: aprovar uma proposta removia de `lancamentos` mas a linha continuava na
+// grid porque `lancamentosVisiveis`/`mapaIndiceVisualReal` não eram recomputados.
+// ---------------------------------------------------------------------------
+
+describe('aplicar/desfazer propagam para a visão derivada (lancamentosVisiveis)', () => {
+  beforeEach(() => {
+    resetarStore()
+    useAppStore.setState({
+      avisosAcionaveis: { avisos: [], removidos: {}, avisoEmInspecao: null },
+    } as Partial<ReturnType<typeof useAppStore.getState>>)
+  })
+
+  it('aprovar (aplicar) remove a linha alvo também de lancamentosVisiveis', () => {
+    const lista = [lancamento({ id: '0' }), lancamento({ id: '1' }), lancamento({ id: '2' })]
+    useAppStore.getState().setLancamentos(lista)
+    expect(useAppStore.getState().lancamentosVisiveis).toHaveLength(3)
+
+    useAppStore.getState().adicionarAvisos([
+      {
+        id: 'vp-1',
+        tipo: 'proposta',
+        origem: 'valor-pendente',
+        mensagem: 'Valor pendente do mês anterior',
+        alvo: ['1'],
+        permanece: [],
+        estado: 'pendente',
+      },
+    ])
+    useAppStore.getState().aplicar('vp-1')
+
+    // Antes do fix: lancamentos ia para 2 mas lancamentosVisiveis continuava 3.
+    expect(useAppStore.getState().lancamentos).toHaveLength(2)
+    expect(useAppStore.getState().lancamentosVisiveis).toHaveLength(2)
+  })
+
+  it('desfazer reinsere a linha também em lancamentosVisiveis', () => {
+    const lista = [lancamento({ id: '0' }), lancamento({ id: '1' })]
+    useAppStore.getState().setLancamentos(lista)
+    useAppStore.getState().adicionarAvisos([
+      {
+        id: 'vp-2',
+        tipo: 'proposta',
+        origem: 'valor-pendente',
+        mensagem: 'x',
+        alvo: ['0'],
+        permanece: [],
+        estado: 'pendente',
+      },
+    ])
+    useAppStore.getState().aplicar('vp-2')
+    expect(useAppStore.getState().lancamentosVisiveis).toHaveLength(1)
+
+    useAppStore.getState().desfazer('vp-2')
+    expect(useAppStore.getState().lancamentos).toHaveLength(2)
+    expect(useAppStore.getState().lancamentosVisiveis).toHaveLength(2)
   })
 })

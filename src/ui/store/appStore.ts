@@ -1,10 +1,20 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
 // ADR: see Docs/specs/grid-ux-filtros.adr.md
+// ADR: see Docs/specs/colinha-naturezas.adr.md
+// ADR: see Docs/specs/avisos-acionaveis.adr.md
 
 import { create } from 'zustand'
 import { enablePatches, produceWithPatches, applyPatches, current, type Patch } from 'immer'
-import type { Lancamento, DicEntry } from '../../types'
+import type { Lancamento, DicEntry, NaturezaRica } from '../../types'
 import { ratearSplit, type AlvoSplit } from '../../dominio/split'
+import {
+  criarAvisosSlice,
+  estadoInicialAvisos,
+  type AcoesAvisosSlice,
+  type EstadoAvisosSlice,
+} from './avisosSlice'
+
+// NaturezaRica importado de ../../types (unificado em T3 — D2 do ADR colinha-naturezas)
 
 /**
  * Habilita o suporte a patches do Immer (necessário para undo por patches — D3 do ADR).
@@ -55,10 +65,23 @@ export interface EstadoApp {
   nomeUsuario: string
   /** Naturezas válidas lidas do Modelo.xlsx (aba Naturezas B3:B32). */
   naturezasValidas: string[]
+  /** Naturezas com dados ricos (sigla, nome, descrição) lidas do Modelo.xlsx. */
+  naturezasRicas: NaturezaRica[]
   /** Entradas do dicionário lidas do .xlsx anterior. */
   dicEntries: DicEntry[]
   /** Mensagens de aviso acumuladas para exibição. */
   avisos: string[]
+  /**
+   * Estado do módulo de avisos acionáveis (Decisão 5 do ADR `avisos-acionaveis`) —
+   * central de propostas/informativos consultável separadamente do array legado
+   * `avisos: string[]` acima. Namespace escolhido para não colidir com esse campo
+   * legado: o slice próprio (`avisosSlice.ts`) declara `avisos: Aviso[]` no seu
+   * contrato isolado; aqui ele é exposto como sub-objeto para coexistir com o
+   * legado sem renomeá-lo (fora de escopo desta task — ver `App.tsx`/`AvisoList.tsx`,
+   * Task 6). Fora do histórico de undo/redo do grid (ver `EstadoMutavel` abaixo):
+   * `aplicar`/`desfazer` têm seu próprio mecanismo de reversão.
+   */
+  avisosAcionaveis: EstadoAvisosSlice
   /**
    * Pilha de undo. Cada entrada guarda os patches diretos e inversos de uma
    * mutação, permitindo tanto desfazer (aplicar `inversas`) quanto refazer
@@ -143,6 +166,7 @@ type EstadoMutavel = Omit<
   | 'ordenacaoDirecao'
   | 'lancamentosVisiveis'
   | 'mapaIndiceVisualReal'
+  | 'avisosAcionaveis'
 >
 
 // ---------------------------------------------------------------------------
@@ -150,7 +174,7 @@ type EstadoMutavel = Omit<
 // ---------------------------------------------------------------------------
 
 /** Actions expostas pelo store. */
-export interface AcoesApp {
+export interface AcoesApp extends AcoesAvisosSlice {
   /**
    * Edita um campo editável de um lançamento na posição `indice`.
    *
@@ -211,6 +235,12 @@ export interface AcoesApp {
    * Sem rastreamento de undo — este setter é chamado no carregamento do dicionário.
    */
   setDic: (entries: DicEntry[]) => void
+
+  /**
+   * Substitui a lista de naturezas ricas (sem rastreamento de undo).
+   * Chamado no carregamento do Modelo.xlsx.
+   */
+  setNaturezasRicas: (lista: NaturezaRica[]) => void
 
   /** Adiciona uma mensagem de aviso ao fim da lista. */
   addAviso: (aviso: string) => void
@@ -341,8 +371,10 @@ const estadoInicial: EstadoApp = {
   iniciais: '',
   nomeUsuario: '',
   naturezasValidas: [],
+  naturezasRicas: [],
   dicEntries: [],
   avisos: [],
+  avisosAcionaveis: estadoInicialAvisos,
   historico: [],
   futuro: [],
   csvArquivo: null,
@@ -366,8 +398,10 @@ function extrairEstado(store: AppStore): EstadoApp {
     iniciais: store.iniciais,
     nomeUsuario: store.nomeUsuario,
     naturezasValidas: store.naturezasValidas,
+    naturezasRicas: store.naturezasRicas,
     dicEntries: store.dicEntries,
     avisos: store.avisos,
+    avisosAcionaveis: store.avisosAcionaveis,
     historico: store.historico,
     futuro: store.futuro,
     csvArquivo: store.csvArquivo,
@@ -418,6 +452,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
       ordenacaoDirecao: _od,
       lancamentosVisiveis: _lv,
       mapaIndiceVisualReal: _miv,
+      avisosAcionaveis: _av,
       ...estadoMutavel
     } = extrairEstado(get())
     const [novoEstado, diretas, inversas] = produceWithPatches(
@@ -443,9 +478,49 @@ export const useAppStore = create<AppStore>()((set, get) => {
     })
   }
 
+  // Ações do slice de avisos acionáveis (avisosSlice.ts) — não rastreiam undo
+  // do grid; `aplicar`/`desfazer` têm mecanismo de reversão próprio (D4 do ADR).
+  const acoesAvisos = criarAvisosSlice(set, get)
+
+  // `aplicar`/`desfazer` do slice mutam `lancamentos`, mas o slice é genérico
+  // (só conhece `lancamentos` e `avisosAcionaveis`) e não recomputa a visão
+  // derivada `lancamentosVisiveis`/`mapaIndiceVisualReal` de que a grid depende
+  // — ao contrário de `setLancamentos`/`mutarComHistorico`. Sem isso a linha some
+  // de `lancamentos` mas continua desenhada na grid. Envolvemos as duas ações
+  // aqui, onde `calcularVisao` e os campos de filtro são acessíveis.
+  function recalcularVisaoAposAviso() {
+    const s = get()
+    set(
+      calcularVisao(
+        s.lancamentos,
+        s.filtroFontes,
+        s.filtroNaturezas,
+        s.filtroSoIncompletos,
+        s.ordenacaoColuna,
+        s.ordenacaoDirecao,
+      ) as Partial<AppStore>,
+    )
+  }
+
   return {
     // Estado inicial
     ...estadoInicial,
+
+    // -------------------------------------------------------------------
+    // Ações do slice de avisos acionáveis — ver avisosSlice.ts
+    // -------------------------------------------------------------------
+    ...acoesAvisos,
+
+    // Sobrescreve aplicar/desfazer para propagar a remoção/reinserção de
+    // lançamentos para a visão derivada que a grid renderiza.
+    aplicar: (id: string) => {
+      acoesAvisos.aplicar(id)
+      recalcularVisaoAposAviso()
+    },
+    desfazer: (id: string) => {
+      acoesAvisos.desfazer(id)
+      recalcularVisaoAposAviso()
+    },
 
     // -------------------------------------------------------------------
     // Actions mutativas — rastreiam patches para undo
@@ -582,6 +657,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
     setNomeUsuario: (nomeUsuario) => set({ nomeUsuario }),
     setCSV: (arquivo) => set({ csvArquivo: arquivo }),
     setDic: (entries) => set({ dicEntries: entries }),
+    setNaturezasRicas: (lista) => set({ naturezasRicas: lista }),
     addAviso: (aviso) => set((state) => ({ avisos: [...state.avisos, aviso] })),
     clearAvisos: () => set({ avisos: [] }),
     marcarLimpo: () => set({ sujo: false }),

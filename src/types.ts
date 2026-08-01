@@ -1,4 +1,7 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
+// ADR: see Docs/specs/colinha-naturezas.adr.md
+// ADR: see Docs/specs/avisos-acionaveis.adr.md
+// ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 
 /**
  * Representa um lançamento financeiro normalizado, independente da fonte de origem.
@@ -35,6 +38,31 @@ export interface Lancamento {
    * Preenchida pelo pipeline via `detectarInvestimento`.
    */
   investimento?: 'aplicacao' | 'resgate' | null
+  /**
+   * Marca as linhas de fatura que antes eram excluídas silenciosamente no parser
+   * (`excluidosPendentes`) e agora entram em `lancamentos` como lançamentos normais
+   * (ver ADR `inspecao-proposta-conciliacao`, Decisões 16/17).
+   * `'valor-pendente'` = "Valor pendente do mês anterior"; `'pagamento-recebido'` =
+   * "Pagamento recebido". `undefined` = lançamento comum, sem origem especial.
+   * Consumida pela detecção (`detectarValorPendente`/`detectarPagamentoRecebido`) para
+   * localizar a linha real em `lancamentos` sem depender de reconhecimento por texto.
+   */
+  origemEspecial?: 'valor-pendente' | 'pagamento-recebido'
+}
+
+/**
+ * Natureza de gasto enriquecida com nome completo e descrição curta,
+ * lida da aba `Naturezas` do Modelo.xlsx (colunas B, A e F, linhas 3–32).
+ *
+ * Produzida por `lerNaturezas` e consumida pelo store e pelo painel colinha.
+ */
+export interface NaturezaRica {
+  /** Sigla da natureza (coluna B, ex.: "ALM", "TRN") */
+  sigla: string
+  /** Nome completo da natureza (coluna A, ex.: "Alimentação") */
+  nome: string
+  /** Descrição curta (coluna F); vazio quando a célula está ausente ou em branco */
+  descricao: string
 }
 
 /**
@@ -59,4 +87,54 @@ export interface DicEntry {
   vezes: number
   /** `true` quando a chave apresentou classificações conflitantes — não auto-preenche */
   ambiguo: boolean
+}
+
+/**
+ * Resultado do parse: lançamentos válidos + contagem de linhas puladas (D6 do ADR
+ * `parsers-fatura-nubank-extrato-itau`) + lançamentos excluídos de forma explícita
+ * (`excluidosPendentes`, Decisão 4/5 do ADR `avisos-acionaveis`).
+ *
+ * `excluidosPendentes` substitui o descarte silencioso: lançamentos como "Pagamento
+ * recebido" ou "Valor pendente do mês anterior" saem aqui em vez de desaparecer sem
+ * rastro. Todo parser deve preencher este campo (`[]` quando não há exclusão).
+ */
+export interface ResultadoParse {
+  lancamentos: Lancamento[]
+  linhasIgnoradas: number
+  excluidosPendentes: Lancamento[]
+}
+
+/**
+ * Aviso acionável exibido na Central de Avisos (ver ADR `avisos-acionaveis`, Decisão 5).
+ *
+ * `tipo: 'informativo'` é somente leitura; `tipo: 'proposta'` pode ser aceita/ignorada.
+ * `alvo` carrega os ids dos lançamentos afetados como dado — quem decide o que fazer
+ * com esses ids é o consumidor (`avisosSlice`), nunca o produtor do aviso.
+ */
+export interface Aviso {
+  /** Identificador único do aviso */
+  id: string
+  /** 'informativo' = somente leitura; 'proposta' = pode ser aceita/dispensada */
+  tipo: 'informativo' | 'proposta'
+  /** Origem/detector que gerou o aviso (ex.: 'valor-pendente', 'conciliacao') */
+  origem: string
+  /** Mensagem exibida ao usuário na Central de Avisos */
+  mensagem: string
+  /** Ids dos lançamentos afetados pelo aviso */
+  alvo: string[]
+  /**
+   * Ids dos lançamentos que permanecem — "quem fica" — como complemento de `alvo` ("quem sai").
+   * Campo aditivo (ver ADR `inspecao-proposta-conciliacao`, Decisão 2): `alvo` não muda de
+   * semântica. Populado por `detectarConciliacao` com os ids da fatura que compõem a soma
+   * casada; vazio (`[]`) quando não há casamento.
+   */
+  permanece: string[]
+  /**
+   * Resumo textual da regra de casamento aplicada (ex.: "somatório da fatura R$ X ↔ pagamento
+   * R$ Y, diferença ≤ R$ 0,05"). `undefined` quando não há regra de tolerância nesse caminho
+   * (ex.: `detectarValorPendente`) ou quando o aviso não representa um casamento.
+   */
+  resumo?: string
+  /** Estado do ciclo de vida do aviso */
+  estado: 'pendente' | 'aplicado' | 'dispensado'
 }

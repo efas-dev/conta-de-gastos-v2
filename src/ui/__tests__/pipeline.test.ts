@@ -2,7 +2,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { computarNomeArquivo, executarPipeline, produzirLancamentos, gerarAPartirDosRevisados } from '../PipelineState'
-import type { Lancamento, DicEntry } from '../../types'
+import type { Lancamento, DicEntry, Aviso } from '../../types'
 
 // ---------------------------------------------------------------------------
 // Mocks — módulos pesados substituídos por stubs
@@ -36,6 +36,15 @@ vi.mock('../../dominio/dicionario', () => ({
   ),
 }))
 
+// Mocks das funções de detecção (T3) — Task 5 nunca depende da implementação real,
+// apenas do contrato (Aviso[]). Garante o paralelismo T4‖T5 (T3 já mergeada, mas o
+// mock isola a Task 5 de qualquer mudança futura em deteccoes.ts).
+vi.mock('../../dominio/deteccoes', () => ({
+  detectarValorPendente: vi.fn(() => []),
+  detectarPagamentoRecebido: vi.fn(() => []),
+  detectarConciliacao: vi.fn(() => []),
+}))
+
 vi.mock('../../excel/reader/leitor', () => ({
   lerDicionario: vi.fn(() => []),
 }))
@@ -55,6 +64,7 @@ import { enriquecerLancamento } from '../../dominio/dicionario'
 import { lerDicionario } from '../../excel/reader/leitor'
 import { gerarXlsx } from '../../excel/writer/gerador'
 import { aprenderDicionario } from '../../dominio/aprendizado'
+import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from '../../dominio/deteccoes'
 
 // ---------------------------------------------------------------------------
 // Nota: os testes dos grupos `estadoInicial` e `reduzir — *` foram removidos
@@ -217,6 +227,144 @@ describe('produzirLancamentos — flags de detecção', () => {
     const { lancamentos } = produzirLancamentos('csv', [], 'ES')
     expect(lancamentos[0].investimento).toBe('aplicacao')
     expect(lancamentos[0].transferenciaInterna).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// T5 — produzirLancamentos converte excluidosPendentes em Aviso[] via detecções
+// e despacha ao slice por callback injetado (mocks de T3 + T4, garantia do
+// paralelismo T4‖T5 — ver Task 5 do spec avisos-acionaveis).
+// ---------------------------------------------------------------------------
+
+describe('produzirLancamentos — avisos acionáveis (T5)', () => {
+  const excluidosPendentesMock: Lancamento[] = [
+    {
+      fonte: 'fatura_nubank_cc',
+      data: '2025-01-01',
+      transcricao: 'Valor pendente do mês anterior',
+      valor: 120,
+      iniciais: '',
+      natureza: '',
+      descricao: '',
+    },
+  ]
+
+  const avisoConciliacaoMock: Aviso = {
+    id: 'conciliacao-0',
+    tipo: 'proposta',
+    origem: 'conciliacao',
+    mensagem: 'Fatura conciliada: mock',
+    alvo: ['0'],
+    permanece: [],
+    estado: 'pendente',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(lerDicionario).mockReturnValue([])
+    vi.mocked(detectar).mockReturnValue({
+      aceita: () => true,
+      parsear: vi.fn(() => ({
+        lancamentos: lancamentosMock,
+        linhasIgnoradas: 0,
+        excluidosPendentes: excluidosPendentesMock,
+      })),
+    })
+    vi.mocked(detectarValorPendente).mockReturnValue([])
+    vi.mocked(detectarPagamentoRecebido).mockReturnValue([])
+    vi.mocked(detectarConciliacao).mockReturnValue([])
+  })
+
+  // T11 (correção de bug multi-arquivo achado na validação visual): `detectarValorPendente`/
+  // `detectarPagamentoRecebido` deixaram de rodar dentro de `produzirLancamentos` — esta
+  // função processa a sublista per-arquivo, então o `alvo` gerado seria relativo a ela, nunca
+  // ao array total (`todosLancamentos`/`state.lancamentos`); o call-site real
+  // (`App.tsx`/`handleProduzir`) passou a chamá-las sobre o total já concatenado, onde
+  // `alvo` já nasce como índice real. Ver `src/__tests__/App.valorPendenteOffset.test.tsx`
+  // para a cobertura de regressão do bug de offset.
+  it('NÃO chama detectarValorPendente/detectarPagamentoRecebido (rewire T11 — call-site real é App.tsx)', () => {
+    produzirLancamentos('csv', [], 'ES')
+    expect(detectarValorPendente).not.toHaveBeenCalled()
+    expect(detectarPagamentoRecebido).not.toHaveBeenCalled()
+  })
+
+  it('chama detectarConciliacao com lancamentosComFlags e lancamentosExtrato quando lancamentosExtrato não está vazio', () => {
+    const lancamentosExtrato: Lancamento[] = [
+      { fonte: 'extrato', data: '2025-01-02', transcricao: 'Pagamento de fatura', valor: -150, iniciais: '', natureza: '', descricao: '' },
+    ]
+    produzirLancamentos('csv', [], 'ES', undefined, lancamentosExtrato)
+    expect(detectarConciliacao).toHaveBeenCalledOnce()
+    const [fatura, extrato] = vi.mocked(detectarConciliacao).mock.calls[0]
+    expect(fatura).toHaveLength(lancamentosMock.length)
+    expect(extrato).toEqual(lancamentosExtrato)
+  })
+
+  it('não chama detectarConciliacao quando lancamentosExtrato não é fornecido (default vazio)', () => {
+    produzirLancamentos('csv', [], 'ES')
+    expect(detectarConciliacao).not.toHaveBeenCalled()
+  })
+
+  // Rewire T11: só `detectarConciliacao` é despachada por `produzirLancamentos` agora
+  // (valor-pendente/pagamento-recebido saíram — ver teste acima).
+  it('despacha adicionarAvisos com o array de avisos de detectarConciliacao (T11)', () => {
+    vi.mocked(detectarConciliacao).mockReturnValue([avisoConciliacaoMock])
+    const adicionarAvisos = vi.fn()
+    const lancamentosExtrato: Lancamento[] = [
+      { fonte: 'extrato', data: '2025-01-02', transcricao: 'Pagamento de fatura', valor: -150, iniciais: '', natureza: '', descricao: '' },
+    ]
+
+    produzirLancamentos('csv', [], 'ES', undefined, lancamentosExtrato, adicionarAvisos)
+
+    expect(adicionarAvisos).toHaveBeenCalledWith([avisoConciliacaoMock])
+  })
+
+  it('despacha adicionarAvisos com array vazio quando nenhuma detecção retorna avisos', () => {
+    const adicionarAvisos = vi.fn()
+    produzirLancamentos('csv', [], 'ES', undefined, [], adicionarAvisos)
+    expect(adicionarAvisos).toHaveBeenCalledWith([])
+  })
+
+  it('inclui um Aviso informativo dispensável de "linhas ignoradas" no despacho quando há linhasIgnoradas (T9, D18)', () => {
+    vi.mocked(detectar).mockReturnValue({
+      aceita: () => true,
+      parsear: vi.fn(() => ({
+        lancamentos: lancamentosMock,
+        linhasIgnoradas: 2,
+        excluidosPendentes: [],
+      })),
+    })
+    const adicionarAvisos = vi.fn()
+    produzirLancamentos('csv', [], 'ES', undefined, [], adicionarAvisos)
+
+    const avisosDespachados = vi.mocked(adicionarAvisos).mock.calls[0][0]
+    const avisoLinhasIgnoradas = avisosDespachados.find((a) => a.origem === 'linhas-ignoradas')
+    expect(avisoLinhasIgnoradas).toMatchObject({
+      tipo: 'informativo',
+      origem: 'linhas-ignoradas',
+      estado: 'pendente',
+    })
+    expect(avisoLinhasIgnoradas?.mensagem).toMatch(/2 linhas ignoradas/i)
+    expect(typeof avisoLinhasIgnoradas?.id).toBe('string')
+    expect(avisoLinhasIgnoradas?.id.length).toBeGreaterThan(0)
+  })
+
+  it('não lança erro quando adicionarAvisos não é fornecido pelo chamador', () => {
+    expect(() => produzirLancamentos('csv', [], 'ES')).not.toThrow()
+  })
+
+  it('o parser nunca recebe referência a adicionarAvisos nem ao store — parsear é chamado só com o conteúdo CSV', () => {
+    const adicionarAvisos = vi.fn()
+    produzirLancamentos('csv', [], 'ES', undefined, [], adicionarAvisos)
+    const parserRetornado = vi.mocked(detectar).mock.results[0].value as { parsear: (c: string) => unknown }
+    expect(parserRetornado.parsear).toHaveBeenCalledWith('csv')
+    expect(parserRetornado.parsear).toHaveBeenCalledTimes(1)
+  })
+
+  it('continua retornando { lancamentos, dicEntries, avisos } — regressão do contrato existente', () => {
+    const resultado = produzirLancamentos('csv', [], 'ES')
+    expect(resultado).toHaveProperty('lancamentos')
+    expect(resultado).toHaveProperty('dicEntries')
+    expect(resultado).toHaveProperty('avisos')
   })
 })
 

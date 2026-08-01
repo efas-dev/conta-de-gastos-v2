@@ -47,7 +47,7 @@ vi.mock('../ui/PipelineState', () => ({
   computarNomeArquivo: vi.fn(() => 'extrato.xlsx'),
 }))
 
-// Mock do leitor — inclui ehDicionario e lerIniciais (T1 ainda não mergeado)
+// Mock do leitor — lerNaturezas retorna NaturezaRica[] (T3: tipo atualizado de string[] para NaturezaRica[])
 vi.mock('../excel/reader/leitor', () => ({
   lerNaturezas: vi.fn(() => []),
   lerDicionario: vi.fn(() => []),
@@ -67,8 +67,9 @@ vi.mock('../dominio/mes', async (importOriginal) => {
 // Imports após mocks
 // ---------------------------------------------------------------------------
 
-import { lerDicionario, ehDicionario, lerIniciais } from '../excel/reader/leitor'
+import { lerNaturezas, lerDicionario, ehDicionario, lerIniciais } from '../excel/reader/leitor'
 import { produzirLancamentos } from '../ui/PipelineState'
+import type { NaturezaRica } from '../types'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -80,6 +81,7 @@ function resetarStore(): void {
     iniciais: 'ES',
     nomeUsuario: '',
     naturezasValidas: [],
+    naturezasRicas: [],
     dicEntries: [],
     avisos: [],
     historico: [],
@@ -338,6 +340,94 @@ describe('App — input unificado (T3)', () => {
     await waitFor(() => {
       // ehDicionario chamado uma vez (para o .xlsx), não para o .csv
       expect(ehDicionario).toHaveBeenCalledTimes(1)
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// T3 — Conectar T1+T2 no call-site: naturezasRicas e naturezasValidas derivados
+// ---------------------------------------------------------------------------
+
+describe('App — naturezas ricas no call-site (T3)', () => {
+  const naturezasMock: NaturezaRica[] = [
+    { sigla: 'ALM', nome: 'Alimentação', descricao: 'Gastos com comida e supermercado' },
+    { sigla: 'TRN', nome: 'Transporte', descricao: '' },
+    { sigla: 'EDU', nome: 'Educação', descricao: 'Cursos e livros' },
+  ]
+
+  beforeEach(() => {
+    resetarStore()
+    vi.clearAllMocks()
+    vi.mocked(lerNaturezas).mockReturnValue(naturezasMock)
+    vi.stubGlobal('fetch', vi.fn(async () => ({ arrayBuffer: async () => new Uint8Array([0x50, 0x4b]).buffer })))
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  // TL-T3-1: naturezasRicas recebe objetos {sigla,nome,descricao} após upload do Modelo
+  it('TL-T3-1: após upload do Modelo, naturezasRicas contém objetos {sigla,nome,descricao}', async () => {
+    render(<App />)
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    const csvFile = criarFile('extrato.csv', 'Data,Valor,Identificador,Descrição\n', 'text/csv')
+
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [csvFile] } })
+    })
+
+    const botao = screen.getByText('Produzir revisão')
+    await act(async () => {
+      fireEvent.click(botao)
+    })
+
+    await waitFor(() => {
+      const ricas = useAppStore.getState().naturezasRicas
+      expect(ricas).toEqual(naturezasMock)
+    })
+  })
+
+  // TL-T3-2: naturezasValidas contém apenas as siglas derivadas de ricas.map(n => n.sigla)
+  it('TL-T3-2: após upload do Modelo, naturezasValidas contém apenas as siglas', async () => {
+    render(<App />)
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    const csvFile = criarFile('extrato.csv', 'Data,Valor,Identificador,Descrição\n', 'text/csv')
+
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [csvFile] } })
+    })
+
+    const botao = screen.getByText('Produzir revisão')
+    await act(async () => {
+      fireEvent.click(botao)
+    })
+
+    await waitFor(() => {
+      const validas = useAppStore.getState().naturezasValidas
+      expect(validas).toEqual(['ALM', 'TRN', 'EDU'])
+    })
+  })
+
+  // TL-T3-3: lerNaturezas chamada exatamente uma vez por upload (único parse)
+  it('TL-T3-3: lerNaturezas é chamada exatamente uma vez no upload do Modelo', async () => {
+    render(<App />)
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    const csvFile = criarFile('extrato.csv', 'Data,Valor,Identificador,Descrição\n', 'text/csv')
+
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [csvFile] } })
+    })
+
+    const botao = screen.getByText('Produzir revisão')
+    await act(async () => {
+      fireEvent.click(botao)
+    })
+
+    await waitFor(() => {
+      expect(lerNaturezas).toHaveBeenCalledTimes(1)
     })
   })
 })
