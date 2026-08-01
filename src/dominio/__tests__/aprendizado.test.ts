@@ -96,8 +96,8 @@ describe('aprenderDicionario', () => {
 
     expect(entradaNubank).toBeDefined()
     expect(entradaItau).toBeDefined()
-    expect(entradaNubank!.natureza).toBe('Lazer')
-    expect(entradaItau!.natureza).toBe('Entretenimento')
+    expect(entradaNubank!.natureza).toBe('LAZER')
+    expect(entradaItau!.natureza).toBe('ENTRETENIMENTO')
     expect(entradaNubank!.ambiguo).toBe(false)
     expect(entradaItau!.ambiguo).toBe(false)
   })
@@ -210,6 +210,63 @@ describe('aprenderDicionario', () => {
 
     expect(resultado).toHaveLength(1)
     expect(resultado[0].chave).toBe('SPOTIFY')
+  })
+
+  it('TL28-5: natureza casa sem diferenciar caixa — "MORADIA" da grid × "Moradia" herdada incrementa vezes', () => {
+    const dicAnterior: DicEntry[] = [
+      {
+        chave: 'PAG BOLETO',
+        fonte: 'Nubank',
+        natureza: 'Moradia',
+        descricao: 'Conta de luz',
+        iniciais: 'ES',
+        vezes: 3,
+        ambiguo: false,
+      },
+    ]
+    const lan: Lancamento = {
+      fonte: 'Nubank',
+      data: '2025-05-01',
+      transcricao: 'PAG BOLETO',
+      valor: -300.0,
+      iniciais: 'ES',
+      natureza: 'MORADIA',
+      descricao: 'Conta de luz',
+    }
+    const resultado = aprenderDicionario([lan], dicAnterior)
+
+    expect(resultado).toHaveLength(1)
+    expect(resultado[0].vezes).toBe(4)
+    expect(resultado[0].ambiguo).toBe(false)
+  })
+
+  it('TL28-6: natureza é gravada em caixa alta — nas novas entradas e nas herdadas', () => {
+    const dicAnterior: DicEntry[] = [
+      {
+        chave: 'SPOTIFY',
+        fonte: 'Nubank',
+        natureza: 'lazer',
+        descricao: 'Música',
+        iniciais: 'ES',
+        vezes: 1,
+        ambiguo: false,
+      },
+    ]
+    const lanNovo: Lancamento = {
+      fonte: 'Nubank',
+      data: '2025-08-01',
+      transcricao: 'IFOOD',
+      valor: -45.0,
+      iniciais: 'ES',
+      natureza: 'al',
+      descricao: 'Delivery',
+    }
+    const resultado = aprenderDicionario([lanNovo], dicAnterior)
+
+    const herdada = resultado.find((e) => e.chave === 'SPOTIFY')
+    const nova = resultado.find((e) => e.chave === 'IFOOD')
+    expect(herdada?.natureza).toBe('LAZER')
+    expect(nova?.natureza).toBe('AL')
   })
 
   it('TL-8: dicAnterior não é mutado pela função', () => {

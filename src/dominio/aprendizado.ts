@@ -39,8 +39,12 @@ export function aprenderDicionario(
   dicAnterior: DicEntry[],
 ): DicEntry[] {
   // Copia do dicionário anterior — nunca mutamos o parâmetro recebido.
-  // Entradas herdadas incompletas são descartadas aqui (item 24).
-  const dic: DicEntry[] = dicAnterior.filter(classificacaoCompleta).map((e) => ({ ...e }))
+  // Entradas herdadas incompletas são descartadas aqui (item 24); a natureza
+  // herdada é normalizada para caixa alta (item 28), convergindo dicionários
+  // antigos gravados em minúsculas.
+  const dic: DicEntry[] = dicAnterior
+    .filter(classificacaoCompleta)
+    .map((e) => ({ ...e, natureza: e.natureza.toUpperCase() }))
 
   for (const lan of lancamentos) {
     // Item 24: só aprende lançamento com Natureza e Descrição preenchidas
@@ -50,11 +54,11 @@ export function aprenderDicionario(
     const idx = dic.findIndex((e) => e.chave === chave && e.fonte === lan.fonte)
 
     if (idx === -1) {
-      // Nova entrada
+      // Nova entrada — natureza em caixa alta (item 28)
       dic.push({
         chave,
         fonte: lan.fonte,
-        natureza: lan.natureza,
+        natureza: lan.natureza.toUpperCase(),
         descricao: lan.descricao,
         iniciais: lan.iniciais,
         vezes: 1,
@@ -62,8 +66,10 @@ export function aprenderDicionario(
       })
     } else {
       const entrada = dic[idx]
+      // Natureza compara sem diferenciar caixa (item 28) — a entrada já está
+      // normalizada; o lançamento normaliza aqui
       const padraoCasa =
-        entrada.natureza === lan.natureza &&
+        entrada.natureza === lan.natureza.toUpperCase() &&
         entrada.descricao === lan.descricao &&
         entrada.iniciais === lan.iniciais
 

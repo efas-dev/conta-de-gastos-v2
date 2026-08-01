@@ -533,6 +533,9 @@ export const useAppStore = create<AppStore>()((set, get) => {
         if (campo === 'valor') {
           const num = typeof valor === 'number' ? valor : Number(valor)
           if (Number.isFinite(num)) l.valor = num
+        } else if (campo === 'natureza') {
+          // Item 28: Natureza é sempre caixa alta na grid (siglas da aba Naturezas)
+          l.natureza = (valor as string).toUpperCase()
         } else {
           l[campo] = valor as string
         }
@@ -746,6 +749,9 @@ export const useAppStore = create<AppStore>()((set, get) => {
           if (colId === 'valor') {
             const num = typeof valor === 'number' ? valor : Number(valor)
             if (Number.isFinite(num)) l.valor = num
+          } else if (colId === 'natureza') {
+            // Item 28: Natureza é sempre caixa alta na grid
+            l.natureza = String(valor).toUpperCase()
           } else {
             ;(l as unknown as Record<string, unknown>)[colId] = valor
           }

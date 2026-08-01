@@ -23,7 +23,9 @@ export function enriquecerLancamento(
   if (entrada !== undefined && !entrada.ambiguo) {
     return {
       ...lancamento,
-      natureza: entrada.natureza,
+      // Item 28: Natureza chega à grid sempre em caixa alta, mesmo herdada
+      // de dicionário antigo gravado em minúsculas
+      natureza: entrada.natureza.toUpperCase(),
       descricao: entrada.descricao,
       iniciais: entrada.iniciais,
     }

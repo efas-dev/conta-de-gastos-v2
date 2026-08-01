@@ -16,7 +16,7 @@
     {
       "chave": "UBER VIAGEM",
       "fonte": "Nubank",
-      "natureza": "Transporte",
+      "natureza": "TRANSPORTE",
       "descricao": "Corrida Uber",
       "iniciais": "ES",
       "vezes": 1,
