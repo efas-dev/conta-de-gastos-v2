@@ -397,6 +397,25 @@ describe('calcularTemaLinhaComInspecao', () => {
     ).toBeUndefined()
   })
 
+  it('TL-18 (isenção): linha de proposta de remoção (origemEspecial) com natureza vazia NÃO recebe TEMA_ERRO fora da inspeção', () => {
+    // valor-pendente/pagamento-recebido entram na grid sem natureza; não devem
+    // destacar em pêssego permanentemente — só na inspeção do respectivo aviso.
+    const lValorPendente = lancamentoFake({ natureza: '', origemEspecial: 'valor-pendente' })
+    expect(
+      calcularTemaLinhaComInspecao(lValorPendente, 5, naturezasValidas, undefined),
+    ).toBeUndefined()
+
+    const lPagamento = lancamentoFake({ natureza: '', origemEspecial: 'pagamento-recebido' })
+    expect(
+      calcularTemaLinhaComInspecao(lPagamento, 5, naturezasValidas, undefined),
+    ).toBeUndefined()
+
+    // Durante a inspeção (índice no alvoSet), a mesma linha destaca em vermelho vivo.
+    expect(calcularTemaLinhaComInspecao(lValorPendente, 2, naturezasValidas, contexto)).toBe(
+      TEMA_INSPECAO_SAI,
+    )
+  })
+
   it('TL-8 (robustez a ordenação/filtro por identidade, D7): casa pelo índice real, não pela posição', () => {
     const l = lancamentoFake({ natureza: 'ALM' })
     // A mesma linha (índice real 2) continua TEMA_INSPECAO_SAI independentemente

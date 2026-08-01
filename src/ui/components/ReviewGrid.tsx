@@ -273,6 +273,12 @@ export function calcularTemaLinha(
   l: Lancamento,
   naturezasValidas: string[],
 ): typeof TEMA_ERRO | typeof TEMA_TRANSFERENCIA | typeof TEMA_INVESTIMENTO | undefined {
+  // Linhas de proposta de remoção (valor-pendente/pagamento-recebido, marcadas por
+  // `origemEspecial` — D16/D17) não são lançamentos a classificar: ficam neutras e
+  // NÃO recebem o realce de atenção por Natureza vazia. Só destacam (vermelho vivo,
+  // TEMA_INSPECAO_SAI) enquanto o usuário inspeciona o respectivo aviso — o realce
+  // some quando ele sai da inspeção. Mesma isenção que investimento/transferência.
+  if (l.origemEspecial != null) return undefined
   if (l.investimento != null) return TEMA_INVESTIMENTO
   if (l.transferenciaInterna === true) return TEMA_TRANSFERENCIA
   if (validarLinha(l, naturezasValidas)) return TEMA_ERRO
