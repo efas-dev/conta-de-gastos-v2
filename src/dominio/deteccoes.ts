@@ -3,19 +3,6 @@
 import type { Aviso, Lancamento } from '../types'
 
 const TOLERANCIA_CENTAVOS = 5
-const TITULO_VALOR_PENDENTE = 'valor pendente do mes anterior'
-
-/**
- * Normaliza texto para comparação: minúsculas + remoção de diacríticos (NFD).
- * Mesmo precedente do leitor de dicionário (`src/excel/reader/leitor.ts`) e de
- * `normalizarParaBusca` (`src/dominio/normalizacao.ts`) — Decisão 2 do ADR `avisos-acionaveis`.
- */
-function normalizar(texto: string): string {
-  return texto
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-}
 
 /** Converte um valor em reais para centavos inteiros, evitando float drift. */
 function paraCentavos(valor: number): number {
@@ -38,42 +25,86 @@ function formatarResumoConciliacao(somaFaturaCentavos: number, pagamentoCentavos
   return `somatório da fatura R$ ${formatarReais(somaFaturaCentavos)} ↔ pagamento R$ ${formatarReais(pagamentoCentavos)}, diferença ≤ R$ 0,05`
 }
 
+/** Rótulo exibido por origem especial, usado na mensagem/resumo das propostas de remoção. */
+const ROTULO_ORIGEM_ESPECIAL: Record<'valor-pendente' | 'pagamento-recebido', string> = {
+  'valor-pendente': 'Valor pendente do mês anterior',
+  'pagamento-recebido': 'Pagamento recebido',
+}
+
+/** Trecho final do resumo — reforça que o valor não é gasto/receita do mês corrente. */
+const COMPLEMENTO_RESUMO_ORIGEM_ESPECIAL: Record<'valor-pendente' | 'pagamento-recebido', string> = {
+  'valor-pendente': 'resíduo da fatura passada, não é gasto do mês',
+  'pagamento-recebido': 'crédito referente à quitação da fatura anterior, não é gasto do mês',
+}
+
 /**
- * Detecta, entre os lançamentos excluídos do parser (`ResultadoParse.excluidosPendentes`),
- * quais correspondem a "Valor pendente do mês anterior" e gera uma proposta acionável para
- * cada um — tornando auditável um valor que, se tratado como lançamento comum, duplicaria
- * despesa já contada no ciclo anterior (ver ADR `avisos-acionaveis`, Contexto).
+ * Localiza em `lancamentos` as linhas marcadas com a `origemEspecial` dada (ver
+ * `Lancamento.origemEspecial`, materializado pelo parser — ADR `inspecao-proposta-conciliacao`,
+ * Decisões 16/17) e gera uma proposta de remoção acionável por linha encontrada.
  *
- * `alvo: []` — o lançamento nunca esteve em `state.lancamentos` (ficou em
- * `excluidosPendentes`, excluído no parse), então não há linha física para `aplicar()`
- * remover; Aprovar/Dispensar funcionam como reconhecimento/arquivamento sem efeito em
- * `lancamentos` (ver ADR `inspecao-proposta-conciliacao`, Decisão 10). `resumo` permanece
- * `undefined` — não há regra de tolerância nesse caminho.
+ * `alvo` aponta o índice REAL da linha em `lancamentos` — a linha entra na grid como
+ * lançamento normal (D16) até o usuário Aprovar a remoção, quando `aplicar()` (mecanismo já
+ * existente do `avisosSlice`, por índice posicional) a retira. `permanece` fica sempre `[]`
+ * (papel único "sai", sem contraparte que "fica"). `resumo` carrega o valor formatado.
  *
  * Função pura: não faz I/O, não tem efeito colateral, não referencia o store.
- *
- * @param excluidosPendentes - Lançamentos excluídos pelo parser (mistura possível de
- *   "valor pendente" e "pagamento recebido" — apenas o primeiro é reportado aqui).
- * @returns Um `Aviso` proposta por lançamento casado; array vazio se nenhum casar.
  */
-export function detectarValorPendente(excluidosPendentes: Lancamento[]): Aviso[] {
+function detectarPorOrigemEspecial(
+  lancamentos: Lancamento[],
+  origem: 'valor-pendente' | 'pagamento-recebido',
+): Aviso[] {
   const avisos: Aviso[] = []
 
-  excluidosPendentes.forEach((lancamento, index) => {
-    if (!normalizar(lancamento.transcricao).includes(TITULO_VALOR_PENDENTE)) return
+  lancamentos.forEach((lancamento, index) => {
+    if (lancamento.origemEspecial !== origem) return
+
+    const rotulo = ROTULO_ORIGEM_ESPECIAL[origem]
+    const valorCentavos = Math.abs(paraCentavos(lancamento.valor))
 
     avisos.push({
-      id: `valor-pendente-${index}`,
+      id: `${origem}-${index}`,
       tipo: 'proposta',
-      origem: 'valor-pendente',
-      mensagem: `Valor pendente do mês anterior: "${lancamento.transcricao}" (R$ ${Math.abs(lancamento.valor).toFixed(2)}).`,
-      alvo: [],
+      origem,
+      mensagem: `${rotulo}: "${lancamento.transcricao}" (R$ ${Math.abs(lancamento.valor).toFixed(2)}).`,
+      alvo: [String(index)],
       permanece: [],
+      resumo: `${rotulo}: R$ ${formatarReais(valorCentavos)} — ${COMPLEMENTO_RESUMO_ORIGEM_ESPECIAL[origem]}`,
       estado: 'pendente',
     })
   })
 
   return avisos
+}
+
+/**
+ * Detecta, entre `lancamentos`, as linhas de "Valor pendente do mês anterior" (marcadas pelo
+ * parser via `Lancamento.origemEspecial === 'valor-pendente'`) e gera uma proposta de remoção
+ * acionável para cada uma — tornando auditável um valor que, se tratado como lançamento comum,
+ * duplicaria despesa já contada no ciclo anterior (ver ADR `avisos-acionaveis`, Contexto).
+ *
+ * Revisão de D10/D11 pela Decisão 16 (emenda pós-inspeção): a linha deixou de ser excluída no
+ * parse (T6) e agora entra em `lancamentos` como lançamento normal; `alvo` deixa de ser `[]` e
+ * passa a apontar o índice real dessa linha, reusando o mecanismo de `aplicar()` já existente.
+ *
+ * @param lancamentos - Lista de lançamentos a inspecionar (tipicamente `state.lancamentos`).
+ * @returns Um `Aviso` proposta por linha encontrada; array vazio se nenhuma existir.
+ */
+export function detectarValorPendente(lancamentos: Lancamento[]): Aviso[] {
+  return detectarPorOrigemEspecial(lancamentos, 'valor-pendente')
+}
+
+/**
+ * Detecta, entre `lancamentos`, as linhas de "Pagamento recebido" (marcadas pelo parser via
+ * `Lancamento.origemEspecial === 'pagamento-recebido'`) e gera uma proposta de remoção acionável
+ * para cada uma — análoga a `detectarValorPendente`, antecipando o follow-up de D9 (ver ADR
+ * `inspecao-proposta-conciliacao`, Decisão 17). A linha deixou de ser descartada silenciosamente
+ * no parse (T6) e agora entra em `lancamentos` como lançamento normal.
+ *
+ * @param lancamentos - Lista de lançamentos a inspecionar (tipicamente `state.lancamentos`).
+ * @returns Um `Aviso` proposta por linha encontrada; array vazio se nenhuma existir.
+ */
+export function detectarPagamentoRecebido(lancamentos: Lancamento[]): Aviso[] {
+  return detectarPorOrigemEspecial(lancamentos, 'pagamento-recebido')
 }
 
 /**

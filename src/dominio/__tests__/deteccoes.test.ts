@@ -1,7 +1,7 @@
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
 
 import { describe, it, expect } from 'vitest'
-import { detectarValorPendente, detectarConciliacao } from '../deteccoes'
+import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from '../deteccoes'
 import type { Lancamento } from '../../types'
 
 function lancamento(overrides: Partial<Lancamento>): Lancamento {
@@ -18,39 +18,121 @@ function lancamento(overrides: Partial<Lancamento>): Lancamento {
 }
 
 describe('detectarValorPendente', () => {
-  it('retorna aviso proposta para transcrição "Valor pendente do mês anterior" (TL-1, TL-14, TL-16)', () => {
-    const excluidos = [lancamento({ transcricao: 'Valor pendente do mês anterior', valor: -120.5 })]
-    const avisos = detectarValorPendente(excluidos)
+  it('localiza a linha via origemEspecial e emite alvo com o índice real em lancamentos (TL-1)', () => {
+    const lancamentos = [
+      lancamento({ transcricao: 'Compra qualquer' }),
+      lancamento({ transcricao: 'Valor pendente do mês anterior', valor: -120.5, origemEspecial: 'valor-pendente' }),
+    ]
+    const avisos = detectarValorPendente(lancamentos)
     expect(avisos).toHaveLength(1)
     expect(avisos[0].tipo).toBe('proposta')
     expect(avisos[0].origem).toBe('valor-pendente')
     expect(avisos[0].estado).toBe('pendente')
+    expect(avisos[0].alvo).toEqual(['1'])
   })
 
-  it('alvo vazio — não há linha física em lancamentos para remover (TL-15)', () => {
-    const excluidos = [lancamento({ transcricao: 'Valor pendente do mês anterior', valor: -120.5 })]
-    const avisos = detectarValorPendente(excluidos)
-    expect(avisos[0].alvo).toEqual([])
+  it('permanece vazio (TL-2)', () => {
+    const lancamentos = [
+      lancamento({ transcricao: 'Valor pendente do mês anterior', valor: -120.5, origemEspecial: 'valor-pendente' }),
+    ]
+    const avisos = detectarValorPendente(lancamentos)
+    expect(avisos[0].permanece).toEqual([])
   })
 
-  it('ignora lançamentos com outra transcrição, ex. "Pagamento recebido" (TL-2)', () => {
-    const excluidos = [lancamento({ transcricao: 'Pagamento recebido', valor: 300 })]
-    expect(detectarValorPendente(excluidos)).toHaveLength(0)
+  it('resumo carrega o valor formatado — D16 supera resumo undefined de T0/D10 (TL-3)', () => {
+    const lancamentos = [
+      lancamento({ transcricao: 'Valor pendente do mês anterior', valor: -120.5, origemEspecial: 'valor-pendente' }),
+    ]
+    const avisos = detectarValorPendente(lancamentos)
+    expect(avisos[0].resumo).toBeDefined()
+    expect(avisos[0].resumo).toContain('120,50')
   })
 
-  it('retorna array vazio quando excluidosPendentes está vazio (TL-3)', () => {
+  it('retorna array vazio quando nenhum lançamento tem origemEspecial valor-pendente (TL-4)', () => {
+    const lancamentos = [lancamento({ transcricao: 'Compra qualquer' })]
+    expect(detectarValorPendente(lancamentos)).toEqual([])
     expect(detectarValorPendente([])).toEqual([])
   })
 
-  it('casamento é NFD+lowercase — ignora acentuação e caixa (TL-4)', () => {
-    const excluidos = [lancamento({ transcricao: 'VALOR PENDENTE DO MES ANTERIOR' })]
-    expect(detectarValorPendente(excluidos)).toHaveLength(1)
+  it('aponta o índice real mesmo quando a linha marcada não é a primeira do array (TL-5)', () => {
+    const lancamentos = [
+      lancamento({ transcricao: 'Compra A' }),
+      lancamento({ transcricao: 'Compra B' }),
+      lancamento({ transcricao: 'Valor pendente do mês anterior', valor: -50, origemEspecial: 'valor-pendente' }),
+    ]
+    const avisos = detectarValorPendente(lancamentos)
+    expect(avisos[0].alvo).toEqual(['2'])
   })
 
-  it('mantém resumo undefined — não há regra de tolerância nesse caminho (TL-9)', () => {
-    const excluidos = [lancamento({ transcricao: 'Valor pendente do mês anterior', valor: -120.5 })]
-    const avisos = detectarValorPendente(excluidos)
-    expect(avisos[0].resumo).toBeUndefined()
+  it('não captura linha marcada como pagamento-recebido (TL-8)', () => {
+    const lancamentos = [
+      lancamento({ transcricao: 'Pagamento recebido', valor: 300, origemEspecial: 'pagamento-recebido' }),
+    ]
+    expect(detectarValorPendente(lancamentos)).toHaveLength(0)
+  })
+})
+
+describe('detectarPagamentoRecebido', () => {
+  it('localiza a linha via origemEspecial e emite alvo com o índice real em lancamentos (TL-6)', () => {
+    const lancamentos = [
+      lancamento({ transcricao: 'Compra qualquer' }),
+      lancamento({ transcricao: 'Pagamento recebido', valor: 300, origemEspecial: 'pagamento-recebido' }),
+    ]
+    const avisos = detectarPagamentoRecebido(lancamentos)
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].tipo).toBe('proposta')
+    expect(avisos[0].origem).toBe('pagamento-recebido')
+    expect(avisos[0].estado).toBe('pendente')
+    expect(avisos[0].alvo).toEqual(['1'])
+    expect(avisos[0].permanece).toEqual([])
+    expect(avisos[0].resumo).toBeDefined()
+    expect(avisos[0].resumo).toContain('300,00')
+  })
+
+  it('retorna array vazio quando nenhum lançamento tem origemEspecial pagamento-recebido (TL-7)', () => {
+    const lancamentos = [lancamento({ transcricao: 'Compra qualquer' })]
+    expect(detectarPagamentoRecebido(lancamentos)).toEqual([])
+    expect(detectarPagamentoRecebido([])).toEqual([])
+  })
+
+  it('não captura linha marcada como valor-pendente (TL-8)', () => {
+    const lancamentos = [
+      lancamento({ transcricao: 'Valor pendente do mês anterior', valor: -120.5, origemEspecial: 'valor-pendente' }),
+    ]
+    expect(detectarPagamentoRecebido(lancamentos)).toHaveLength(0)
+  })
+
+  it('múltiplas linhas da mesma origem geram uma proposta por linha, cada com seu índice real (TL-9)', () => {
+    const lancamentos = [
+      lancamento({ transcricao: 'Pagamento recebido', valor: 100, origemEspecial: 'pagamento-recebido' }),
+      lancamento({ transcricao: 'Compra qualquer' }),
+      lancamento({ transcricao: 'Pagamento recebido', valor: 200, origemEspecial: 'pagamento-recebido' }),
+    ]
+    const avisos = detectarPagamentoRecebido(lancamentos)
+    expect(avisos).toHaveLength(2)
+    expect(avisos.map((a) => a.alvo[0])).toEqual(['0', '2'])
+  })
+})
+
+describe('não-duplicação entre detecções de origemEspecial e detectarConciliacao (TL-10)', () => {
+  it('nenhum índice de lancamentosFatura aparece no alvo de detectarConciliacao (que só referencia o extrato)', () => {
+    const lancamentosFatura = [
+      lancamento({ transcricao: 'Item A', valor: -100 }),
+      lancamento({ transcricao: 'Pagamento recebido', valor: 300, origemEspecial: 'pagamento-recebido' }),
+    ]
+    const lancamentosExtrato = [
+      lancamento({ transcricao: 'Pagamento de fatura', valor: -100 }),
+    ]
+
+    const avisosPagamentoRecebido = detectarPagamentoRecebido(lancamentosFatura)
+    const avisosConciliacao = detectarConciliacao(lancamentosFatura, lancamentosExtrato)
+
+    expect(avisosPagamentoRecebido).toHaveLength(1)
+    expect(avisosPagamentoRecebido[0].alvo).toEqual(['1'])
+    expect(avisosConciliacao).toHaveLength(1)
+    // detectarConciliacao referencia sempre o extrato — alvo nunca coincide com
+    // um índice de lancamentosFatura (espaços de índice distintos, sem overlap real).
+    expect(avisosConciliacao[0].alvo).toEqual(['0'])
   })
 })
 
