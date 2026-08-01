@@ -1,7 +1,7 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
 // ADR: see Docs/specs/colinha-naturezas.adr.md
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
-// ADR: see spec/inspecao-proposta-conciliacao.adr.md
+// ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 
 /**
  * Representa um lançamento financeiro normalizado, independente da fonte de origem.

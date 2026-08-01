@@ -1,5 +1,5 @@
 // ADR: see Docs/specs/parsers-fatura-nubank-extrato-itau.adr.md
-// ADR: see spec/inspecao-proposta-conciliacao.adr.md
+// ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 
 import type { Lancamento, ResultadoParse } from '../types'
 import { normalizarParaBusca } from '../dominio/normalizacao'

@@ -1,6 +1,6 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
 // ADR: see Docs/specs/grid-ux-filtros.adr.md
-// ADR: see spec/inspecao-proposta-conciliacao.adr.md
+// ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import {
