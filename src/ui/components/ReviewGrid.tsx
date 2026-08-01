@@ -280,26 +280,36 @@ export function calcularTemaLinha(
 }
 
 // ---------------------------------------------------------------------------
-// Inspeção de conciliação (Task T4 — ADR `inspecao-proposta-conciliacao`)
+// Inspeção de proposta (Task T4, estendida por T8 — ADR `inspecao-proposta-conciliacao`)
 // ---------------------------------------------------------------------------
 
-/** Conjuntos de identidade (índice real em `lancamentos`) para os dois papéis de conciliação. */
+/**
+ * Origens de aviso que produzem efeito visual na grid durante a inspeção (Task T8, revisão de
+ * D11/T4). `'conciliacao'` sempre teve efeito; `'valor-pendente'`/`'pagamento-recebido'` passaram
+ * a ter linha real em `lancamentos` a partir de T6/T7 (D16/D17 do ADR) — a grid deixa de ser
+ * 100% inalterada para essas origens. Só `'conciliacao'` tem o papel "fica" (verde-menta); as
+ * outras duas têm `permanece` sempre `[]`, então só produzem o papel "sai".
+ */
+const ORIGENS_COM_EFEITO_GRID = new Set(['conciliacao', 'valor-pendente', 'pagamento-recebido'])
+
+/** Conjuntos de identidade (índice real em `lancamentos`) para os papéis "sai"/"fica" da inspeção. */
 export interface ContextoInspecaoConciliacao {
   alvoSet: Set<string>
   permaneceSet: Set<string>
 }
 
 /**
- * Deriva o contexto de inspeção de conciliação a partir do aviso atualmente em inspeção.
+ * Deriva o contexto de inspeção a partir do aviso atualmente em inspeção.
  *
- * Retorna `undefined` quando não há aviso em inspeção OU quando o aviso não é de origem
- * `'conciliacao'` — a grid permanece 100% inalterada para qualquer outra origem, incluindo
- * `'valor-pendente'` (D11 do ADR: comportamento intencional, não uma lacuna).
+ * Retorna `undefined` quando não há aviso em inspeção OU quando a origem do aviso não produz
+ * efeito na grid (`ORIGENS_COM_EFEITO_GRID`). Para `'conciliacao'`, `permaneceSet` carrega os
+ * ids de `permanece` (papel "fica"); para `'valor-pendente'`/`'pagamento-recebido'`,
+ * `permanece` é sempre `[]` — o resultado tem só o papel "sai" (D16/D17, revisão de D11 — T8).
  */
 export function derivarContextoInspecao(
   aviso: Aviso | undefined,
 ): ContextoInspecaoConciliacao | undefined {
-  if (!aviso || aviso.origem !== 'conciliacao') return undefined
+  if (!aviso || !ORIGENS_COM_EFEITO_GRID.has(aviso.origem)) return undefined
   return {
     alvoSet: new Set(aviso.alvo),
     permaneceSet: new Set(aviso.permanece),
@@ -308,11 +318,11 @@ export function derivarContextoInspecao(
 
 /**
  * Ids (índices reais em `lancamentos`) de todas as linhas envolvidas na inspeção ativa —
- * união de `alvo` (sai) e `permanece` (fica). Vazio quando não há inspeção de conciliação
- * ativa (D11: `valor-pendente` nunca envolve linhas da grid).
+ * união de `alvo` (sai) e `permanece` (fica). Vazio quando não há inspeção com efeito de grid
+ * ativa (origem fora de `ORIGENS_COM_EFEITO_GRID`).
  */
 export function indicesEnvolvidos(aviso: Aviso | undefined): number[] {
-  if (!aviso || aviso.origem !== 'conciliacao') return []
+  if (!aviso || !ORIGENS_COM_EFEITO_GRID.has(aviso.origem)) return []
   return [...aviso.alvo, ...aviso.permanece].map(Number)
 }
 
@@ -350,15 +360,18 @@ export function calcularTemaLinhaComInspecao(
  * Posição visual (índice em `lancamentosVisiveis`/`mapaIndiceVisualReal`) da linha-âncora
  * ("sai", `alvo[0]`) para o auto-scroll da inspeção (D3 do ADR). Busca por identidade em
  * `mapaIndiceVisualReal`, robusto a ordenação ativa (D7). Retorna `undefined` quando não há
- * aviso de conciliação em inspeção, quando `alvo` está vazio, ou quando o índice-âncora não
- * está (ainda) presente no mapa — o chamador é responsável por revelar a linha antes de rolar
- * (`aplicarRevelacaoInspecao`).
+ * aviso em inspeção com efeito de grid (`ORIGENS_COM_EFEITO_GRID`), quando `alvo` está vazio,
+ * ou quando o índice-âncora não está (ainda) presente no mapa — o chamador é responsável por
+ * revelar a linha antes de rolar (`aplicarRevelacaoInspecao`). Estendido a `'valor-pendente'`/
+ * `'pagamento-recebido'` na Task T8 (revisão de D11 — essas origens agora têm linha real).
  */
 export function calcularLinhaAncoraVisual(
   mapaIndiceVisualReal: number[],
   aviso: Aviso | undefined,
 ): number | undefined {
-  if (!aviso || aviso.origem !== 'conciliacao' || aviso.alvo.length === 0) return undefined
+  if (!aviso || !ORIGENS_COM_EFEITO_GRID.has(aviso.origem) || aviso.alvo.length === 0) {
+    return undefined
+  }
   const indiceRealAncora = Number(aviso.alvo[0])
   const posicaoVisual = mapaIndiceVisualReal.indexOf(indiceRealAncora)
   return posicaoVisual >= 0 ? posicaoVisual : undefined
@@ -437,11 +450,14 @@ export interface ReviewGridProps {
  * - Azul (`TEMA_TRANSFERENCIA`): lançamentos com `transferenciaInterna === true`.
  * - Verde (`TEMA_INVESTIMENTO`): lançamentos com `investimento != null`.
  * - Vermelho/verde-menta (`TEMA_INSPECAO_SAI`/`TEMA_INSPECAO_FICA`): enquanto uma proposta de
- *   conciliação está em inspeção (`avisosAcionaveis.avisoEmInspecao`), com precedência sobre os
- *   três temas acima (Task T4, D4 do ADR `inspecao-proposta-conciliacao`). Linhas envolvidas
- *   ocultas pelo filtro ativo são reveladas enquanto a inspeção dura (D8) e a grid rola até a
- *   linha "sai" (D3). Inspecionar um aviso de origem `'valor-pendente'` não tem efeito algum
- *   aqui (D11).
+ *   origem `'conciliacao'`, `'valor-pendente'` ou `'pagamento-recebido'` está em inspeção
+ *   (`avisosAcionaveis.avisoEmInspecao`), com precedência sobre os três temas acima (Task T4/T8,
+ *   D4/D16/D17 do ADR `inspecao-proposta-conciliacao`). Só `'conciliacao'` tem o papel "fica"
+ *   (verde-menta); as outras duas têm sempre `permanece: []`, então só produzem "sai" (vermelho).
+ *   Linhas envolvidas ocultas pelo filtro ativo são reveladas enquanto a inspeção dura (D8) e a
+ *   grid rola até a linha "sai" (D3). Revisão de T4/D11 pela Task T8: `'valor-pendente'`/
+ *   `'pagamento-recebido'` deixaram de ser não-efeito assim que T6/T7 passaram a dar a essas
+ *   origens uma linha real em `lancamentos`.
  *
  * Seleção múltipla: exibe a soma dos valores das linhas selecionadas abaixo da grid.
  *
@@ -462,7 +478,7 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   const avisoEmInspecaoId = useAppStore((s) => s.avisosAcionaveis.avisoEmInspecao)
 
   // -----------------------------------------------------------------
-  // Inspeção de conciliação (Task T4 — D3/D4/D7/D8/D11 do ADR
+  // Inspeção de proposta (Task T4, estendida por T8 — D3/D4/D7/D8/D16/D17 do ADR
   // `inspecao-proposta-conciliacao`). Deriva o aviso ativo, o contexto de
   // sai/fica e a visão revelada (linhas ocultas pelo filtro envolvidas na
   // proposta) a partir do estado do slice — puramente reativo, sem estado
