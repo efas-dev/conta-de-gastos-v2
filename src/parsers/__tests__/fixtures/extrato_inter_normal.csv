@@ -1,0 +1,10 @@
+ Extrato Conta Corrente
+Conta ;123456789
+Período ;01/07/2026 a 01/08/2026
+Saldo ;56,46
+
+Data Lançamento;Histórico;Descrição;Valor;Saldo
+30/07/2026;Resgate;Cdb Porq Obj Banco Exemplo S A;504,92;56,46
+30/07/2026;Pix enviado ;Fulano De Tal Exemplo;-1.400,00;-448,46
+29/07/2026;Pix recebido;Ciclana Da Silva Teste;20,00;951,54
+28/07/2026;Compra no débito;Padaria Exemplo Ltda;-15,50;931,54

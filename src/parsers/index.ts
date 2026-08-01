@@ -5,6 +5,7 @@ import { extratoNubank, ErroArquivoNaoReconhecido } from './extrato_nubank'
 import type { ResultadoParse } from '../types'
 import { faturaNumbank } from './fatura_nubank'
 import { extratoItau } from './extrato_itau'
+import { extratoInter } from './extrato_inter'
 
 /**
  * Contrato de um parser de extrato/fatura bancária.
@@ -20,10 +21,13 @@ export interface Parser {
 /**
  * Registro de parsers disponíveis. Estender aqui para novos bancos/formatos (D3 do ADR).
  *
- * Ordem: os três `aceita()` são mutuamente exclusivos por cabeçalho/padrão estrutural distintos,
- * portanto a ordem não afeta a desambiguação. extrato_nubank vem primeiro por ser o parser original.
+ * Ordem: os `aceita()` são mutuamente exclusivos por cabeçalho/padrão estrutural distintos,
+ * com uma exceção defensiva: uma linha de dados do Inter casa o regex estrutural do Itaú
+ * (capturando o saldo como valor) — hoje o preâmbulo do Inter impede a colisão, mas
+ * extrato_inter vem ANTES de extrato_itau para que a detecção pelo header explícito
+ * vença caso essa premissa mude. extrato_nubank vem primeiro por ser o parser original.
  */
-const parsers: Parser[] = [extratoNubank, faturaNumbank, extratoItau]
+const parsers: Parser[] = [extratoNubank, faturaNumbank, extratoInter, extratoItau]
 
 /**
  * Retorna o parser adequado para o conteúdo fornecido.
