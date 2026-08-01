@@ -1,51 +1,75 @@
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
+// ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 
 import type { Aviso, Lancamento } from '../types'
 
 const TOLERANCIA_CENTAVOS = 5
-const TITULO_VALOR_PENDENTE = 'valor pendente do mes anterior'
-
-/**
- * Normaliza texto para comparação: minúsculas + remoção de diacríticos (NFD).
- * Mesmo precedente do leitor de dicionário (`src/excel/reader/leitor.ts`) e de
- * `normalizarParaBusca` (`src/dominio/normalizacao.ts`) — Decisão 2 do ADR `avisos-acionaveis`.
- */
-function normalizar(texto: string): string {
-  return texto
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-}
 
 /** Converte um valor em reais para centavos inteiros, evitando float drift. */
 function paraCentavos(valor: number): number {
   return Math.round(valor * 100)
 }
 
+/** Formata centavos inteiros como reais em pt-BR (vírgula decimal), sem o prefixo "R$". */
+function formatarReais(centavos: number): string {
+  return (centavos / 100).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
 /**
- * Detecta, entre os lançamentos excluídos do parser (`ResultadoParse.excluidosPendentes`),
- * quais correspondem a "Valor pendente do mês anterior" e gera um aviso informativo para
- * cada um — tornando auditável um valor que, se tratado como lançamento comum, duplicaria
- * despesa já contada no ciclo anterior (ver ADR `avisos-acionaveis`, Contexto).
+ * Resumo textual da regra de casamento aplicada em `detectarConciliacao` (ver ADR
+ * `inspecao-proposta-conciliacao`, Decisão 2) — usado em `Aviso.resumo`.
+ */
+function formatarResumoConciliacao(somaFaturaCentavos: number, pagamentoCentavos: number): string {
+  return `somatório da fatura R$ ${formatarReais(somaFaturaCentavos)} ↔ pagamento R$ ${formatarReais(pagamentoCentavos)}, diferença ≤ R$ 0,05`
+}
+
+/** Rótulo exibido por origem especial, usado na mensagem/resumo das propostas de remoção. */
+const ROTULO_ORIGEM_ESPECIAL: Record<'valor-pendente' | 'pagamento-recebido', string> = {
+  'valor-pendente': 'Valor pendente do mês anterior',
+  'pagamento-recebido': 'Pagamento recebido',
+}
+
+/** Trecho final do resumo — reforça que o valor não é gasto/receita do mês corrente. */
+const COMPLEMENTO_RESUMO_ORIGEM_ESPECIAL: Record<'valor-pendente' | 'pagamento-recebido', string> = {
+  'valor-pendente': 'resíduo da fatura passada, não é gasto do mês',
+  'pagamento-recebido': 'crédito referente à quitação da fatura anterior, não é gasto do mês',
+}
+
+/**
+ * Localiza em `lancamentos` as linhas marcadas com a `origemEspecial` dada (ver
+ * `Lancamento.origemEspecial`, materializado pelo parser — ADR `inspecao-proposta-conciliacao`,
+ * Decisões 16/17) e gera uma proposta de remoção acionável por linha encontrada.
+ *
+ * `alvo` aponta o índice REAL da linha em `lancamentos` — a linha entra na grid como
+ * lançamento normal (D16) até o usuário Aprovar a remoção, quando `aplicar()` (mecanismo já
+ * existente do `avisosSlice`, por índice posicional) a retira. `permanece` fica sempre `[]`
+ * (papel único "sai", sem contraparte que "fica"). `resumo` carrega o valor formatado.
  *
  * Função pura: não faz I/O, não tem efeito colateral, não referencia o store.
- *
- * @param excluidosPendentes - Lançamentos excluídos pelo parser (mistura possível de
- *   "valor pendente" e "pagamento recebido" — apenas o primeiro é reportado aqui).
- * @returns Um `Aviso` informativo por lançamento casado; array vazio se nenhum casar.
  */
-export function detectarValorPendente(excluidosPendentes: Lancamento[]): Aviso[] {
+function detectarPorOrigemEspecial(
+  lancamentos: Lancamento[],
+  origem: 'valor-pendente' | 'pagamento-recebido',
+): Aviso[] {
   const avisos: Aviso[] = []
 
-  excluidosPendentes.forEach((lancamento, index) => {
-    if (!normalizar(lancamento.transcricao).includes(TITULO_VALOR_PENDENTE)) return
+  lancamentos.forEach((lancamento, index) => {
+    if (lancamento.origemEspecial !== origem) return
+
+    const rotulo = ROTULO_ORIGEM_ESPECIAL[origem]
+    const valorCentavos = Math.abs(paraCentavos(lancamento.valor))
 
     avisos.push({
-      id: `valor-pendente-${index}`,
-      tipo: 'informativo',
-      origem: 'valor-pendente',
-      mensagem: `Valor pendente do mês anterior: "${lancamento.transcricao}" (R$ ${Math.abs(lancamento.valor).toFixed(2)}).`,
+      id: `${origem}-${index}`,
+      tipo: 'proposta',
+      origem,
+      mensagem: `${rotulo}: "${lancamento.transcricao}" (R$ ${Math.abs(lancamento.valor).toFixed(2)}).`,
       alvo: [String(index)],
+      permanece: [],
+      resumo: `${rotulo}: R$ ${formatarReais(valorCentavos)} — ${COMPLEMENTO_RESUMO_ORIGEM_ESPECIAL[origem]}`,
       estado: 'pendente',
     })
   })
@@ -54,35 +78,80 @@ export function detectarValorPendente(excluidosPendentes: Lancamento[]): Aviso[]
 }
 
 /**
- * Verifica se existe algum subconjunto de `valoresCentavos` (todos > 0) cuja soma seja
- * exatamente igual a `alvoCentavos`. Programação dinâmica clássica de subset-sum sobre um
- * `Set` de somas alcançáveis — O(n × alvo), adequado ao volume de itens de uma fatura.
+ * Detecta, entre `lancamentos`, as linhas de "Valor pendente do mês anterior" (marcadas pelo
+ * parser via `Lancamento.origemEspecial === 'valor-pendente'`) e gera uma proposta de remoção
+ * acionável para cada uma — tornando auditável um valor que, se tratado como lançamento comum,
+ * duplicaria despesa já contada no ciclo anterior (ver ADR `avisos-acionaveis`, Contexto).
+ *
+ * Revisão de D10/D11 pela Decisão 16 (emenda pós-inspeção): a linha deixou de ser excluída no
+ * parse (T6) e agora entra em `lancamentos` como lançamento normal; `alvo` deixa de ser `[]` e
+ * passa a apontar o índice real dessa linha, reusando o mecanismo de `aplicar()` já existente.
+ *
+ * @param lancamentos - Lista de lançamentos a inspecionar (tipicamente `state.lancamentos`).
+ * @returns Um `Aviso` proposta por linha encontrada; array vazio se nenhuma existir.
  */
-function subsetSomaExiste(valoresCentavos: number[], alvoCentavos: number): boolean {
-  if (alvoCentavos <= 0) return false
+export function detectarValorPendente(lancamentos: Lancamento[]): Aviso[] {
+  return detectarPorOrigemEspecial(lancamentos, 'valor-pendente')
+}
 
-  const alcancaveis = new Set<number>([0])
-  for (const valor of valoresCentavos) {
+/**
+ * Detecta, entre `lancamentos`, as linhas de "Pagamento recebido" (marcadas pelo parser via
+ * `Lancamento.origemEspecial === 'pagamento-recebido'`) e gera uma proposta de remoção acionável
+ * para cada uma — análoga a `detectarValorPendente`, antecipando o follow-up de D9 (ver ADR
+ * `inspecao-proposta-conciliacao`, Decisão 17). A linha deixou de ser descartada silenciosamente
+ * no parse (T6) e agora entra em `lancamentos` como lançamento normal.
+ *
+ * @param lancamentos - Lista de lançamentos a inspecionar (tipicamente `state.lancamentos`).
+ * @returns Um `Aviso` proposta por linha encontrada; array vazio se nenhuma existir.
+ */
+export function detectarPagamentoRecebido(lancamentos: Lancamento[]): Aviso[] {
+  return detectarPorOrigemEspecial(lancamentos, 'pagamento-recebido')
+}
+
+/**
+ * Encontra os índices (posição em `lancamentosFatura`) de algum subconjunto cuja soma em
+ * centavos seja exatamente igual a `alvoCentavos`, ou `null` se não existir. Mesma programação
+ * dinâmica de subset-sum de antes (soma alcançável em ordem), agora guardando a composição de
+ * índices que atinge cada soma alcançável — a decisão de "existe casamento" continua idêntica
+ * (deriva de "achou composição, sim ou não"), zero mudança na lógica de casamento.
+ */
+function subsetComposicaoIndices(
+  lancamentosFatura: Lancamento[],
+  alvoCentavos: number,
+): number[] | null {
+  if (alvoCentavos <= 0) return null
+
+  const alcancaveis = new Map<number, number[]>([[0, []]])
+  for (let indice = 0; indice < lancamentosFatura.length; indice++) {
+    const valor = Math.abs(paraCentavos(lancamentosFatura[indice].valor))
     if (valor <= 0) continue
-    const novos: number[] = []
-    for (const soma of alcancaveis) {
+    const entradas = Array.from(alcancaveis.entries())
+    for (const [soma, indices] of entradas) {
       const proxima = soma + valor
-      if (proxima <= alvoCentavos && !alcancaveis.has(proxima)) novos.push(proxima)
+      if (proxima <= alvoCentavos && !alcancaveis.has(proxima)) {
+        alcancaveis.set(proxima, [...indices, indice])
+      }
     }
-    for (const nova of novos) alcancaveis.add(nova)
-    if (alcancaveis.has(alvoCentavos)) return true
+    if (alcancaveis.has(alvoCentavos)) break
   }
-  return false
+  return alcancaveis.get(alvoCentavos) ?? null
 }
 
 /** Monta o Aviso de proposta de conciliação apontando para o lançamento do extrato. */
-function propostaConciliacao(lancamento: Lancamento, indexExtrato: number): Aviso {
+function propostaConciliacao(
+  lancamento: Lancamento,
+  indexExtrato: number,
+  permanece: string[],
+  resumo: string,
+): Aviso {
   return {
     id: `conciliacao-${indexExtrato}`,
     tipo: 'proposta',
     origem: 'conciliacao',
     mensagem: `Fatura conciliada com "${lancamento.transcricao}" do extrato — deseja remover esse lançamento?`,
     alvo: [String(indexExtrato)],
+    permanece,
+    resumo,
     estado: 'pendente',
   }
 }
@@ -125,21 +194,41 @@ export function detectarConciliacao(
     )
 
   if (candidatosTotal.length === 1) {
-    return [propostaConciliacao(candidatosTotal[0].lancamento, candidatosTotal[0].index)]
+    const { lancamento, index } = candidatosTotal[0]
+    const permanece = lancamentosFatura.map((_, i) => String(i))
+    const resumo = formatarResumoConciliacao(
+      somaFaturaCentavos,
+      Math.abs(paraCentavos(lancamento.valor)),
+    )
+    return [propostaConciliacao(lancamento, index, permanece, resumo)]
   }
   if (candidatosTotal.length >= 2) {
     return []
   }
 
-  const valoresFaturaCentavos = lancamentosFatura.map((l) => Math.abs(paraCentavos(l.valor)))
   const candidatosSubset = lancamentosExtrato
-    .map((lancamento, index) => ({ lancamento, index }))
-    .filter(({ lancamento }) =>
-      subsetSomaExiste(valoresFaturaCentavos, Math.abs(paraCentavos(lancamento.valor))),
+    .map((lancamento, index) => ({
+      lancamento,
+      index,
+      composicao: subsetComposicaoIndices(lancamentosFatura, Math.abs(paraCentavos(lancamento.valor))),
+    }))
+    .filter(
+      (candidato): candidato is typeof candidato & { composicao: number[] } =>
+        candidato.composicao !== null,
     )
 
   if (candidatosSubset.length === 1) {
-    return [propostaConciliacao(candidatosSubset[0].lancamento, candidatosSubset[0].index)]
+    const { lancamento, index, composicao } = candidatosSubset[0]
+    const permanece = composicao.map((i) => String(i))
+    const somaSubsetCentavos = composicao.reduce(
+      (acc, i) => acc + Math.abs(paraCentavos(lancamentosFatura[i].valor)),
+      0,
+    )
+    const resumo = formatarResumoConciliacao(
+      somaSubsetCentavos,
+      Math.abs(paraCentavos(lancamento.valor)),
+    )
+    return [propostaConciliacao(lancamento, index, permanece, resumo)]
   }
   if (candidatosSubset.length >= 2) {
     return []
@@ -152,6 +241,7 @@ export function detectarConciliacao(
       origem: 'conciliacao',
       mensagem: 'Aviso: fatura não conciliada — nenhum lançamento do extrato corresponde ao somatório da fatura.',
       alvo: [],
+      permanece: [],
       estado: 'pendente',
     },
   ]

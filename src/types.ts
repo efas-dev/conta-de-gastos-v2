@@ -1,6 +1,7 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
 // ADR: see Docs/specs/colinha-naturezas.adr.md
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
+// ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 
 /**
  * Representa um lançamento financeiro normalizado, independente da fonte de origem.
@@ -37,6 +38,16 @@ export interface Lancamento {
    * Preenchida pelo pipeline via `detectarInvestimento`.
    */
   investimento?: 'aplicacao' | 'resgate' | null
+  /**
+   * Marca as linhas de fatura que antes eram excluídas silenciosamente no parser
+   * (`excluidosPendentes`) e agora entram em `lancamentos` como lançamentos normais
+   * (ver ADR `inspecao-proposta-conciliacao`, Decisões 16/17).
+   * `'valor-pendente'` = "Valor pendente do mês anterior"; `'pagamento-recebido'` =
+   * "Pagamento recebido". `undefined` = lançamento comum, sem origem especial.
+   * Consumida pela detecção (`detectarValorPendente`/`detectarPagamentoRecebido`) para
+   * localizar a linha real em `lancamentos` sem depender de reconhecimento por texto.
+   */
+  origemEspecial?: 'valor-pendente' | 'pagamento-recebido'
 }
 
 /**
@@ -111,6 +122,19 @@ export interface Aviso {
   mensagem: string
   /** Ids dos lançamentos afetados pelo aviso */
   alvo: string[]
+  /**
+   * Ids dos lançamentos que permanecem — "quem fica" — como complemento de `alvo` ("quem sai").
+   * Campo aditivo (ver ADR `inspecao-proposta-conciliacao`, Decisão 2): `alvo` não muda de
+   * semântica. Populado por `detectarConciliacao` com os ids da fatura que compõem a soma
+   * casada; vazio (`[]`) quando não há casamento.
+   */
+  permanece: string[]
+  /**
+   * Resumo textual da regra de casamento aplicada (ex.: "somatório da fatura R$ X ↔ pagamento
+   * R$ Y, diferença ≤ R$ 0,05"). `undefined` quando não há regra de tolerância nesse caminho
+   * (ex.: `detectarValorPendente`) ou quando o aviso não representa um casamento.
+   */
+  resumo?: string
   /** Estado do ciclo de vida do aviso */
   estado: 'pendente' | 'aplicado' | 'dispensado'
 }

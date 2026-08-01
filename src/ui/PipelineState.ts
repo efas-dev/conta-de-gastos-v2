@@ -1,13 +1,14 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
+// ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 
 import type { Lancamento, DicEntry, Aviso } from '../types'
 import { detectar } from '../parsers/index'
 import { enriquecerLancamento } from '../dominio/dicionario'
 import { detectarInvestimento } from '../dominio/investimento'
 import { detectarTransferenciaInterna } from '../dominio/transferencia'
-import { detectarValorPendente, detectarConciliacao } from '../dominio/deteccoes'
+import { detectarConciliacao } from '../dominio/deteccoes'
 import { aprenderDicionario } from '../dominio/aprendizado'
 import { lerDicionario } from '../excel/reader/leitor'
 import { gerarXlsx } from '../excel/writer/gerador'
@@ -143,11 +144,19 @@ export interface ResultadoProduzir {
  * O dicionário chega já parseado (`DicEntry[]`): a leitura dos bytes do .xlsx
  * acontece no upload (handler unificado do App), que guarda as entradas no store.
  *
- * As detecções de avisos acionáveis (`detectarValorPendente`, `detectarConciliacao` —
- * ver `src/dominio/deteccoes.ts`) rodam após o parse e são despachadas via `adicionarAvisos`,
- * um callback injetado — nunca uma importação direta de `avisosSlice` (ver ADR
- * `avisos-acionaveis`, Decisão 5: parser e este orquestrador não conhecem o store diretamente,
- * o despacho é por dado/callback, não por acoplamento a módulo).
+ * A detecção de `detectarConciliacao` (ver `src/dominio/deteccoes.ts`) roda após o parse,
+ * quando `lancamentosExtrato` é fornecido, e é despachada via `adicionarAvisos`, um callback
+ * injetado — nunca uma importação direta de `avisosSlice` (ver ADR `avisos-acionaveis`,
+ * Decisão 5: parser e este orquestrador não conhecem o store diretamente, o despacho é por
+ * dado/callback, não por acoplamento a módulo).
+ *
+ * `detectarValorPendente`/`detectarPagamentoRecebido` NÃO rodam mais aqui (T11 do ADR
+ * `inspecao-proposta-conciliacao`): esta função processa a sublista per-arquivo, então o
+ * `alvo` gerado seria um índice relativo a essa sublista, nunca ao array total
+ * (`todosLancamentos`/`state.lancamentos`) — quando a fatura não era o 1º arquivo do lote, o
+ * destaque na grid caía na linha errada (bug achado na validação visual manual). As duas
+ * detecções passaram para `App.tsx` (`handleProduzir`), rodando sobre `todosLancamentos` já
+ * concatenado, mesmo padrão já usado por `detectarConciliacao` no call-site real.
  *
  * @param csvConteudo       Conteúdo do arquivo CSV (já lido como string)
  * @param dicEntries        Entradas do dicionário já lidas, ou [] se não fornecido
@@ -168,14 +177,29 @@ export function produzirLancamentos(
   adicionarAvisos: (avisos: Aviso[]) => void = () => {},
 ): ResultadoProduzir {
   const avisos: string[] = []
+  // Avisos informativos migrados para o canal único (slice `avisosAcionaveis`,
+  // D18 do ADR `inspecao-proposta-conciliacao`) — hoje só "linhas ignoradas no
+  // CSV"; acumulados aqui e despachados junto com as detecções de propostas
+  // logo abaixo, num único array combinado.
+  const avisosInformativosMigrados: Aviso[] = []
 
   // 1. Parse CSV (modo best-effort)
   const parser = detectar(csvConteudo)
-  const { lancamentos, linhasIgnoradas, excluidosPendentes } = parser.parsear(csvConteudo)
+  const { lancamentos, linhasIgnoradas } = parser.parsear(csvConteudo)
 
   if (linhasIgnoradas > 0) {
     const plural = linhasIgnoradas > 1 ? 's' : ''
-    avisos.push(`${linhasIgnoradas} linha${plural} ignorada${plural} no CSV`)
+    const mensagem = `${linhasIgnoradas} linha${plural} ignorada${plural} no CSV`
+    avisos.push(mensagem)
+    avisosInformativosMigrados.push({
+      id: `linhas-ignoradas-${crypto.randomUUID()}`,
+      tipo: 'informativo',
+      origem: 'linhas-ignoradas',
+      mensagem,
+      alvo: [],
+      permanece: [],
+      estado: 'pendente',
+    })
   }
 
   // 2. Enriquecimento via dicionário
@@ -191,13 +215,14 @@ export function produzirLancamentos(
     return { ...l, investimento, transferenciaInterna }
   })
 
-  // 4. Avisos acionáveis: converte excluidosPendentes/conciliação em Aviso[] e despacha.
-  const avisosValorPendente = detectarValorPendente(excluidosPendentes)
+  // 4. Avisos acionáveis: converte conciliação em Aviso[] e despacha. Valor-pendente/
+  // pagamento-recebido deixaram de ser detectados aqui (T11 — ver docstring acima);
+  // o call-site real (`App.tsx`, `handleProduzir`) os detecta sobre `todosLancamentos`.
   const avisosConciliacao =
     lancamentosExtrato.length > 0
       ? detectarConciliacao(lancamentosComFlags, lancamentosExtrato)
       : []
-  adicionarAvisos([...avisosValorPendente, ...avisosConciliacao])
+  adicionarAvisos([...avisosConciliacao, ...avisosInformativosMigrados])
 
   return { lancamentos: lancamentosComFlags, dicEntries, avisos }
 }

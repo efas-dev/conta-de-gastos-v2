@@ -27,8 +27,18 @@ import {
   calcularLargurasColunas,
   ehColunaLeituraApenas,
   proximaCelulaAposTab,
+  derivarContextoInspecao,
+  calcularTemaLinhaComInspecao,
+  calcularLinhaAncoraVisual,
+  aplicarRevelacaoInspecao,
+  indicesEnvolvidos,
+  TEMA_INSPECAO_SAI,
+  TEMA_INSPECAO_FICA,
+  TEMA_ERRO,
+  TEMA_TRANSFERENCIA,
+  TEMA_INVESTIMENTO,
 } from '../ReviewGrid'
-import type { Lancamento } from '../../../types'
+import type { Lancamento, Aviso } from '../../../types'
 
 // ---------------------------------------------------------------------------
 // Fixture mínima
@@ -238,5 +248,431 @@ describe('proximaCelulaAposTab', () => {
   it('TL-9d: na última coluna (Valor), permanece na célula', () => {
     const COL_VALOR = 6
     expect(proximaCelulaAposTab(COL_VALOR, 2, 10)).toEqual([COL_VALOR, 2])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Fixtures — Task T4 (inspeção de conciliação)
+// ---------------------------------------------------------------------------
+
+function avisoConciliacaoFake(overrides: Partial<Aviso> = {}): Aviso {
+  return {
+    id: 'aviso-1',
+    tipo: 'proposta',
+    origem: 'conciliacao',
+    mensagem: 'Proposta de conciliação',
+    alvo: ['2'],
+    permanece: ['0', '1'],
+    resumo: 'somatório da fatura R$ 150,00 ↔ pagamento R$ 150,00, diferença ≤ R$ 0,05',
+    estado: 'pendente',
+    ...overrides,
+  }
+}
+
+/**
+ * A partir de T7 (ADR `inspecao-proposta-conciliacao`, D16/D17), `detectarValorPendente`/
+ * `detectarPagamentoRecebido` localizam a linha real em `lancamentos` e populam `alvo` com o
+ * índice real dessa linha — `alvo: []` (contrato de T2/D10) foi revisto. `permanece` continua
+ * sempre `[]` (papel único "sai", sem contraparte "fica").
+ */
+function avisoValorPendenteFake(overrides: Partial<Aviso> = {}): Aviso {
+  return {
+    id: 'aviso-2',
+    tipo: 'proposta',
+    origem: 'valor-pendente',
+    mensagem: 'Valor pendente',
+    alvo: ['2'],
+    permanece: [],
+    resumo: 'Valor pendente do mês anterior: R$ 100,00 — resíduo da fatura passada, não é gasto do mês',
+    estado: 'pendente',
+    ...overrides,
+  }
+}
+
+/** Análoga a `avisoValorPendenteFake`, para a origem `'pagamento-recebido'` (T7/D17). */
+function avisoPagamentoRecebidoFake(overrides: Partial<Aviso> = {}): Aviso {
+  return {
+    id: 'aviso-3',
+    tipo: 'proposta',
+    origem: 'pagamento-recebido',
+    mensagem: 'Pagamento recebido',
+    alvo: ['2'],
+    permanece: [],
+    resumo: 'Pagamento recebido: R$ 100,00 — crédito referente à quitação da fatura anterior, não é gasto do mês',
+    estado: 'pendente',
+    ...overrides,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// TL-1 a TL-3 — derivarContextoInspecao
+// ---------------------------------------------------------------------------
+
+describe('derivarContextoInspecao', () => {
+  it('TL-1: retorna alvoSet/permaneceSet quando o aviso existe e origem é conciliacao', () => {
+    const contexto = derivarContextoInspecao(avisoConciliacaoFake())
+    expect(contexto).toBeDefined()
+    expect(contexto?.alvoSet.has('2')).toBe(true)
+    expect(contexto?.permaneceSet.has('0')).toBe(true)
+    expect(contexto?.permaneceSet.has('1')).toBe(true)
+  })
+
+  it('TL-2: retorna undefined quando não há aviso em inspeção', () => {
+    expect(derivarContextoInspecao(undefined)).toBeUndefined()
+  })
+
+  it('TL-3 (revisão de D11 — T8): retorna alvoSet/permaneceSet(vazio) para origem valor-pendente', () => {
+    const contexto = derivarContextoInspecao(avisoValorPendenteFake())
+    expect(contexto).toBeDefined()
+    expect(contexto?.alvoSet.has('2')).toBe(true)
+    expect(contexto?.permaneceSet.size).toBe(0)
+  })
+
+  it('TL-T8-02: retorna alvoSet/permaneceSet(vazio) para origem pagamento-recebido', () => {
+    const contexto = derivarContextoInspecao(avisoPagamentoRecebidoFake())
+    expect(contexto).toBeDefined()
+    expect(contexto?.alvoSet.has('2')).toBe(true)
+    expect(contexto?.permaneceSet.size).toBe(0)
+  })
+
+  it('TL-T8-04 (regressão): retorna undefined para origem desconhecida', () => {
+    expect(
+      derivarContextoInspecao(avisoConciliacaoFake({ origem: 'outra-origem-qualquer' })),
+    ).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// TL-4 a TL-8 — calcularTemaLinhaComInspecao
+// ---------------------------------------------------------------------------
+
+describe('calcularTemaLinhaComInspecao', () => {
+  const naturezasValidas = ['ALM', 'TRN']
+  const contexto = derivarContextoInspecao(avisoConciliacaoFake())!
+
+  it('TL-4: retorna TEMA_INSPECAO_SAI quando o índice real está em alvoSet', () => {
+    const l = lancamentoFake({ natureza: 'ALM' })
+    expect(calcularTemaLinhaComInspecao(l, 2, naturezasValidas, contexto)).toBe(TEMA_INSPECAO_SAI)
+  })
+
+  it('TL-5: retorna TEMA_INSPECAO_FICA quando o índice real está em permaneceSet', () => {
+    const l = lancamentoFake({ natureza: 'ALM' })
+    expect(calcularTemaLinhaComInspecao(l, 0, naturezasValidas, contexto)).toBe(TEMA_INSPECAO_FICA)
+  })
+
+  it('TL-6 (precedência, D4): tema de inspeção vence erro/transferência/investimento', () => {
+    const lErro = lancamentoFake({ natureza: '' }) // natureza vazia -> normalmente TEMA_ERRO
+    expect(calcularTemaLinhaComInspecao(lErro, 2, naturezasValidas, contexto)).toBe(
+      TEMA_INSPECAO_SAI,
+    )
+
+    const lTransferencia = lancamentoFake({ transferenciaInterna: true })
+    expect(
+      calcularTemaLinhaComInspecao(lTransferencia, 0, naturezasValidas, contexto),
+    ).toBe(TEMA_INSPECAO_FICA)
+
+    const lInvestimento = lancamentoFake({ investimento: 'aplicacao' })
+    expect(
+      calcularTemaLinhaComInspecao(lInvestimento, 2, naturezasValidas, contexto),
+    ).toBe(TEMA_INSPECAO_SAI)
+  })
+
+  it('TL-7 (regressão): sem contexto de inspeção, delega para calcularTemaLinha', () => {
+    const lErro = lancamentoFake({ natureza: '' })
+    expect(calcularTemaLinhaComInspecao(lErro, 5, naturezasValidas, undefined)).toBe(TEMA_ERRO)
+
+    const lTransferencia = lancamentoFake({ transferenciaInterna: true })
+    expect(
+      calcularTemaLinhaComInspecao(lTransferencia, 5, naturezasValidas, undefined),
+    ).toBe(TEMA_TRANSFERENCIA)
+
+    const lInvestimento = lancamentoFake({ investimento: 'resgate' })
+    expect(
+      calcularTemaLinhaComInspecao(lInvestimento, 5, naturezasValidas, undefined),
+    ).toBe(TEMA_INVESTIMENTO)
+
+    const lNormal = lancamentoFake({ natureza: 'ALM' })
+    expect(
+      calcularTemaLinhaComInspecao(lNormal, 5, naturezasValidas, undefined),
+    ).toBeUndefined()
+  })
+
+  it('TL-18 (isenção): linha de proposta de remoção (origemEspecial) com natureza vazia NÃO recebe TEMA_ERRO fora da inspeção', () => {
+    // valor-pendente/pagamento-recebido entram na grid sem natureza; não devem
+    // destacar em pêssego permanentemente — só na inspeção do respectivo aviso.
+    const lValorPendente = lancamentoFake({ natureza: '', origemEspecial: 'valor-pendente' })
+    expect(
+      calcularTemaLinhaComInspecao(lValorPendente, 5, naturezasValidas, undefined),
+    ).toBeUndefined()
+
+    const lPagamento = lancamentoFake({ natureza: '', origemEspecial: 'pagamento-recebido' })
+    expect(
+      calcularTemaLinhaComInspecao(lPagamento, 5, naturezasValidas, undefined),
+    ).toBeUndefined()
+
+    // Durante a inspeção (índice no alvoSet), a mesma linha destaca em vermelho vivo.
+    expect(calcularTemaLinhaComInspecao(lValorPendente, 2, naturezasValidas, contexto)).toBe(
+      TEMA_INSPECAO_SAI,
+    )
+  })
+
+  it('TL-8 (robustez a ordenação/filtro por identidade, D7): casa pelo índice real, não pela posição', () => {
+    const l = lancamentoFake({ natureza: 'ALM' })
+    // A mesma linha (índice real 2) continua TEMA_INSPECAO_SAI independentemente
+    // de "onde" ela apareceria numa lista reordenada — a função não recebe posição
+    // visual, só o índice real, provando que o casamento é por identidade.
+    expect(calcularTemaLinhaComInspecao(l, 2, naturezasValidas, contexto)).toBe(TEMA_INSPECAO_SAI)
+    // Um índice real que não está nem em alvo nem em permanece nunca ganha tema de inspeção,
+    // mesmo que fosse a "primeira linha visível" após reordenação.
+    expect(calcularTemaLinhaComInspecao(l, 99, naturezasValidas, contexto)).toBeUndefined()
+  })
+
+  it('TL-T8-05: retorna TEMA_INSPECAO_SAI para origem valor-pendente (revisão de D11 — T8)', () => {
+    const contextoVP = derivarContextoInspecao(avisoValorPendenteFake())
+    const l = lancamentoFake({ natureza: 'ALM' })
+    expect(calcularTemaLinhaComInspecao(l, 2, naturezasValidas, contextoVP)).toBe(
+      TEMA_INSPECAO_SAI,
+    )
+  })
+
+  it('TL-T8-06: retorna TEMA_INSPECAO_SAI para origem pagamento-recebido (T8)', () => {
+    const contextoPR = derivarContextoInspecao(avisoPagamentoRecebidoFake())
+    const l = lancamentoFake({ natureza: 'ALM' })
+    expect(calcularTemaLinhaComInspecao(l, 2, naturezasValidas, contextoPR)).toBe(
+      TEMA_INSPECAO_SAI,
+    )
+  })
+
+  it('TL-T8-11 (robustez a identidade, D7): linha fora do alvoSet de valor-pendente nunca ganha tema', () => {
+    const contextoVP = derivarContextoInspecao(avisoValorPendenteFake())
+    const l = lancamentoFake({ natureza: 'ALM' })
+    expect(calcularTemaLinhaComInspecao(l, 99, naturezasValidas, contextoVP)).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// TL-T8-07/08 — indicesEnvolvidos
+// ---------------------------------------------------------------------------
+
+describe('indicesEnvolvidos', () => {
+  it('TL-T8-07: retorna só alvo (sem permanece) para valor-pendente/pagamento-recebido', () => {
+    expect(indicesEnvolvidos(avisoValorPendenteFake())).toEqual([2])
+    expect(indicesEnvolvidos(avisoPagamentoRecebidoFake())).toEqual([2])
+  })
+
+  it('TL-T8-08 (regressão): retorna a união alvo+permanece para conciliacao', () => {
+    expect(indicesEnvolvidos(avisoConciliacaoFake({ alvo: ['2'], permanece: ['0', '1'] }))).toEqual(
+      [2, 0, 1],
+    )
+  })
+
+  it('TL-T8-08b (guarda): retorna [] para origem desconhecida/sem aviso', () => {
+    expect(indicesEnvolvidos(undefined)).toEqual([])
+    expect(indicesEnvolvidos(avisoConciliacaoFake({ origem: 'outra-origem' }))).toEqual([])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// TL-9 e TL-10 — calcularLinhaAncoraVisual
+// ---------------------------------------------------------------------------
+
+describe('calcularLinhaAncoraVisual', () => {
+  it('TL-9 (auto-scroll, D3): retorna a posição visual do índice-âncora (alvo[0]) sob ordenação ativa', () => {
+    // mapaIndiceVisualReal fora de ordem simula ordenação ativa: posição visual 0 -> índice real 2
+    const mapaIndiceVisualReal = [2, 0, 1]
+    const aviso = avisoConciliacaoFake({ alvo: ['2'] })
+    expect(calcularLinhaAncoraVisual(mapaIndiceVisualReal, aviso)).toBe(0)
+  })
+
+  it('TL-10 (revisão de D11 — T8): retorna a posição visual do alvo para origem valor-pendente', () => {
+    const mapaIndiceVisualReal = [0, 1, 2]
+    expect(calcularLinhaAncoraVisual(mapaIndiceVisualReal, avisoValorPendenteFake())).toBe(2)
+  })
+
+  it('TL-T8-09: retorna a posição visual do alvo para origem pagamento-recebido', () => {
+    const mapaIndiceVisualReal = [0, 1, 2]
+    expect(calcularLinhaAncoraVisual(mapaIndiceVisualReal, avisoPagamentoRecebidoFake())).toBe(2)
+  })
+
+  it('TL-10b (guarda): retorna undefined quando não há aviso em inspeção', () => {
+    expect(calcularLinhaAncoraVisual([0, 1, 2], undefined)).toBeUndefined()
+  })
+
+  it('TL-T8-10 (regressão, guarda): retorna undefined para origem desconhecida', () => {
+    const aviso = avisoConciliacaoFake({ origem: 'outra-origem', alvo: ['2'] })
+    expect(calcularLinhaAncoraVisual([0, 1, 2], aviso)).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// TL-11 e TL-12 — aplicarRevelacaoInspecao
+// ---------------------------------------------------------------------------
+
+describe('aplicarRevelacaoInspecao', () => {
+  const lancamentos = [
+    lancamentoFake({ transcricao: 'Fatura item A' }), // índice real 0
+    lancamentoFake({ transcricao: 'Fatura item B' }), // índice real 1
+    lancamentoFake({ transcricao: 'Pagamento fatura' }), // índice real 2
+  ]
+
+  it('TL-11 (revelação de linha oculta, D8): inclui linha envolvida ausente do filtro ativo', () => {
+    // Filtro ativo oculta o índice real 1 ("fica"): só 0 e 2 estão visíveis.
+    const lancamentosVisiveis = [lancamentos[0], lancamentos[2]]
+    const mapaIndiceVisualReal = [0, 2]
+    const indicesReaisEnvolvidos = [0, 1, 2] // alvo=[2] + permanece=[0,1]
+
+    const resultado = aplicarRevelacaoInspecao(
+      lancamentos,
+      lancamentosVisiveis,
+      mapaIndiceVisualReal,
+      indicesReaisEnvolvidos,
+    )
+
+    expect(resultado.mapa).toContain(1)
+    expect(resultado.linhas).toContain(lancamentos[1])
+    expect(resultado.linhas).toHaveLength(3)
+  })
+
+  it('TL-12 (desfazer revelação ao sair, D8): sem índices envolvidos, retorna a visão original intacta', () => {
+    const lancamentosVisiveis = [lancamentos[0], lancamentos[2]]
+    const mapaIndiceVisualReal = [0, 2]
+
+    const resultado = aplicarRevelacaoInspecao(
+      lancamentos,
+      lancamentosVisiveis,
+      mapaIndiceVisualReal,
+      [],
+    )
+
+    expect(resultado.linhas).toBe(lancamentosVisiveis)
+    expect(resultado.mapa).toBe(mapaIndiceVisualReal)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// TL-13 e TL-14 — pipeline de integração slice→grid (composição de funções puras)
+// Camada [integration] per Playbook 1: ReviewGrid.tsx (componente Glide/Canvas)
+// não é montável em jsdom (ver cabeçalho do arquivo); a integração provada aqui
+// é a composição real das funções puras que o componente invoca em runtime.
+// ---------------------------------------------------------------------------
+
+describe('pipeline de inspeção (integração slice -> grid)', () => {
+  const naturezasValidas = ['ALM']
+  const lancamentos = [
+    lancamentoFake({ transcricao: 'Fatura item A', natureza: 'ALM' }), // real 0 = fica
+    lancamentoFake({ transcricao: 'Fatura item B', natureza: 'ALM' }), // real 1 = fica
+    lancamentoFake({ transcricao: 'Pagamento fatura', natureza: 'ALM' }), // real 2 = sai
+  ]
+
+  it('TL-13: conciliação em inspeção — sai/fica corretos, linha fica revelada', () => {
+    const aviso = avisoConciliacaoFake({ alvo: ['2'], permanece: ['0', '1'] })
+
+    // Filtro ativo oculta o índice real 1.
+    const lancamentosVisiveis = [lancamentos[0], lancamentos[2]]
+    const mapaIndiceVisualReal = [0, 2]
+
+    const contexto = derivarContextoInspecao(aviso)
+    const envolvidos = indicesEnvolvidos(aviso)
+    const { linhas, mapa } = aplicarRevelacaoInspecao(
+      lancamentos,
+      lancamentosVisiveis,
+      mapaIndiceVisualReal,
+      envolvidos,
+    )
+
+    const temasPorLinha = mapa.map((indiceReal, posicaoVisual) =>
+      calcularTemaLinhaComInspecao(linhas[posicaoVisual]!, indiceReal, naturezasValidas, contexto),
+    )
+
+    expect(mapa).toEqual([0, 2, 1])
+    expect(temasPorLinha[0]).toBe(TEMA_INSPECAO_FICA) // real 0
+    expect(temasPorLinha[1]).toBe(TEMA_INSPECAO_SAI) // real 2
+    expect(temasPorLinha[2]).toBe(TEMA_INSPECAO_FICA) // real 1, revelado
+
+    expect(calcularLinhaAncoraVisual(mapa, aviso)).toBe(1)
+  })
+
+  it('TL-14 (revisão de D11 — T8): valor-pendente em inspeção destaca "sai" e revela a linha oculta', () => {
+    // Linha-alvo (índice real 1) oculta pelo filtro ativo — só 0 e 2 estão visíveis.
+    const aviso = avisoValorPendenteFake({ alvo: ['1'] })
+
+    const lancamentosVisiveis = [lancamentos[0], lancamentos[2]]
+    const mapaIndiceVisualReal = [0, 2]
+
+    const contexto = derivarContextoInspecao(aviso)
+    const envolvidos = indicesEnvolvidos(aviso)
+    const { linhas, mapa } = aplicarRevelacaoInspecao(
+      lancamentos,
+      lancamentosVisiveis,
+      mapaIndiceVisualReal,
+      envolvidos,
+    )
+
+    // A linha oculta foi revelada (anexada ao final).
+    expect(mapa).toEqual([0, 2, 1])
+    expect(linhas).toContain(lancamentos[1])
+
+    const temasPorLinha = mapa.map((indiceReal, posicaoVisual) =>
+      calcularTemaLinhaComInspecao(linhas[posicaoVisual]!, indiceReal, naturezasValidas, contexto),
+    )
+    expect(temasPorLinha[0]).toBeUndefined() // real 0, fora do alvo
+    expect(temasPorLinha[1]).toBeUndefined() // real 2, fora do alvo
+    expect(temasPorLinha[2]).toBe(TEMA_INSPECAO_SAI) // real 1, revelado — papel único "sai"
+    // Nenhuma linha ganha o papel "fica" — permanece[] é sempre vazio para esta origem.
+    expect(temasPorLinha).not.toContain(TEMA_INSPECAO_FICA)
+
+    expect(calcularLinhaAncoraVisual(mapa, aviso)).toBe(2)
+  })
+
+  it('TL-T8-12: pagamento-recebido em inspeção destaca "sai" na linha correta (sem revelação necessária)', () => {
+    const aviso = avisoPagamentoRecebidoFake({ alvo: ['2'] })
+
+    const lancamentosVisiveis = [lancamentos[0], lancamentos[2]]
+    const mapaIndiceVisualReal = [0, 2]
+
+    const contexto = derivarContextoInspecao(aviso)
+    const envolvidos = indicesEnvolvidos(aviso)
+    const { linhas, mapa } = aplicarRevelacaoInspecao(
+      lancamentos,
+      lancamentosVisiveis,
+      mapaIndiceVisualReal,
+      envolvidos,
+    )
+
+    expect(mapa).toEqual([0, 2])
+
+    const temasPorLinha = mapa.map((indiceReal, posicaoVisual) =>
+      calcularTemaLinhaComInspecao(linhas[posicaoVisual]!, indiceReal, naturezasValidas, contexto),
+    )
+    expect(temasPorLinha[0]).toBeUndefined()
+    expect(temasPorLinha[1]).toBe(TEMA_INSPECAO_SAI)
+
+    expect(calcularLinhaAncoraVisual(mapa, aviso)).toBe(1)
+  })
+
+  it('TL-T8-13 (regressão): conciliação em inspeção continua com os 2 papéis (sai+fica) inalterada', () => {
+    const aviso = avisoConciliacaoFake({ alvo: ['2'], permanece: ['0', '1'] })
+
+    const lancamentosVisiveis = [lancamentos[0], lancamentos[2]]
+    const mapaIndiceVisualReal = [0, 2]
+
+    const contexto = derivarContextoInspecao(aviso)
+    const envolvidos = indicesEnvolvidos(aviso)
+    const { linhas, mapa } = aplicarRevelacaoInspecao(
+      lancamentos,
+      lancamentosVisiveis,
+      mapaIndiceVisualReal,
+      envolvidos,
+    )
+
+    const temasPorLinha = mapa.map((indiceReal, posicaoVisual) =>
+      calcularTemaLinhaComInspecao(linhas[posicaoVisual]!, indiceReal, naturezasValidas, contexto),
+    )
+
+    expect(mapa).toEqual([0, 2, 1])
+    expect(temasPorLinha[0]).toBe(TEMA_INSPECAO_FICA)
+    expect(temasPorLinha[1]).toBe(TEMA_INSPECAO_SAI)
+    expect(temasPorLinha[2]).toBe(TEMA_INSPECAO_FICA)
+    expect(calcularLinhaAncoraVisual(mapa, aviso)).toBe(1)
   })
 })

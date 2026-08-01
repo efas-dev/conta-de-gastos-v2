@@ -54,8 +54,13 @@ vi.mock('../dominio/mes', async (importOriginal) => {
   return {
     ...original,
     // Impede que a leitura antecipada sobrescreva mesEscolhido — mantém o
-    // default '2026-06' (mês anterior a hoje) estável durante o teste.
+    // default '2026-06' estável durante o teste.
     detectarMesSugerido: vi.fn(() => null),
+    // Fixa o mês de referência independentemente do relógio da máquina: as
+    // fixtures são datadas de maio/junho/2026 e assumem mesEscolhido='2026-06'.
+    // Sem este mock, defaultMes() usa a data corrente (mês anterior a hoje) e os
+    // testes quebram quando o dia real sai de julho/2026 (bug de teste flaky).
+    defaultMes: vi.fn(() => '2026-06'),
   }
 })
 
@@ -181,5 +186,45 @@ describe('App — correlação fatura×extrato por fonte alimenta detectarConcil
       .getState()
       .avisosAcionaveis.avisos.filter((a) => a.tipo === 'proposta' && a.origem === 'conciliacao')
     expect(propostas).toHaveLength(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task T5 (spec inspecao-proposta-conciliacao) — remapeamento de `aviso.permanece`
+// Dívida: Docs/debt/tecnica/remapeamento-permanece-ausente-app-tsx.md
+// ---------------------------------------------------------------------------
+
+describe('App — remapeamento de aviso.permanece quando a fatura NÃO é o primeiro arquivo (T5)', () => {
+  it('extrato enviado antes da fatura no lote — permanece aponta para os índices reais dos itens da fatura', async () => {
+    const extrato = criarFileTexto('extrato-sintetico.csv', EXTRATO_CSV)
+    const fatura = criarFileTexto('fatura-sintetica.csv', FATURA_CSV)
+
+    // Ordem deliberada: extrato ANTES da fatura — reproduz o cenário da dívida
+    // (`todosLancamentos` = [extrato..., fatura...]; sem o remapeamento, `permanece`
+    // continuaria com índices relativos a `lancamentosDestaFatura`, que aqui NÃO
+    // coincidem com os índices reais em `state.lancamentos`).
+    await produzirComArquivos([extrato, fatura])
+
+    const lancamentos = useAppStore.getState().lancamentos
+    const proposta = useAppStore
+      .getState()
+      .avisosAcionaveis.avisos.find((a) => a.tipo === 'proposta' && a.origem === 'conciliacao')
+    expect(proposta).toBeDefined()
+
+    // Os 2 lançamentos da fatura (Livraria/Farmácia) devem estar em `permanece`,
+    // identificados pelos seus índices REAIS em `state.lancamentos` — não pelos
+    // índices 0/1 relativos ao subconjunto da fatura isolado.
+    const indicesPermanece = proposta!.permanece.map(Number)
+    const transcricoesPermanece = indicesPermanece.map((i) => lancamentos[i]?.transcricao)
+    expect(transcricoesPermanece).toContain('Livraria Fictícia')
+    expect(transcricoesPermanece).toContain('Farmácia Fictícia')
+
+    // Nenhum índice de `permanece` deve apontar para um lançamento do extrato.
+    expect(transcricoesPermanece).not.toContain('Pagamento de fatura')
+    expect(transcricoesPermanece).not.toContain('Outro débito fictício')
+
+    // `alvo` continua correto (já coberto pela Task 8) — aponta para o item do extrato.
+    const indicesAlvo = proposta!.alvo.map(Number)
+    expect(indicesAlvo.map((i) => lancamentos[i]?.transcricao)).toEqual(['Pagamento de fatura'])
   })
 })
