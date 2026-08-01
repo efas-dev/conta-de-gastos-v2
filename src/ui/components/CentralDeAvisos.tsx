@@ -40,7 +40,9 @@ export function CentralDeAvisos() {
 
   if (avisos.length === 0) return null
 
-  const informativos = avisos.filter((a) => a.tipo === 'informativo')
+  // Informativos dispensados saem da lista (T9, D18) — sem "Desfazer" para este tipo,
+  // diferente das propostas (D14): dispensar um informativo é definitivo na sessão.
+  const informativos = avisos.filter((a) => a.tipo === 'informativo' && a.estado !== 'dispensado')
   const propostas = avisos.filter((a) => a.tipo === 'proposta')
 
   return (
@@ -108,13 +110,25 @@ export function CentralDeAvisos() {
                   <li
                     key={aviso.id}
                     style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 8,
                       padding: 10,
                       borderRadius: 8,
                       border: '1px solid var(--borda-2)',
                       fontSize: 13.5,
                     }}
                   >
-                    {aviso.mensagem}
+                    <span>{aviso.mensagem}</span>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        className="dc-btn dc-btn-secundario"
+                        onClick={() => dispensar(aviso.id)}
+                      >
+                        Dispensar
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
