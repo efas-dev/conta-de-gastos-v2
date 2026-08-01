@@ -57,6 +57,50 @@ describe('GhostEditorCore', () => {
     onFinishedEditing = vi.fn()
   })
 
+  // Clique fora salva o estado parcial (bug reportado em 2026-08-01): o Glide
+  // só consegue commitar no click-outside o que o editor notificou via onChange —
+  // onTextoAlterado é o canal do GhostEditorCore para isso.
+  it('TLCF-1: digitar notifica onTextoAlterado com o texto parcial a cada mudança', () => {
+    const onTextoAlterado = vi.fn()
+    render(
+      <GhostEditorCore
+        col={COL_DESCRICAO}
+        row={0}
+        valorAtual=""
+        lancamentos={[lancamento('', '')]}
+        dicEntries={[]}
+        onFinishedEditing={onFinishedEditing}
+        onTextoAlterado={onTextoAlterado}
+      />,
+    )
+    const input = screen.getByTestId('ghost-input')
+    fireEvent.change(input, { target: { value: 'Alug' } })
+    fireEvent.change(input, { target: { value: 'Aluguel' } })
+
+    expect(onTextoAlterado).toHaveBeenNthCalledWith(1, 'Alug')
+    expect(onTextoAlterado).toHaveBeenNthCalledWith(2, 'Aluguel')
+    expect(onFinishedEditing).not.toHaveBeenCalled()
+  })
+
+  it('TLCF-2: Tab que aceita sugestão também notifica onTextoAlterado com o texto completo', () => {
+    const onTextoAlterado = vi.fn()
+    render(
+      <GhostEditorCore
+        col={COL_DESCRICAO}
+        row={0}
+        valorAtual=""
+        valorInicial="ali"
+        lancamentos={[lancamento('ALI', '')]}
+        dicEntries={[dicAli]}
+        onFinishedEditing={onFinishedEditing}
+        onTextoAlterado={onTextoAlterado}
+      />,
+    )
+    fireEvent.keyDown(screen.getByTestId('ghost-input'), { key: 'Tab' })
+
+    expect(onTextoAlterado).toHaveBeenLastCalledWith('Alimentos')
+  })
+
   // 1. ghost-aparece-com-candidato
   // Usa COL_DESCRICAO com natureza="ALI" na linha → calcularSugestoes extrai descricao
   // prefixo "ali" → candidato "Alimentos" → ghost sufixo "mentos"

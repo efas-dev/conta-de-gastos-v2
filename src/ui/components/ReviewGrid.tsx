@@ -606,10 +606,12 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
     () =>
       function GhostEditorGlide({
         value,
+        onChange,
         onFinishedEditing,
         initialValue,
       }: {
         value: GridCell
+        onChange?: (cell: GridCell) => void
         onFinishedEditing: (cell?: GridCell, movement?: readonly [-1 | 0 | 1, -1 | 0 | 1]) => void
         initialValue?: string
         [key: string]: unknown
@@ -625,6 +627,16 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
             valorInicial={initialValue}
             lancamentos={lancamentosRef.current}
             dicEntries={dicEntriesRef.current}
+            /* Cada tecla vira tempValue no overlay do Glide — é o que o
+               click-outside commita (senão descartaria o texto parcial). */
+            onTextoAlterado={(texto) => {
+              onChange?.({
+                ...value,
+                kind: GridCellKind.Text,
+                data: texto,
+                displayData: texto,
+              } as GridCell)
+            }}
             onFinishedEditing={(texto, movement) => {
               const celulaEditada = {
                 ...value,
