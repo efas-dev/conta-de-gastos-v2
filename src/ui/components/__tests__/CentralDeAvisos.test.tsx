@@ -233,14 +233,32 @@ describe('CentralDeAvisos — rótulos e ações por estado de proposta (D13, D1
     expect(mockDesfazer).toHaveBeenCalledWith('prop-xyz')
   })
 
-  it('aviso informativo nunca exibe botões de ação', () => {
+  it('aviso informativo nunca exibe "Aprovar"/"Desfazer" — só é dispensável (T9, D18)', () => {
     avisosMock = [informativo({ estado: 'pendente' })]
     render(<CentralDeAvisos />)
     abrirSheet()
 
     expect(screen.queryByRole('button', { name: /aprovar/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /desfazer/i })).toBeNull()
-    expect(screen.queryByRole('button', { name: /dispensar/i })).toBeNull()
+  })
+
+  it('aviso informativo pendente exibe "Dispensar" e clicar chama dispensar(id) (T9, D18)', () => {
+    avisosMock = [informativo({ id: 'info-xyz', estado: 'pendente' })]
+    render(<CentralDeAvisos />)
+    abrirSheet()
+
+    const botaoDispensar = screen.getByRole('button', { name: /dispensar/i })
+    expect(botaoDispensar).toBeInTheDocument()
+    fireEvent.click(botaoDispensar)
+    expect(mockDispensar).toHaveBeenCalledWith('info-xyz')
+  })
+
+  it('aviso informativo dispensado não aparece mais na seção "Informativos" (T9, D18)', () => {
+    avisosMock = [informativo({ id: 'info-xyz', estado: 'dispensado' })]
+    render(<CentralDeAvisos />)
+    abrirSheet()
+
+    expect(screen.queryByText('Valor pendente do mês anterior detectado.')).toBeNull()
   })
 
   it('com múltiplas propostas, cada botão age apenas sobre o próprio item', () => {

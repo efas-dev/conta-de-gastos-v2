@@ -7,7 +7,11 @@ import { detectar } from '../parsers/index'
 import { enriquecerLancamento } from '../dominio/dicionario'
 import { detectarInvestimento } from '../dominio/investimento'
 import { detectarTransferenciaInterna } from '../dominio/transferencia'
-import { detectarValorPendente, detectarConciliacao } from '../dominio/deteccoes'
+import {
+  detectarValorPendente,
+  detectarPagamentoRecebido,
+  detectarConciliacao,
+} from '../dominio/deteccoes'
 import { aprenderDicionario } from '../dominio/aprendizado'
 import { lerDicionario } from '../excel/reader/leitor'
 import { gerarXlsx } from '../excel/writer/gerador'
@@ -168,14 +172,29 @@ export function produzirLancamentos(
   adicionarAvisos: (avisos: Aviso[]) => void = () => {},
 ): ResultadoProduzir {
   const avisos: string[] = []
+  // Avisos informativos migrados para o canal único (slice `avisosAcionaveis`,
+  // D18 do ADR `inspecao-proposta-conciliacao`) — hoje só "linhas ignoradas no
+  // CSV"; acumulados aqui e despachados junto com as detecções de propostas
+  // logo abaixo, num único array combinado.
+  const avisosInformativosMigrados: Aviso[] = []
 
   // 1. Parse CSV (modo best-effort)
   const parser = detectar(csvConteudo)
-  const { lancamentos, linhasIgnoradas, excluidosPendentes } = parser.parsear(csvConteudo)
+  const { lancamentos, linhasIgnoradas } = parser.parsear(csvConteudo)
 
   if (linhasIgnoradas > 0) {
     const plural = linhasIgnoradas > 1 ? 's' : ''
-    avisos.push(`${linhasIgnoradas} linha${plural} ignorada${plural} no CSV`)
+    const mensagem = `${linhasIgnoradas} linha${plural} ignorada${plural} no CSV`
+    avisos.push(mensagem)
+    avisosInformativosMigrados.push({
+      id: `linhas-ignoradas-${crypto.randomUUID()}`,
+      tipo: 'informativo',
+      origem: 'linhas-ignoradas',
+      mensagem,
+      alvo: [],
+      permanece: [],
+      estado: 'pendente',
+    })
   }
 
   // 2. Enriquecimento via dicionário
@@ -191,13 +210,23 @@ export function produzirLancamentos(
     return { ...l, investimento, transferenciaInterna }
   })
 
-  // 4. Avisos acionáveis: converte excluidosPendentes/conciliação em Aviso[] e despacha.
-  const avisosValorPendente = detectarValorPendente(excluidosPendentes)
+  // 4. Avisos acionáveis: converte valor-pendente/pagamento-recebido/conciliação em
+  // Aviso[] e despacha. Rewire T9 (D18): `detectarValorPendente`/`detectarPagamentoRecebido`
+  // rodam sobre `lancamentosComFlags` — desde T6 o parser não exclui mais essas linhas
+  // em `excluidosPendentes` (sempre vazio), elas entram em `lancamentos` como
+  // lançamentos normais e viram propostas de remoção acionáveis.
+  const avisosValorPendente = detectarValorPendente(lancamentosComFlags)
+  const avisosPagamentoRecebido = detectarPagamentoRecebido(lancamentosComFlags)
   const avisosConciliacao =
     lancamentosExtrato.length > 0
       ? detectarConciliacao(lancamentosComFlags, lancamentosExtrato)
       : []
-  adicionarAvisos([...avisosValorPendente, ...avisosConciliacao])
+  adicionarAvisos([
+    ...avisosValorPendente,
+    ...avisosPagamentoRecebido,
+    ...avisosConciliacao,
+    ...avisosInformativosMigrados,
+  ])
 
   return { lancamentos: lancamentosComFlags, dicEntries, avisos }
 }

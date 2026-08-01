@@ -41,6 +41,7 @@ vi.mock('../../dominio/dicionario', () => ({
 // mock isola a Task 5 de qualquer mudança futura em deteccoes.ts).
 vi.mock('../../dominio/deteccoes', () => ({
   detectarValorPendente: vi.fn(() => []),
+  detectarPagamentoRecebido: vi.fn(() => []),
   detectarConciliacao: vi.fn(() => []),
 }))
 
@@ -63,7 +64,7 @@ import { enriquecerLancamento } from '../../dominio/dicionario'
 import { lerDicionario } from '../../excel/reader/leitor'
 import { gerarXlsx } from '../../excel/writer/gerador'
 import { aprenderDicionario } from '../../dominio/aprendizado'
-import { detectarValorPendente, detectarConciliacao } from '../../dominio/deteccoes'
+import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from '../../dominio/deteccoes'
 
 // ---------------------------------------------------------------------------
 // Nota: os testes dos grupos `estadoInicial` e `reduzir — *` foram removidos
@@ -250,10 +251,21 @@ describe('produzirLancamentos — avisos acionáveis (T5)', () => {
 
   const avisoValorPendenteMock: Aviso = {
     id: 'valor-pendente-0',
-    tipo: 'informativo',
+    tipo: 'proposta',
     origem: 'valor-pendente',
     mensagem: 'Valor pendente do mês anterior: mock',
     alvo: ['0'],
+    permanece: [],
+    estado: 'pendente',
+  }
+
+  const avisoPagamentoRecebidoMock: Aviso = {
+    id: 'pagamento-recebido-1',
+    tipo: 'proposta',
+    origem: 'pagamento-recebido',
+    mensagem: 'Pagamento recebido: mock',
+    alvo: ['1'],
+    permanece: [],
     estado: 'pendente',
   }
 
@@ -263,6 +275,7 @@ describe('produzirLancamentos — avisos acionáveis (T5)', () => {
     origem: 'conciliacao',
     mensagem: 'Fatura conciliada: mock',
     alvo: ['0'],
+    permanece: [],
     estado: 'pendente',
   }
 
@@ -278,12 +291,25 @@ describe('produzirLancamentos — avisos acionáveis (T5)', () => {
       })),
     })
     vi.mocked(detectarValorPendente).mockReturnValue([])
+    vi.mocked(detectarPagamentoRecebido).mockReturnValue([])
     vi.mocked(detectarConciliacao).mockReturnValue([])
   })
 
-  it('chama detectarValorPendente com o excluidosPendentes retornado pelo parser', () => {
+  // Rewire T9 (canal único de avisos, D18): excluidosPendentes está sempre vazio desde
+  // T6 (o parser deixou de excluir essas linhas — elas entram em `lancamentos`), então
+  // as detecções especiais passam a rodar sobre `lancamentosComFlags` (o mesmo array
+  // enriquecido/com-flags que já é passado a `detectarConciliacao`).
+  it('chama detectarValorPendente com lancamentosComFlags (não mais excluidosPendentes)', () => {
     produzirLancamentos('csv', [], 'ES')
-    expect(detectarValorPendente).toHaveBeenCalledWith(excluidosPendentesMock)
+    const [chamadoCom] = vi.mocked(detectarValorPendente).mock.calls[0]
+    expect(chamadoCom).toHaveLength(lancamentosMock.length)
+    expect(detectarValorPendente).not.toHaveBeenCalledWith(excluidosPendentesMock)
+  })
+
+  it('chama detectarPagamentoRecebido com lancamentosComFlags', () => {
+    produzirLancamentos('csv', [], 'ES')
+    const [chamadoCom] = vi.mocked(detectarPagamentoRecebido).mock.calls[0]
+    expect(chamadoCom).toHaveLength(lancamentosMock.length)
   })
 
   it('chama detectarConciliacao com lancamentosComFlags e lancamentosExtrato quando lancamentosExtrato não está vazio', () => {
@@ -302,8 +328,9 @@ describe('produzirLancamentos — avisos acionáveis (T5)', () => {
     expect(detectarConciliacao).not.toHaveBeenCalled()
   })
 
-  it('despacha adicionarAvisos com o array combinado dos avisos das duas detecções', () => {
+  it('despacha adicionarAvisos com o array combinado dos avisos das três detecções', () => {
     vi.mocked(detectarValorPendente).mockReturnValue([avisoValorPendenteMock])
+    vi.mocked(detectarPagamentoRecebido).mockReturnValue([avisoPagamentoRecebidoMock])
     vi.mocked(detectarConciliacao).mockReturnValue([avisoConciliacaoMock])
     const adicionarAvisos = vi.fn()
     const lancamentosExtrato: Lancamento[] = [
@@ -312,13 +339,41 @@ describe('produzirLancamentos — avisos acionáveis (T5)', () => {
 
     produzirLancamentos('csv', [], 'ES', undefined, lancamentosExtrato, adicionarAvisos)
 
-    expect(adicionarAvisos).toHaveBeenCalledWith([avisoValorPendenteMock, avisoConciliacaoMock])
+    expect(adicionarAvisos).toHaveBeenCalledWith([
+      avisoValorPendenteMock,
+      avisoPagamentoRecebidoMock,
+      avisoConciliacaoMock,
+    ])
   })
 
   it('despacha adicionarAvisos com array vazio quando nenhuma detecção retorna avisos', () => {
     const adicionarAvisos = vi.fn()
     produzirLancamentos('csv', [], 'ES', undefined, [], adicionarAvisos)
     expect(adicionarAvisos).toHaveBeenCalledWith([])
+  })
+
+  it('inclui um Aviso informativo dispensável de "linhas ignoradas" no despacho quando há linhasIgnoradas (T9, D18)', () => {
+    vi.mocked(detectar).mockReturnValue({
+      aceita: () => true,
+      parsear: vi.fn(() => ({
+        lancamentos: lancamentosMock,
+        linhasIgnoradas: 2,
+        excluidosPendentes: [],
+      })),
+    })
+    const adicionarAvisos = vi.fn()
+    produzirLancamentos('csv', [], 'ES', undefined, [], adicionarAvisos)
+
+    const avisosDespachados = vi.mocked(adicionarAvisos).mock.calls[0][0]
+    const avisoLinhasIgnoradas = avisosDespachados.find((a) => a.origem === 'linhas-ignoradas')
+    expect(avisoLinhasIgnoradas).toMatchObject({
+      tipo: 'informativo',
+      origem: 'linhas-ignoradas',
+      estado: 'pendente',
+    })
+    expect(avisoLinhasIgnoradas?.mensagem).toMatch(/2 linhas ignoradas/i)
+    expect(typeof avisoLinhasIgnoradas?.id).toBe('string')
+    expect(avisoLinhasIgnoradas?.id.length).toBeGreaterThan(0)
   })
 
   it('não lança erro quando adicionarAvisos não é fornecido pelo chamador', () => {
