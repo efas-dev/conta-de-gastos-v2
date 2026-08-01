@@ -657,10 +657,16 @@ export function App() {
                 Conta de Gastos
               </span>
             </div>
-            <span className="dc-pill-privado">
-              <IconeCadeado />
-              Seus dados nunca saem do seu computador
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              {/* Central de avisos — botão "Avisos" na top bar da importação
+                  (esta tela não tem a barra de ações com Colinha); mesmo sheet
+                  lateral fixo. Oculto quando não há avisos. */}
+              <CentralDeAvisos />
+              <span className="dc-pill-privado">
+                <IconeCadeado />
+                Seus dados nunca saem do seu computador
+              </span>
+            </div>
           </div>
 
           {/* Body — corpo à esquerda + Central de avisos como sheet lateral à direita,
@@ -886,8 +892,6 @@ export function App() {
                 <IconeSeta />
               </button>
             </div>
-
-            <CentralDeAvisos />
           </div>
         </div>
       )}
@@ -962,6 +966,9 @@ export function App() {
                 naturezas={naturezasDescritas}
                 onClose={() => {}}
               />
+              {/* Central de avisos — mesmo padrão da Colinha: botão "Avisos" ao
+                  lado, sheet lateral fixo à direita. Oculto quando não há avisos. */}
+              <CentralDeAvisos />
               <button
                 className="dc-btn dc-btn-primario"
                 onClick={handleGerar}
@@ -1007,19 +1014,17 @@ export function App() {
             </span>
           </div>
 
-          {/* Corpo: grid à esquerda + Central de avisos como sheet lateral à direita
-              (D12 do ADR inspecao-proposta-conciliacao — redesign do container, fusão
-              do item 25 do TODO.md; substitui o antigo empilhamento vertical). Canal
-              único (T9, D18): o footer `AvisoList` foi aposentado — os avisos legados
-              migraram para o slice `avisosAcionaveis`, exibidos só pela sheet abaixo. */}
+          {/* Corpo: grid ocupa toda a largura. A Central de avisos deixou de ser
+              uma coluna inline — agora é acionada pelo botão "Avisos" na barra de
+              ações (ao lado da Colinha) e abre como sheet lateral fixo à direita,
+              mesmo padrão de `PainelNaturezas`. Canal único (T9, D18): o footer
+              `AvisoList` foi aposentado; os avisos legados migraram para o slice. */}
           <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
             <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
               <div style={{ flex: 1, minHeight: 0 }}>
                 <ReviewGrid onSplitDetectado={(indice) => setSplitIndice(indice)} />
               </div>
             </div>
-
-            <CentralDeAvisos />
           </div>
 
           {/* Modal de split — abre quando onSplitDetectado dispara */}

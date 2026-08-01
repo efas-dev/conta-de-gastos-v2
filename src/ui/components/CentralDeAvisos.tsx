@@ -46,24 +46,17 @@ export function CentralDeAvisos() {
   const propostas = avisos.filter((a) => a.tipo === 'proposta')
 
   return (
-    <div
-      role="region"
-      aria-label="Central de avisos"
-      style={{ height: '100%', display: 'flex', flexDirection: 'row', alignItems: 'stretch', flexShrink: 0 }}
-    >
+    <>
+      {/* Botão de toggle horizontal na barra de ações, ao lado da "Colinha" —
+          mesmo padrão de `PainelNaturezas` (o pai insere <CentralDeAvisos /> na
+          barra de ações; o Fragment "vaza" o botão para dentro do flex-row). */}
       <button
         type="button"
         aria-expanded={aberto}
         aria-label={aberto ? 'Fechar central de avisos' : 'Abrir central de avisos'}
         onClick={() => setAberto((v) => !v)}
         className="dc-btn dc-btn-secundario"
-        style={{
-          writingMode: 'vertical-rl',
-          textOrientation: 'mixed',
-          padding: '14px 10px',
-          borderRadius: 0,
-          position: 'relative',
-        }}
+        style={{ fontSize: '13px', padding: '4px 12px', position: 'relative' }}
       >
         Avisos
         {contagemPendentes > 0 && (
@@ -71,8 +64,8 @@ export function CentralDeAvisos() {
             aria-label={`${contagemPendentes} ${contagemPendentes === 1 ? 'proposta pendente' : 'propostas pendentes'}`}
             style={{
               position: 'absolute',
-              top: 6,
-              right: 6,
+              top: -7,
+              right: -7,
               minWidth: 16,
               height: 16,
               borderRadius: 999,
@@ -81,7 +74,6 @@ export function CentralDeAvisos() {
               fontSize: 10,
               fontWeight: 700,
               lineHeight: '16px',
-              writingMode: 'horizontal-tb',
               padding: '0 4px',
             }}
           >
@@ -90,18 +82,68 @@ export function CentralDeAvisos() {
         )}
       </button>
 
+      {/* Painel lateral — sobreposição fixa à direita, mesmo formato da Colinha
+          (position:fixed, z-index acima da grid, cabeçalho com título + "×"). */}
       {aberto && (
-        <div
+        <aside
+          role="complementary"
+          aria-label="Central de avisos"
           style={{
+            position: 'fixed',
+            top: 0,
+            right: 0,
             width: 320,
-            borderLeft: '1px solid var(--borda-2)',
-            padding: 16,
-            overflowY: 'auto',
+            height: '100vh',
+            background: 'var(--superficie-1, #fff)',
+            borderLeft: '1px solid var(--borda-2, #e5e7eb)',
+            boxShadow: '-4px 0 16px rgba(0,0,0,0.10)',
+            zIndex: 200,
             display: 'flex',
             flexDirection: 'column',
-            gap: 12,
+            overflow: 'hidden',
           }}
         >
+          {/* Cabeçalho */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '16px 20px',
+              borderBottom: '1px solid var(--borda-2, #e5e7eb)',
+              flexShrink: 0,
+            }}
+          >
+            <span style={{ fontWeight: 700, fontSize: 15 }}>Avisos</span>
+            <button
+              type="button"
+              aria-label="Fechar avisos"
+              onClick={() => setAberto(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 18,
+                lineHeight: 1,
+                color: 'var(--texto-3, #6b7280)',
+                padding: '2px 6px',
+              }}
+            >
+              ×
+            </button>
+          </div>
+
+          {/* Conteúdo rolável */}
+          <div
+            style={{
+              overflowY: 'auto',
+              flex: 1,
+              padding: '12px 20px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 12,
+            }}
+          >
           {informativos.length > 0 && (
             <section aria-label="Avisos informativos">
               <h3 style={{ fontSize: 13, fontWeight: 700, margin: '0 0 6px' }}>Informativos</h3>
@@ -154,9 +196,10 @@ export function CentralDeAvisos() {
               </ul>
             </section>
           )}
-        </div>
+          </div>
+        </aside>
       )}
-    </div>
+    </>
   )
 }
 
