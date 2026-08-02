@@ -168,7 +168,7 @@ describe('E2E — Task 7: import fatura+extrato → avisos → conciliação →
    * expandido. Mesmo padrão de `CentralDeAvisos.test.tsx`/`App.avisosAcionaveis.test.tsx`.
    */
   function abrirCentralDeAvisos(): void {
-    fireEvent.click(screen.getByRole('button', { name: /abrir central de avisos/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^avisos/i }))
   }
 
   it('upload fatura+extrato sintéticos → proposta de valor pendente aparece na CentralDeAvisos', async () => {
@@ -277,9 +277,19 @@ describe('E2E — Task 7: import fatura+extrato → avisos → conciliação →
       expect(proposta?.estado).toBe('aplicado')
     })
 
-    const botaoGerar = screen.getByText('Exportar .xlsx')
+    // Task T11: "Exportar .xlsx" abre o `ExportModal` (fase confirmar); a geração
+    // real só dispara ao clicar em "Baixar .xlsx" dentro do modal.
+    const botaoAbrirExport = screen.getByText('Exportar .xlsx')
+    await act(async () => {
+      fireEvent.click(botaoAbrirExport)
+    })
+
+    const botaoBaixar = screen.getByText('Baixar .xlsx')
     expect(() => {
-      fireEvent.click(botaoGerar)
+      fireEvent.click(botaoBaixar)
     }).not.toThrow()
+
+    // Fase avança para "feito" após a geração real, sem lançar exceção.
+    expect(screen.getByText('Planilha exportada')).toBeInTheDocument()
   })
 })
