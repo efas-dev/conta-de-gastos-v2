@@ -1,0 +1,146 @@
+// ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
+
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import { PainelLateral } from '../PainelLateral'
+import type { Aviso } from '../../../types'
+import type { NaturezaRica } from '../../../types'
+
+const mockAplicar = vi.fn()
+const mockDesfazer = vi.fn()
+const mockDispensar = vi.fn()
+const mockEntrarInspecao = vi.fn()
+const mockSairInspecao = vi.fn()
+
+let avisosMock: Aviso[] = []
+
+vi.mock('../../store/appStore', () => ({
+  useAppStore: (selector: (state: Record<string, unknown>) => unknown) =>
+    selector({
+      avisosAcionaveis: { avisos: avisosMock, removidos: {}, avisoEmInspecao: null },
+      aplicar: mockAplicar,
+      desfazer: mockDesfazer,
+      dispensar: mockDispensar,
+      entrarInspecao: mockEntrarInspecao,
+      sairInspecao: mockSairInspecao,
+    }),
+}))
+
+function proposta(parcial: Partial<Aviso> = {}): Aviso {
+  return {
+    id: 'prop-1',
+    tipo: 'proposta',
+    origem: 'conciliacao',
+    mensagem: 'Fatura conciliável com pagamento do extrato.',
+    alvo: ['0'],
+    permanece: [],
+    estado: 'pendente',
+    ...parcial,
+  }
+}
+
+const naturezasFicticias: NaturezaRica[] = [
+  { sigla: 'ALM', nome: 'Alimentação', descricao: 'Gastos com comida e restaurantes' },
+]
+
+beforeEach(() => {
+  avisosMock = []
+  mockAplicar.mockReset()
+  mockDesfazer.mockReset()
+  mockDispensar.mockReset()
+  mockEntrarInspecao.mockReset()
+  mockSairInspecao.mockReset()
+})
+
+describe('PainelLateral — estrutura (TL-13)', () => {
+  it('renderiza <aside class="painel"> com .painel-abas e .painel-corpo, sem position:fixed', () => {
+    const setAba = vi.fn()
+    const { container } = render(
+      <PainelLateral aba="avisos" setAba={setAba} naturezas={naturezasFicticias} />,
+    )
+
+    const aside = container.querySelector('aside.painel')
+    expect(aside).not.toBeNull()
+    expect(aside).toHaveStyle({ position: '' })
+    expect(container.querySelector('.painel-abas')).not.toBeNull()
+    expect(container.querySelector('.painel-corpo')).not.toBeNull()
+  })
+
+  it('renderiza as abas "Avisos" e "Naturezas" e o botão de fechar', () => {
+    const setAba = vi.fn()
+    render(<PainelLateral aba="avisos" setAba={setAba} naturezas={naturezasFicticias} />)
+
+    expect(screen.getByRole('button', { name: /avisos/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /naturezas/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /fechar/i })).toBeInTheDocument()
+  })
+})
+
+describe('PainelLateral — alternância de abas (TL-14 a TL-18, TL-21)', () => {
+  it('aba="avisos" exibe o conteúdo de avisos no painel-corpo', () => {
+    avisosMock = [proposta()]
+    render(<PainelLateral aba="avisos" setAba={vi.fn()} naturezas={naturezasFicticias} />)
+
+    expect(screen.getByText('Fatura conciliável com pagamento do extrato.')).toBeInTheDocument()
+    expect(screen.queryByText('ALM')).toBeNull()
+  })
+
+  it('aba="naturezas" exibe a lista de naturezas no painel-corpo', () => {
+    render(<PainelLateral aba="naturezas" setAba={vi.fn()} naturezas={naturezasFicticias} />)
+
+    expect(screen.getByText('ALM')).toBeInTheDocument()
+    expect(screen.getByText('Alimentação')).toBeInTheDocument()
+  })
+
+  it('clicar na aba "Naturezas" chama setAba("naturezas")', () => {
+    const setAba = vi.fn()
+    render(<PainelLateral aba="avisos" setAba={setAba} naturezas={naturezasFicticias} />)
+
+    screen.getByRole('button', { name: /naturezas/i }).click()
+    expect(setAba).toHaveBeenCalledWith('naturezas')
+  })
+
+  it('clicar na aba "Avisos" chama setAba("avisos")', () => {
+    const setAba = vi.fn()
+    render(<PainelLateral aba="naturezas" setAba={setAba} naturezas={naturezasFicticias} />)
+
+    screen.getByRole('button', { name: /^avisos/i }).click()
+    expect(setAba).toHaveBeenCalledWith('avisos')
+  })
+
+  it('clicar no botão de fechar chama setAba(null)', () => {
+    const setAba = vi.fn()
+    render(<PainelLateral aba="avisos" setAba={setAba} naturezas={naturezasFicticias} />)
+
+    screen.getByRole('button', { name: /fechar/i }).click()
+    expect(setAba).toHaveBeenCalledWith(null)
+  })
+
+  it('aba ativa recebe a classe "on"', () => {
+    render(<PainelLateral aba="naturezas" setAba={vi.fn()} naturezas={naturezasFicticias} />)
+
+    expect(screen.getByRole('button', { name: /naturezas/i })).toHaveClass('on')
+    expect(screen.getByRole('button', { name: /^avisos/i })).not.toHaveClass('on')
+  })
+})
+
+describe('PainelLateral — badge de propostas pendentes (TL-19, TL-20)', () => {
+  it('exibe o badge com a contagem correta de propostas pendentes na aba Avisos', () => {
+    avisosMock = [
+      proposta({ id: 'prop-a', estado: 'pendente' }),
+      proposta({ id: 'prop-b', estado: 'pendente' }),
+      proposta({ id: 'prop-c', estado: 'aplicado' }),
+    ]
+    render(<PainelLateral aba="avisos" setAba={vi.fn()} naturezas={naturezasFicticias} />)
+
+    expect(screen.getByRole('button', { name: /^avisos/i })).toHaveTextContent('2')
+  })
+
+  it('não exibe badge quando não há propostas pendentes', () => {
+    avisosMock = []
+    render(<PainelLateral aba="avisos" setAba={vi.fn()} naturezas={naturezasFicticias} />)
+
+    const botaoAvisos = screen.getByRole('button', { name: /^avisos/i })
+    expect(botaoAvisos.querySelector('.badge')).toBeNull()
+  })
+})
