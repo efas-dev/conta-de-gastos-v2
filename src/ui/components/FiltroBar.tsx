@@ -95,28 +95,21 @@ export function FiltroBar(_props: Record<string, never> = {}) {
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
-  // Sem padding próprio: a barra compartilhada do App (chips + legenda) o fornece.
+  // Classes do design system portado em T1 (`.filtros`/`.filtro-grupo`/`.divisor`/
+  // `.chip`(+`.on`)/`.chip-sujo`/`.btn-limpar`) — zero hex hardcoded (item 2 do spec).
   return (
-    <div role="toolbar" aria-label="Filtros e ordenação" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
+    <div role="toolbar" aria-label="Filtros e ordenação" className="filtros">
 
       {/* Chips de Fonte */}
       {fontesRankeadas.length > 0 && (
-        <div role="group" aria-label="Filtro por fonte" style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+        <div role="group" aria-label="Filtro por fonte" className="filtro-grupo">
           {fontesRankeadas.map((fonte) => (
             <button
               key={fonte}
               title={TOOLTIP_ATALHO}
               aria-pressed={filtroFontes.includes(fonte)}
               onClick={(e) => handleChipFonte(fonte, e.ctrlKey || e.metaKey)}
-              style={{
-                padding: '0.2rem 0.6rem',
-                borderRadius: '999px',
-                border: '1px solid #ccc',
-                background: filtroFontes.includes(fonte) ? '#4f46e5' : '#f3f4f6',
-                color: filtroFontes.includes(fonte) ? '#fff' : '#111',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-              }}
+              className={'chip' + (filtroFontes.includes(fonte) ? ' on' : '')}
             >
               {fonte}
             </button>
@@ -126,27 +119,19 @@ export function FiltroBar(_props: Record<string, never> = {}) {
 
       {/* Divisor */}
       {fontesRankeadas.length > 0 && naturezasVisiveis.length > 0 && (
-        <span aria-hidden="true" style={{ color: '#d1d5db' }}>|</span>
+        <span aria-hidden="true" className="divisor" />
       )}
 
       {/* Chips de Natureza */}
       {naturezasVisiveis.length > 0 && (
-        <div role="group" aria-label="Filtro por natureza" style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+        <div role="group" aria-label="Filtro por natureza" className="filtro-grupo">
           {naturezasVisiveis.map((natureza) => (
             <button
               key={natureza}
               title={TOOLTIP_ATALHO}
               aria-pressed={filtroNaturezas.includes(natureza)}
               onClick={(e) => handleChipNatureza(natureza, e.ctrlKey || e.metaKey)}
-              style={{
-                padding: '0.2rem 0.6rem',
-                borderRadius: '999px',
-                border: '1px solid #ccc',
-                background: filtroNaturezas.includes(natureza) ? '#0891b2' : '#f3f4f6',
-                color: filtroNaturezas.includes(natureza) ? '#fff' : '#111',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-              }}
+              className={'chip' + (filtroNaturezas.includes(natureza) ? ' on' : '')}
             >
               {natureza}
             </button>
@@ -156,14 +141,7 @@ export function FiltroBar(_props: Record<string, never> = {}) {
             <button
               aria-label={`Mostrar mais ${naturezasResto.length} naturezas`}
               onClick={() => setNaturezaExpandida(true)}
-              style={{
-                padding: '0.2rem 0.6rem',
-                borderRadius: '999px',
-                border: '1px dashed #ccc',
-                background: '#f9fafb',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-              }}
+              className="chip"
             >
               +{naturezasResto.length} mais
             </button>
@@ -172,14 +150,7 @@ export function FiltroBar(_props: Record<string, never> = {}) {
             <button
               aria-label="Recolher naturezas"
               onClick={() => setNaturezaExpandida(false)}
-              style={{
-                padding: '0.2rem 0.6rem',
-                borderRadius: '999px',
-                border: '1px dashed #ccc',
-                background: '#f9fafb',
-                cursor: 'pointer',
-                fontSize: '0.85rem',
-              }}
+              className="chip"
             >
               menos
             </button>
@@ -187,38 +158,31 @@ export function FiltroBar(_props: Record<string, never> = {}) {
         </div>
       )}
 
-      {/* Chip "só incompletos" — visível apenas quando há lançamentos incompletos */}
+      {/* Chip "só incompletos" — visível apenas quando há lançamentos incompletos.
+          Usa `.chip-sujo` (pill de alerta terracota do design system) por ser um
+          indicador de atenção, não uma seleção de filtro comum. `.chip-sujo` não
+          tem variante `.on` no design system (fora do escopo desta task); o
+          estado ativo/inativo continua exposto via `aria-pressed`. */}
       {qtdIncompletos > 0 && (
         <button
           aria-pressed={filtroSoIncompletos}
           onClick={() => setFiltroSoIncompletos(!filtroSoIncompletos)}
-          style={{
-            padding: '0.2rem 0.6rem',
-            borderRadius: '999px',
-            border: '1px solid #f59e0b',
-            background: filtroSoIncompletos ? '#f59e0b' : '#fffbeb',
-            color: filtroSoIncompletos ? '#fff' : '#92400e',
-            cursor: 'pointer',
-            fontSize: '0.85rem',
-          }}
+          className="chip-sujo"
         >
           só incompletos ({qtdIncompletos})
         </button>
       )}
 
-      {/* Botão Limpar — segue o design system (dc-btn) em tamanho compacto.
-          A ordenação migrou para cliques nos cabeçalhos das colunas da grid
-          (decisão humana de 2026-07-15); o Limpar também a remove. */}
-      <button
-        className="dc-btn dc-btn-secundario"
-        onClick={limparFiltros}
-        style={{ fontSize: '13px', padding: '4px 12px', borderRadius: '999px' }}
-      >
+      {/* Botão Limpar — classe `.btn-limpar` do design system (T1), fiel a
+          `prototipo/cdg-revisao.jsx:202`. A ordenação migrou para cliques nos
+          cabeçalhos das colunas da grid (decisão humana de 2026-07-15); o
+          Limpar também a remove. */}
+      <button className="btn-limpar" onClick={limparFiltros}>
         Limpar
       </button>
 
       {/* Contador N de M visíveis */}
-      <span aria-live="polite" style={{ fontSize: '0.85rem', color: '#6b7280' }}>
+      <span aria-live="polite" className="dc-rotulo">
         {lancamentosVisiveis.length} de {lancamentos.length} visíveis
       </span>
     </div>
