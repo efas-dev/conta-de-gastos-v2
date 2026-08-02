@@ -2,6 +2,7 @@
 // ADR: see Docs/specs/parsers-fatura-nubank-extrato-itau.adr.md
 
 import type { Lancamento, ResultadoParse } from '../types'
+import { parsearLinhaCsv } from './csv'
 
 const CABECALHO_ESPERADO = 'Data,Valor,Identificador,Descrição'
 
@@ -15,30 +16,6 @@ export class ErroArquivoNaoReconhecido extends Error {
     super(mensagem)
     this.name = 'ErroArquivoNaoReconhecido'
   }
-}
-
-/**
- * Parseia uma linha CSV com suporte a campos quoted (RFC 4180 simples).
- * Necessário para suportar valores com vírgula decimal (ex: "-150,50").
- */
-function parsearLinhaCSV(linha: string): string[] {
-  const campos: string[] = []
-  let campo = ''
-  let dentroAspas = false
-
-  for (let i = 0; i < linha.length; i++) {
-    const char = linha[i]
-    if (char === '"') {
-      dentroAspas = !dentroAspas
-    } else if (char === ',' && !dentroAspas) {
-      campos.push(campo)
-      campo = ''
-    } else {
-      campo += char
-    }
-  }
-  campos.push(campo)
-  return campos
 }
 
 /**
@@ -88,7 +65,7 @@ function parsear(conteudo: string): ResultadoParse {
     const linha = linhas[i].trim()
     if (!linha) continue
 
-    const campos = parsearLinhaCSV(linha)
+    const campos = parsearLinhaCsv(linha)
     if (campos.length < 4) {
       linhasIgnoradas++
       continue

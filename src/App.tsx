@@ -15,6 +15,7 @@ import {
 import { lerNaturezas, lerDicionario, ehDicionario, lerIniciais } from './excel/reader/leitor'
 import { defaultMes, detectarMesSugerido, classificarFonte } from './dominio/mes'
 import { detectar } from './parsers/index'
+import { decodificarCsv } from './parsers/decodificar'
 import { detectarConciliacao, detectarValorPendente, detectarPagamentoRecebido } from './dominio/deteccoes'
 import type { Aviso, Lancamento } from './types'
 import { ReviewGrid } from './ui/components/ReviewGrid'
@@ -30,6 +31,18 @@ import { PainelNaturezas } from './ui/components/PainelNaturezas'
  * — Task T9). Convive com o canal legado `avisos: string[]` (`addAviso`/`clearAvisos`)
  * nos call-sites que ainda o alimentam — este helper só adiciona a via nova.
  */
+/**
+ * Lê um arquivo CSV/TXT como texto, decodificando o encoding de forma robusta.
+ *
+ * Não usa `File.text()` (que assume UTF-8): alguns bancos exportam em ISO-8859-1
+ * (ex.: Banco do Brasil), e a decodificação com fallback (`decodificarCsv`)
+ * evita acentos corrompidos. Ver `parsers/decodificar.ts`.
+ */
+async function lerTextoArquivo(arquivo: File): Promise<string> {
+  const bytes = new Uint8Array(await arquivo.arrayBuffer())
+  return decodificarCsv(bytes)
+}
+
 function criarAvisoInformativo(id: string, origem: string, mensagem: string): Aviso {
   return {
     id,
@@ -339,34 +352,42 @@ export function App() {
     }
 
     // --- Processa arquivos CSV/TXT ---
-    setCsvArquivos(arquivosCsv)
+    // Upload incremental (item 22): cada seleção ACUMULA na lista existente,
+    // com dedup por nome (re-selecionar o mesmo arquivo substitui — último
+    // vence). Seleção só de .xlsx não mexe na lista nem nos antecipados.
+    if (arquivosCsv.length === 0) return
 
-    if (arquivosCsv.length === 0) {
-      if (arquivosXlsx.length > 0) {
-        // Apenas .xlsx foram selecionados — reseta lista de antecipados
-        setLancamentosAntecipados({})
-      } else {
-        setLancamentosAntecipados({})
-      }
-      return
-    }
+    const nomesNovos = new Set(arquivosCsv.map((f) => f.name))
+    const listaAcumulada = [
+      ...csvArquivos.filter((f) => !nomesNovos.has(f.name)),
+      ...arquivosCsv,
+    ]
+    setCsvArquivos(listaAcumulada)
 
-    const todosLancamentos: Lancamento[] = []
     const porArquivo: Record<string, Lancamento[]> = {}
     for (const arquivo of arquivosCsv) {
       try {
-        const conteudo = await arquivo.text()
+        const conteudo = await lerTextoArquivo(arquivo)
         const parser = detectar(conteudo)
         const { lancamentos: lans } = parser.parsear(conteudo)
         porArquivo[arquivo.name] = lans
-        todosLancamentos.push(...lans)
       } catch {
         // best-effort: erro silenciado — não quebra o fluxo de upload
         porArquivo[arquivo.name] = []
       }
     }
-    setLancamentosAntecipados(porArquivo)
 
+    // Antecipados acumulados seguem a lista: só arquivos ainda presentes,
+    // com os recém-lidos por cima (mesma regra "último vence" do dedup)
+    const antecipadosAcumulados: Record<string, Lancamento[]> = {}
+    for (const f of listaAcumulada) {
+      const lans = porArquivo[f.name] ?? lancamentosAntecipados[f.name]
+      if (lans) antecipadosAcumulados[f.name] = lans
+    }
+    setLancamentosAntecipados(antecipadosAcumulados)
+
+    // Mês sugerido considera o CONJUNTO acumulado, não só o lote recém-solto
+    const todosLancamentos: Lancamento[] = Object.values(antecipadosAcumulados).flat()
     const mesSugerido = detectarMesSugerido(todosLancamentos)
     if (mesSugerido !== null && !usuarioEditou) {
       setMesEscolhido(mesSugerido)
@@ -406,7 +427,7 @@ export function App() {
     // carregado pelo upload unificado) e as naturezas são os mesmos para todos.
     const todosLancamentos: typeof lancamentos = []
     for (const arquivo of csvArquivos) {
-      const csvConteudo = await arquivo.text()
+      const csvConteudo = await lerTextoArquivo(arquivo)
       const { lancamentos: lans, avisos: avs } = produzirLancamentos(
         csvConteudo,
         dicEntries,
