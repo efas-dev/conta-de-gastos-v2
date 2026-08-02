@@ -168,9 +168,21 @@ describe('editarCelula', () => {
     expect(useAppStore.getState().lancamentos[0].iniciais).toBe('JF')
   })
 
-  it('persiste natureza editada', () => {
+  it('persiste natureza editada — sempre em caixa alta (item 28)', () => {
     useAppStore.getState().editarCelula(0, 'natureza', 'Moradia')
-    expect(useAppStore.getState().lancamentos[0].natureza).toBe('Moradia')
+    expect(useAppStore.getState().lancamentos[0].natureza).toBe('MORADIA')
+  })
+
+  it('TL28-1: natureza digitada em minúsculas vira caixa alta ("al" → "AL")', () => {
+    useAppStore.getState().editarCelula(0, 'natureza', 'al')
+    expect(useAppStore.getState().lancamentos[0].natureza).toBe('AL')
+  })
+
+  it('TL28-2: caixa alta NÃO se aplica às demais colunas de texto', () => {
+    useAppStore.getState().editarCelula(0, 'descricao', 'aluguel do mês')
+    useAppStore.getState().editarCelula(0, 'iniciais', 'jf')
+    expect(useAppStore.getState().lancamentos[0].descricao).toBe('aluguel do mês')
+    expect(useAppStore.getState().lancamentos[0].iniciais).toBe('jf')
   })
 
   it('persiste descricao editada', () => {
@@ -340,7 +352,7 @@ describe('undo', () => {
 
   it('reverte editarCelula — estado volta ao anterior', () => {
     useAppStore.getState().editarCelula(0, 'natureza', 'Moradia')
-    expect(useAppStore.getState().lancamentos[0].natureza).toBe('Moradia')
+    expect(useAppStore.getState().lancamentos[0].natureza).toBe('MORADIA')
     useAppStore.getState().undo()
     expect(useAppStore.getState().lancamentos[0].natureza).toBe('Alimentação')
   })
@@ -373,7 +385,7 @@ describe('undo', () => {
     useAppStore.getState().editarCelula(0, 'natureza', 'Moradia')
     useAppStore.getState().editarCelula(0, 'natureza', 'Saúde')
     useAppStore.getState().undo()
-    expect(useAppStore.getState().lancamentos[0].natureza).toBe('Moradia')
+    expect(useAppStore.getState().lancamentos[0].natureza).toBe('MORADIA')
     useAppStore.getState().undo()
     expect(useAppStore.getState().lancamentos[0].natureza).toBe('Alimentação')
   })
@@ -401,7 +413,7 @@ describe('redo', () => {
     useAppStore.getState().undo()
     expect(useAppStore.getState().lancamentos[0].natureza).toBe('Alimentação')
     useAppStore.getState().redo()
-    expect(useAppStore.getState().lancamentos[0].natureza).toBe('Moradia')
+    expect(useAppStore.getState().lancamentos[0].natureza).toBe('MORADIA')
   })
 
   it('refaz excluirLinha após undo — linha removida de novo', () => {
@@ -696,9 +708,17 @@ describe('preencherIntervalo', () => {
     ])
     useAppStore.getState().preencherIntervalo(0, 2, 'natureza', 'Moradia')
     const lancamentos = useAppStore.getState().lancamentos
-    expect(lancamentos[0].natureza).toBe('Moradia')
-    expect(lancamentos[1].natureza).toBe('Moradia')
-    expect(lancamentos[2].natureza).toBe('Moradia')
+    expect(lancamentos[0].natureza).toBe('MORADIA')
+    expect(lancamentos[1].natureza).toBe('MORADIA')
+    expect(lancamentos[2].natureza).toBe('MORADIA')
+  })
+
+  // Item 28: fill handle também normaliza para caixa alta
+  it('TL28-3: preencherIntervalo com natureza minúscula grava em caixa alta', () => {
+    useAppStore.getState().setLancamentos([lancamento(), lancamento()])
+    useAppStore.getState().preencherIntervalo(0, 1, 'natureza', 'al')
+    expect(useAppStore.getState().lancamentos[0].natureza).toBe('AL')
+    expect(useAppStore.getState().lancamentos[1].natureza).toBe('AL')
   })
 
   // TL-T1-02: ignora colunas somente leitura
@@ -736,9 +756,9 @@ describe('preencherIntervalo', () => {
     // Preenche todo o intervalo visual [0, 1]
     useAppStore.getState().preencherIntervalo(0, 1, 'natureza', 'Moradia')
     const lancamentos = useAppStore.getState().lancamentos
-    expect(lancamentos[0].natureza).toBe('Moradia') // A — visível — atualizado
+    expect(lancamentos[0].natureza).toBe('MORADIA') // A — visível — atualizado
     expect(lancamentos[1].natureza).toBe('Alimentação') // B — oculto — intocado
-    expect(lancamentos[2].natureza).toBe('Moradia') // C — visível — atualizado
+    expect(lancamentos[2].natureza).toBe('MORADIA') // C — visível — atualizado
   })
 
   // TL-T1-04: ignora linhas fora do intervalo
@@ -751,7 +771,7 @@ describe('preencherIntervalo', () => {
     useAppStore.getState().preencherIntervalo(1, 1, 'natureza', 'Moradia')
     const lancamentos = useAppStore.getState().lancamentos
     expect(lancamentos[0].natureza).toBe('Alimentação') // fora — intocado
-    expect(lancamentos[1].natureza).toBe('Moradia')     // dentro — atualizado
+    expect(lancamentos[1].natureza).toBe('MORADIA')     // dentro — atualizado
     expect(lancamentos[2].natureza).toBe('Alimentação') // fora — intocado
   })
 

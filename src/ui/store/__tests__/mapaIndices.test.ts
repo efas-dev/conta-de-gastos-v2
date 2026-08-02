@@ -113,7 +113,7 @@ describe('undo em célula filtrada', () => {
 
     // Edita usando índice real 2 (C) — como faria o ReviewGrid após traduzir visual→real
     useAppStore.getState().editarCelula(2, 'natureza', 'Lazer')
-    expect(useAppStore.getState().lancamentos[2].natureza).toBe('Lazer')
+    expect(useAppStore.getState().lancamentos[2].natureza).toBe('LAZER')
 
     // Undo reverte apenas C (real 2), A e B permanecem intactos
     useAppStore.getState().undo()

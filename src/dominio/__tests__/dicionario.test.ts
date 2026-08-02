@@ -38,9 +38,17 @@ describe('enriquecerLancamento', () => {
   it('TL-06: chave não-ambígua no dicionário auto-preenche natureza, descricao e iniciais', () => {
     const resultado = enriquecerLancamento(lancamentoBase, [entradaNaoAmbigua], 'JD')
 
-    expect(resultado.natureza).toBe('Moradia')
+    // Item 28: natureza aplicada do dicionário chega à grid em caixa alta
+    expect(resultado.natureza).toBe('MORADIA')
     expect(resultado.descricao).toBe('Conta de luz')
     expect(resultado.iniciais).toBe('ES')
+  })
+
+  it('TL28-4: natureza minúscula herdada de dicionário antigo é aplicada em caixa alta', () => {
+    const entradaMinuscula: DicEntry = { ...entradaNaoAmbigua, natureza: 'al' }
+    const resultado = enriquecerLancamento(lancamentoBase, [entradaMinuscula], 'JD')
+
+    expect(resultado.natureza).toBe('AL')
   })
 
   it('TL-07: chave ambígua retorna natureza e descricao em branco e iniciais do usuário', () => {
@@ -68,7 +76,7 @@ describe('enriquecerLancamento', () => {
     // lancamentoBase.transcricao = 'PAG BOLETO ENERGIA 12/03' → chave normalizada = 'PAG BOLETO ENERGIA'
     const resultado = enriquecerLancamento(lancamentoBase, [entradaNaoAmbigua], 'JD')
 
-    expect(resultado.natureza).toBe('Moradia')
+    expect(resultado.natureza).toBe('MORADIA')
     expect(resultado.descricao).toBe('Conta de luz')
     expect(resultado.iniciais).toBe('ES')
   })

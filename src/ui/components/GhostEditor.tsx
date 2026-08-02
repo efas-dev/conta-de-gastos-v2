@@ -79,6 +79,13 @@ export interface GhostEditorCoreProps {
    * @param movement  Sempre [0, 1] (desce uma linha) conforme D5 do ADR.
    */
   onFinishedEditing: (texto: string, movement: readonly [-1 | 0 | 1, -1 | 0 | 1]) => void
+  /**
+   * Notifica cada mudança do texto em edição (digitação ou sugestão aceita).
+   * É o canal que permite ao Glide commitar o estado parcial quando o usuário
+   * clica fora da célula em vez de confirmar com Enter/Tab — sem ele, o
+   * click-outside descartaria o que foi digitado.
+   */
+  onTextoAlterado?: (texto: string) => void
 }
 
 /**
@@ -95,6 +102,7 @@ export function GhostEditorCore({
   lancamentos,
   dicEntries,
   onFinishedEditing,
+  onTextoAlterado,
 }: GhostEditorCoreProps) {
   // Texto inicial: valorInicial (primeiro char digitado para abrir) ou valorAtual (célula)
   const textoInicial = valorInicial ?? valorAtual
@@ -142,10 +150,16 @@ export function GhostEditorCore({
     return candidato.slice(texto.length)
   }, [candidato, texto])
 
+  // Atualiza o texto em edição e notifica o estado parcial (commit no clique fora)
+  const atualizarTexto = (novo: string) => {
+    setTexto(novo)
+    onTextoAlterado?.(novo)
+  }
+
   // Aceita a sugestão: preenche o input com o candidato completo, sem confirmar
   const aceitarSugestao = (): boolean => {
     if (!candidato) return false
-    setTexto(candidato)
+    atualizarTexto(candidato)
     return true
   }
 
@@ -195,7 +209,7 @@ export function GhostEditorCore({
         ref={inputRef}
         data-testid="ghost-input"
         value={texto}
-        onChange={(e) => setTexto(e.target.value)}
+        onChange={(e) => atualizarTexto(e.target.value)}
         onKeyDown={handleKeyDown}
         autoFocus
         style={{

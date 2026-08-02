@@ -318,8 +318,8 @@ describe('E2E — Caso 2: pipeline com dicionário', () => {
     const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
     // E11 = Iniciais (vem do dicionário = 'ES') — coluna E no layout novo
     expect(sheet1).toContain('<c r="E11" s="41" t="inlineStr"><is><t>ES</t></is></c>')
-    // F11 = Natureza — coluna F no layout novo
-    expect(sheet1).toContain('<c r="F11" s="11" t="inlineStr"><is><t>Moradia</t></is></c>')
+    // F11 = Natureza — coluna F no layout novo (caixa alta na grid — item 28)
+    expect(sheet1).toContain('<c r="F11" s="11" t="inlineStr"><is><t>MORADIA</t></is></c>')
     // G11 = Descrição — coluna G no layout novo
     expect(sheet1).toContain('<c r="G11" s="11" t="inlineStr"><is><t>Conta de luz</t></is></c>')
   })
@@ -357,6 +357,9 @@ describe('E2E — Caso 2: pipeline com dicionário', () => {
     expect(sheet2).toContain(
       '<c r="A2" t="inlineStr"><is><t>PAG BOLETO ENERGIA</t></is></c>',
     )
+    // O writer grava o que recebe (aqui o dicionário cru, sem aprendizado);
+    // no app real o dicionário passa por aprenderDicionario, que normaliza a
+    // natureza para caixa alta (item 28 — coberto em TL28-6)
     expect(sheet2).toContain('<c r="C2" t="inlineStr"><is><t>Moradia</t></is></c>')
 
     // Segunda entrada: Pagamento de fatura
