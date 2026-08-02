@@ -15,6 +15,7 @@ import {
 import { lerNaturezas, lerDicionario, ehDicionario, lerIniciais } from './excel/reader/leitor'
 import { defaultMes, detectarMesSugerido, classificarFonte } from './dominio/mes'
 import { detectar } from './parsers/index'
+import { decodificarCsv } from './parsers/decodificar'
 import { detectarConciliacao, detectarValorPendente, detectarPagamentoRecebido } from './dominio/deteccoes'
 import type { Aviso, Lancamento } from './types'
 import { ReviewGrid } from './ui/components/ReviewGrid'
@@ -30,6 +31,18 @@ import { PainelNaturezas } from './ui/components/PainelNaturezas'
  * — Task T9). Convive com o canal legado `avisos: string[]` (`addAviso`/`clearAvisos`)
  * nos call-sites que ainda o alimentam — este helper só adiciona a via nova.
  */
+/**
+ * Lê um arquivo CSV/TXT como texto, decodificando o encoding de forma robusta.
+ *
+ * Não usa `File.text()` (que assume UTF-8): alguns bancos exportam em ISO-8859-1
+ * (ex.: Banco do Brasil), e a decodificação com fallback (`decodificarCsv`)
+ * evita acentos corrompidos. Ver `parsers/decodificar.ts`.
+ */
+async function lerTextoArquivo(arquivo: File): Promise<string> {
+  const bytes = new Uint8Array(await arquivo.arrayBuffer())
+  return decodificarCsv(bytes)
+}
+
 function criarAvisoInformativo(id: string, origem: string, mensagem: string): Aviso {
   return {
     id,
@@ -354,7 +367,7 @@ export function App() {
     const porArquivo: Record<string, Lancamento[]> = {}
     for (const arquivo of arquivosCsv) {
       try {
-        const conteudo = await arquivo.text()
+        const conteudo = await lerTextoArquivo(arquivo)
         const parser = detectar(conteudo)
         const { lancamentos: lans } = parser.parsear(conteudo)
         porArquivo[arquivo.name] = lans
@@ -414,7 +427,7 @@ export function App() {
     // carregado pelo upload unificado) e as naturezas são os mesmos para todos.
     const todosLancamentos: typeof lancamentos = []
     for (const arquivo of csvArquivos) {
-      const csvConteudo = await arquivo.text()
+      const csvConteudo = await lerTextoArquivo(arquivo)
       const { lancamentos: lans, avisos: avs } = produzirLancamentos(
         csvConteudo,
         dicEntries,

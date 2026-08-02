@@ -296,14 +296,19 @@ describe('App — campo de mês de referência (T3)', () => {
 // ---------------------------------------------------------------------------
 
 /**
- * Cria um objeto File falso com método `.text()` que retorna o conteúdo fornecido.
- * O jsdom não suporta `File.prototype.text()` de forma nativa, então usamos um stub.
+ * Cria um objeto File falso com `.text()` e `.arrayBuffer()` funcionais.
+ * O jsdom não implementa esses métodos; o App lê via `arrayBuffer()` (decodificação
+ * robusta de encoding), então o stub precisa cobrir ambos.
  */
 function criarFileFalso(nome: string, conteudo: string): File {
-  const file = new File([conteudo], nome, { type: 'text/csv' })
-  // Sobrescreve `.text()` — o jsdom não implementa File.prototype.text()
+  const bytes = new TextEncoder().encode(conteudo)
+  const file = new File([bytes], nome, { type: 'text/csv' })
   Object.defineProperty(file, 'text', {
     value: () => Promise.resolve(conteudo),
+    writable: true,
+  })
+  Object.defineProperty(file, 'arrayBuffer', {
+    value: () => Promise.resolve(bytes.buffer),
     writable: true,
   })
   return file
@@ -394,9 +399,9 @@ describe('App — leitura antecipada no upload (T4)', () => {
 
   // TL4-4: erro de parse silenciado (best-effort) — campo não alterado e sem exceção.
   it('best-effort: erro de parse é silenciado e o campo permanece intacto', async () => {
-    // file.text() lança erro para simular falha de leitura
+    // arrayBuffer() lança erro para simular falha de leitura (caminho real do App)
     const arquivo = new File([], 'erro.csv', { type: 'text/csv' })
-    Object.defineProperty(arquivo, 'text', {
+    Object.defineProperty(arquivo, 'arrayBuffer', {
       value: () => Promise.reject(new Error('falha simulada de leitura')),
       writable: true,
     })

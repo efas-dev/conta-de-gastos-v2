@@ -6,6 +6,7 @@ import type { ResultadoParse } from '../types'
 import { faturaNumbank } from './fatura_nubank'
 import { extratoItau } from './extrato_itau'
 import { extratoInter } from './extrato_inter'
+import { extratoBb } from './extrato_bb'
 
 /**
  * Contrato de um parser de extrato/fatura bancária.
@@ -27,7 +28,7 @@ export interface Parser {
  * extrato_inter vem ANTES de extrato_itau para que a detecção pelo header explícito
  * vença caso essa premissa mude. extrato_nubank vem primeiro por ser o parser original.
  */
-const parsers: Parser[] = [extratoNubank, faturaNumbank, extratoInter, extratoItau]
+const parsers: Parser[] = [extratoNubank, faturaNumbank, extratoInter, extratoBb, extratoItau]
 
 /**
  * Retorna o parser adequado para o conteúdo fornecido.
