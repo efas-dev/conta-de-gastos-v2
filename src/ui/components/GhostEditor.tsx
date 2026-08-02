@@ -204,10 +204,16 @@ export function GhostEditorCore({
         alignItems: 'center',
       }}
     >
-      {/* Input principal — texto digitado pelo usuário (por cima do ghost) */}
+      {/*
+        Input principal — texto digitado pelo usuário (por cima do ghost). Usa `.cel-input`
+        (T1/T2) para a aparência (fundo, anel verde, tipografia); posicionamento absoluto
+        continua inline porque é uma exigência estrutural do overlay do Glide (provideEditor),
+        não uma escolha estética — sem ele o editor não se sobrepõe corretamente à célula.
+      */}
       <input
         ref={inputRef}
         data-testid="ghost-input"
+        className="cel-input"
         value={texto}
         onChange={(e) => atualizarTexto(e.target.value)}
         onKeyDown={handleKeyDown}
@@ -217,14 +223,6 @@ export function GhostEditorCore({
           inset: 0,
           width: '100%',
           height: '100%',
-          background: 'transparent',
-          border: 'none',
-          outline: 'none',
-          fontSize: 'inherit',
-          fontFamily: 'inherit',
-          padding: '0 14px',
-          boxSizing: 'border-box',
-          color: 'inherit',
           zIndex: 1,
         }}
       />
@@ -234,26 +232,55 @@ export function GhostEditorCore({
         O prefixo digitado é renderizado transparente para empurrar o sufixo à posição exata após
         o texto do usuário; o sufixo aparece em cor atenuada. `data-testid="ghost-text"` cobre SÓ o
         sufixo (contrato dos testes). Em jsdom não há layout — altura/alinhamento se verificam manualmente.
+
+        T2: usa `.sugestoes`/`.sugestao` (T1) para o container e o sufixo, conforme o design system
+        portado do protótipo. O protótipo usa essas classes para um dropdown de candidatos abaixo do
+        campo (`top: calc(100% + 4px)`, com fundo/borda/sombra); aqui o "candidato" é um único sufixo
+        desenhado IN-LINE, sobre a própria célula (é o mesmo mecanismo de ghost-text já testado em
+        GhostEditor.test.tsx, preservado sem regressão — D5/D8 do ADR `grid-autocomplete-aviso-saida`).
+        O posicionamento/geometria e o fundo/borda/sombra do dropdown são por isso sobrescritos
+        inline — as classes marcam a filiação ao design system, os overrides preservam a mecânica.
       */}
       {ghostSufixo && (
         <div
           aria-hidden="true"
+          className="sugestoes"
           style={{
             position: 'absolute',
             inset: 0,
+            top: 0,
+            left: 0,
             display: 'flex',
             alignItems: 'center',
             padding: '0 14px',
             pointerEvents: 'none',
             whiteSpace: 'pre',
-            fontSize: 'inherit',
-            fontFamily: 'inherit',
+            background: 'none',
+            border: 'none',
+            borderRadius: 0,
+            boxShadow: 'none',
+            minWidth: 0,
+            overflow: 'visible',
             zIndex: 0,
           }}
         >
           {/* Prefixo digitado, invisível: alinha o sufixo logo após o texto do usuário */}
           <span style={{ color: 'transparent' }}>{texto}</span>
-          <span data-testid="ghost-text" style={{ color: 'rgba(44,42,38,0.35)' }}>
+          <span
+            data-testid="ghost-text"
+            className="sugestao"
+            style={{
+              display: 'inline',
+              padding: 0,
+              gap: 0,
+              width: 'auto',
+              cursor: 'default',
+              fontSize: 'inherit',
+              fontFamily: 'inherit',
+              fontWeight: 'inherit',
+              color: 'var(--muted-2)',
+            }}
+          >
             {ghostSufixo}
           </span>
         </div>
