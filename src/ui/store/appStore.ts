@@ -7,6 +7,7 @@ import { create } from 'zustand'
 import { enablePatches, produceWithPatches, applyPatches, current, type Patch } from 'immer'
 import type { Lancamento, DicEntry, NaturezaRica } from '../../types'
 import { ratearSplit, type AlvoSplit } from '../../dominio/split'
+import { corrigirNatureza } from '../../dominio/natureza'
 import {
   criarAvisosSlice,
   estadoInicialAvisos,
@@ -534,8 +535,10 @@ export const useAppStore = create<AppStore>()((set, get) => {
           const num = typeof valor === 'number' ? valor : Number(valor)
           if (Number.isFinite(num)) l.valor = num
         } else if (campo === 'natureza') {
-          // Item 28: Natureza é sempre caixa alta na grid (siglas da aba Naturezas)
-          l.natureza = (valor as string).toUpperCase()
+          // Item 28: Natureza sempre em caixa alta. Hotfix UX: reconhece a sigla
+          // mesmo com caractere acidental (espaço, hífen) e apaga o supérfluo —
+          // valem as 2 primeiras letras válidas (corrigirNatureza).
+          l.natureza = corrigirNatureza(valor as string, get().naturezasValidas)
         } else {
           l[campo] = valor as string
         }
@@ -750,8 +753,9 @@ export const useAppStore = create<AppStore>()((set, get) => {
             const num = typeof valor === 'number' ? valor : Number(valor)
             if (Number.isFinite(num)) l.valor = num
           } else if (colId === 'natureza') {
-            // Item 28: Natureza é sempre caixa alta na grid
-            l.natureza = String(valor).toUpperCase()
+            // Item 28 + hotfix UX: caixa alta e correção de sigla com caractere
+            // acidental (ver corrigirNatureza) — vale também no preenchimento em massa.
+            l.natureza = corrigirNatureza(String(valor), get().naturezasValidas)
           } else {
             ;(l as unknown as Record<string, unknown>)[colId] = valor
           }
