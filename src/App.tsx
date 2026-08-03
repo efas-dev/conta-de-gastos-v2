@@ -980,18 +980,18 @@ export function App() {
             </button>
           </ToolbarRevisao>
 
-          <div className="rotulo" style={{ textAlign: 'center', padding: '6px 28px' }}>
-            {lancamentos.length} lançamentos para revisar · Os dados vivem apenas nesta aba —
-            exporte antes de fechar ou recarregar.
-          </div>
-
-          {/* Filtros: fonte/natureza (legenda clicável) + legenda de cores */}
+          {/* Filtros (esquerda) + legenda de cores e lembrete de zero-retenção
+              (direita) numa faixa só — fiel ao protótipo, que não tem uma
+              linha-rótulo separada. A contagem "N lançamentos" saiu por ser
+              redundante (a toolbar mostra "X de Y classificados" e o FiltroBar
+              "X de Y visíveis"); o aviso de efemeridade fica discreto ao lado
+              da legenda e o chip "não exportado" da toolbar reforça o estado. */}
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: 22,
-              padding: '6px 28px 12px',
+              padding: '8px 28px 10px',
               flexWrap: 'wrap',
             }}
           >
@@ -1001,13 +1001,29 @@ export function App() {
                 marginLeft: 'auto',
                 display: 'flex',
                 alignItems: 'center',
-                gap: 22,
+                gap: 14,
                 flexShrink: 0,
+                // Mesma fonte dos chips de filtro (.chip = 12px), na mesma linha,
+                // alinhada à direita — pedido do usuário.
+                fontSize: 12,
+                fontWeight: 600,
+                color: 'var(--texto-3)',
               }}
             >
               <Swatch cor="var(--linha-atencao)" borda="var(--linha-atencao-borda)" rotulo="Precisa de atenção" />
               <Swatch cor="var(--linha-transferencia)" borda="var(--linha-transferencia-borda)" rotulo="Transferência própria" />
               <Swatch cor="var(--linha-investimento)" borda="var(--linha-investimento-borda)" rotulo="Investimento" />
+              <span
+                style={{
+                  paddingLeft: 14,
+                  borderLeft: '1px solid var(--borda-2)',
+                  color: 'var(--muted)',
+                  whiteSpace: 'nowrap',
+                }}
+                title="Os dados vivem apenas nesta aba — exporte antes de fechar ou recarregar."
+              >
+                Só nesta aba · exporte antes de fechar
+              </span>
             </span>
           </div>
 

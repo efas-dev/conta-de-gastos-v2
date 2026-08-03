@@ -47,10 +47,12 @@ export function ToolbarRevisao({ children }: ToolbarRevisaoProps) {
           <IconeLogo />
         </span>
         <span className="progresso" title={`${pendentes} ainda sem natureza`}>
+          {/* Texto antes da barra: mantém "X de Y classificados" colado ao
+              ícone (pedido do usuário), à esquerda; a barra vem logo depois. */}
+          <span style={{ whiteSpace: 'nowrap' }}>{classificados} de {total} classificados</span>
           <span className="prog-barra">
             <span className="prog-fill" style={{ width: `${percentual}%` }} />
           </span>
-          <span style={{ whiteSpace: 'nowrap' }}>{classificados} de {total} classificados</span>
         </span>
         {sujo && (
           <span className="chip-sujo" title="Os dados vivem apenas nesta aba — exporte antes de fechar.">
