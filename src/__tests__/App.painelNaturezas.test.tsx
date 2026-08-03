@@ -1,5 +1,5 @@
 // ADR: see Docs/specs/colinha-naturezas.adr.md
-// ADR: see spec/redesign-frontend-claude-design.adr.md
+// ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
 
 /**
  * Testes de integração para T5 (colinha-naturezas) — integração do PainelNaturezas

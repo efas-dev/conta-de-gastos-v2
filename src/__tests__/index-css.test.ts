@@ -1,4 +1,4 @@
-// ADR: see spec/redesign-frontend-claude-design.adr.md
+// ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

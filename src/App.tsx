@@ -4,7 +4,7 @@
 // ADR: see Docs/specs/dicionario-ponta-a-ponta.adr.md
 // ADR: see Docs/specs/colinha-naturezas.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
-// ADR: see spec/redesign-frontend-claude-design.adr.md
+// ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
 
 import { useState, useRef, useEffect } from 'react'
 import { useAppStore } from './ui/store/appStore'
