@@ -122,6 +122,29 @@ describe('GhostEditorCore', () => {
     expect(ghost.textContent).toBe('mentos')
   })
 
+  // Regressão (2026-08-03): a re-tematização (commit 28ed470) deu ao input a classe
+  // `.cel-input` com fundo branco OPACO, cobrindo o ghost-text que é desenhado ATRÁS
+  // dele (zIndex 0). A predição continuava sendo calculada, mas ficava invisível. O
+  // input DEVE ter fundo transparente; o backdrop branco/anel verde vive no wrapper.
+  it('ghost-input tem fundo transparente para não cobrir o ghost-text (regressão re-tema)', () => {
+    render(
+      <GhostEditorCore
+        col={COL_DESCRICAO}
+        row={0}
+        valorAtual=""
+        valorInicial="ali"
+        lancamentos={[lancamento('ALI', '')]}
+        dicEntries={[dicAli]}
+        onFinishedEditing={onFinishedEditing}
+      />,
+    )
+    const input = screen.getByTestId('ghost-input')
+    expect(input.style.background).toBe('transparent')
+    // o backdrop opaco (fundo branco) mora no wrapper, não no input
+    const wrapper = input.parentElement as HTMLElement
+    expect(wrapper.style.background).toContain('--branco')
+  })
+
   // 2. ghost-nao-aparece-sem-candidato
   it('ghost-text NÃO aparece quando calcularSugestoes retorna []', () => {
     render(
