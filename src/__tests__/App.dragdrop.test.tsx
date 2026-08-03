@@ -225,4 +225,28 @@ describe('App — feedback visual de drag-over em toda a tela de importação (i
 
     expect(evento.defaultPrevented).toBe(true)
   })
+
+  it('TL21-6: soltar um .xlsx FORA do dropzone (em qualquer ponto da tela) vira dicionário', async () => {
+    // Garantia pedida pelo usuário: o dicionário se importa arrastando para
+    // qualquer lugar da tela, igual aos extratos — não só sobre o cartão.
+    vi.mocked(ehDicionario).mockResolvedValue(true as never)
+    vi.mocked(lerDicionario).mockReturnValue([
+      { chave: 'Mercado', fonte: 'extrato_nubank', natureza: 'SM', descricao: '', iniciais: 'ES', vezes: 1, ambiguo: false },
+    ] as never)
+
+    render(<App />)
+
+    const arquivo = criarFile('dicionario.xlsx', new Uint8Array([0x50, 0x4b]))
+    await act(async () => {
+      // Drop no título da página, longe do cartão/dropzone — a tela toda aceita
+      fireEvent.drop(screen.getByText('Importe seus extratos e faturas'), {
+        dataTransfer: { files: [arquivo] },
+      })
+    })
+
+    await waitFor(() => {
+      expect(ehDicionario).toHaveBeenCalled()
+      expect(useAppStore.getState().dicEntries).toHaveLength(1)
+    })
+  })
 })

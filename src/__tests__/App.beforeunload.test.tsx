@@ -197,7 +197,7 @@ describe('App — aviso textual na barra de revisão', () => {
     resetarStore()
   })
 
-  it('exibe texto de aviso "Os dados vivem apenas nesta aba" quando há lançamentos', () => {
+  it('exibe o lembrete de efemeridade ("Só nesta aba · exporte antes de fechar") quando há lançamentos', () => {
     act(() => {
       useAppStore.setState({
         lancamentos: [lancamentoFixture()],
@@ -207,17 +207,20 @@ describe('App — aviso textual na barra de revisão', () => {
 
     render(<App />)
 
+    // O texto visível ficou compacto, na faixa de filtros à direita (o texto
+    // completo vive no atributo `title`). Cobre a presença do nudge de
+    // zero-retenção durante a revisão.
     expect(
-      screen.getByText(/Os dados vivem apenas nesta aba — exporte antes de fechar ou recarregar/),
+      screen.getByText(/Só nesta aba · exporte antes de fechar/),
     ).toBeInTheDocument()
   })
 
-  it('não exibe texto de aviso na etapa de upload (sem lançamentos)', () => {
+  it('não exibe o lembrete de efemeridade na etapa de upload (sem lançamentos)', () => {
     // Estado inicial sem lançamentos
     render(<App />)
 
     expect(
-      screen.queryByText(/Os dados vivem apenas nesta aba/),
+      screen.queryByText(/Só nesta aba · exporte antes de fechar/),
     ).not.toBeInTheDocument()
   })
 })

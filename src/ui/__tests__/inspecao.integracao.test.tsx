@@ -49,6 +49,7 @@ import { render, screen, fireEvent, within } from '@testing-library/react'
 import { useAppStore } from '../store/appStore'
 import { estadoInicialAvisos } from '../store/avisosSlice'
 import { CentralDeAvisos } from '../components/CentralDeAvisos'
+import { PainelLateral } from '../components/PainelLateral'
 import {
   derivarContextoInspecao,
   calcularTemaLinhaComInspecao,
@@ -141,10 +142,6 @@ function derivarEstadoInspecao() {
     contexto: derivarContextoInspecao(aviso),
     envolvidos: indicesEnvolvidos(aviso),
   }
-}
-
-function abrirSheet(): void {
-  fireEvent.click(screen.getByRole('button', { name: /abrir central de avisos/i }))
 }
 
 beforeEach(() => {
@@ -324,7 +321,6 @@ describe('CentralDeAvisos conectado ao store real — resumo em inspeção e bad
     useAppStore.getState().entrarInspecao('conciliacao-1')
 
     render(<CentralDeAvisos />)
-    abrirSheet()
 
     expect(screen.getByLabelText('Papel: sai')).toBeInTheDocument()
     expect(screen.getByLabelText('Papel: fica')).toBeInTheDocument()
@@ -337,7 +333,6 @@ describe('CentralDeAvisos conectado ao store real — resumo em inspeção e bad
     useAppStore.getState().entrarInspecao('valor-pendente-1')
 
     render(<CentralDeAvisos />)
-    abrirSheet()
 
     expect(screen.getByLabelText('Papel: sai')).toBeInTheDocument()
     expect(screen.queryByLabelText('Papel: fica')).toBeNull()
@@ -345,6 +340,10 @@ describe('CentralDeAvisos conectado ao store real — resumo em inspeção e bad
   })
 
   it('T5-8: badge reflete a contagem real de propostas pendentes em cenário misto', () => {
+    // T5 migrou o badge de contagem do toggle antigo de `CentralDeAvisos` para a
+    // aba "Avisos" de `PainelLateral` (D15 do ADR `inspecao-proposta-conciliacao`,
+    // ver `iteracao-log`, Task T5) — a asserção passa a exercitar `PainelLateral`,
+    // que é quem hoje consome `selecionarContagemPendentes` (`PainelLateral.tsx`).
     resetarStore(lancamentosBase())
     useAppStore.getState().adicionarAvisos([
       avisoConciliacao({ id: 'a', estado: 'pendente' }),
@@ -352,7 +351,7 @@ describe('CentralDeAvisos conectado ao store real — resumo em inspeção e bad
       avisoConciliacao({ id: 'c', estado: 'aplicado', mensagem: 'Outra proposta aplicada' }),
     ])
 
-    render(<CentralDeAvisos />)
+    render(<PainelLateral aba="avisos" setAba={() => {}} naturezas={[]} />)
 
     expect(screen.getByLabelText('2 propostas pendentes')).toBeInTheDocument()
   })
@@ -369,7 +368,6 @@ describe('CentralDeAvisos conectado ao store real — Aprovar/Dispensar/Desfazer
     useAppStore.getState().adicionarAvisos([avisoConciliacao()])
 
     render(<CentralDeAvisos />)
-    abrirSheet()
 
     fireEvent.click(screen.getByRole('button', { name: /aprovar/i }))
     expect(useAppStore.getState().lancamentos.map((l) => l.transcricao)).toEqual([
@@ -392,7 +390,6 @@ describe('CentralDeAvisos conectado ao store real — Aprovar/Dispensar/Desfazer
     useAppStore.getState().adicionarAvisos([avisoConciliacao()])
 
     render(<CentralDeAvisos />)
-    abrirSheet()
 
     const lancamentosAntes = useAppStore.getState().lancamentos
 
