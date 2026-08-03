@@ -65,40 +65,11 @@ export function SplitModal({ lancamento, indice, onClose }: SplitModalProps) {
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Rateio de lançamento"
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(44,42,38,0.44)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999,
-        fontFamily: "'Manrope', system-ui, sans-serif",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: '#faf8f3',
-          border: '1px solid #e1dcd1',
-          borderRadius: 20,
-          padding: 28,
-          minWidth: 400,
-          maxWidth: 500,
-          boxShadow: '0 30px 60px -30px rgba(44,42,38,0.5)',
-          color: '#2c2a26',
-        }}
-      >
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, letterSpacing: '-0.01em' }}>
-          Rateio de lançamento
-        </h2>
-        <p style={{ margin: '8px 0 20px', fontSize: 14.5, color: '#6b675e' }}>
-          <strong style={{ color: '#2c2a26' }}>{lancamento.transcricao}</strong>
+    <div role="dialog" aria-modal="true" aria-label="Rateio de lançamento" onClick={onClose} className="overlay">
+      <div onClick={(e) => e.stopPropagation()} className="modal">
+        <h2 className="modal-titulo">Rateio de lançamento</h2>
+        <p style={{ margin: '8px 0 20px', fontSize: 14.5 }}>
+          <strong>{lancamento.transcricao}</strong>
           {' — '}
           <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
             {lancamento.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
@@ -131,19 +102,15 @@ export function SplitModal({ lancamento, indice, onClose }: SplitModalProps) {
           ))}
         </div>
 
-        <button
-          className="dc-btn dc-btn-secundario"
-          onClick={handleAdicionarAlvo}
-          style={{ marginBottom: 22 }}
-        >
+        <button className="btn-limpar" onClick={handleAdicionarAlvo} style={{ marginBottom: 22 }}>
           + Adicionar alvo
         </button>
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button className="dc-btn dc-btn-secundario" onClick={onClose}>
+          <button className="btn sec" onClick={onClose}>
             Cancelar
           </button>
-          <button className="dc-btn dc-btn-primario" onClick={handleConfirmar}>
+          <button className="btn pri" onClick={handleConfirmar}>
             Confirmar
           </button>
         </div>
@@ -169,40 +136,21 @@ function Linha({
   return (
     <>
       <input
-        className="dc-input"
+        className="input"
         aria-label={`Iniciais do alvo ${i + 1}`}
         value={iniciais}
         onChange={(e) => onEdit(e.target.value)}
-        style={{ padding: '9px 12px' }}
       />
       <span
-        style={{
-          textAlign: 'right',
-          fontVariantNumeric: 'tabular-nums',
-          fontWeight: 700,
-          color: valor !== undefined && valor < 0 ? '#b4654a' : '#4e6a53',
-          minWidth: 96,
-        }}
+        className={`valor ${valor !== undefined && valor < 0 ? 'neg' : 'pos'}`}
+        style={{ textAlign: 'right', minWidth: 96 }}
       >
         {valor !== undefined
           ? valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
           : '—'}
       </span>
       {onRemove ? (
-        <button
-          aria-label={`Remover alvo ${i + 1}`}
-          onClick={onRemove}
-          style={{
-            border: '1px solid #dad4c8',
-            background: '#fff',
-            color: '#b4654a',
-            borderRadius: 8,
-            width: 30,
-            height: 30,
-            cursor: 'pointer',
-            fontWeight: 700,
-          }}
-        >
+        <button aria-label={`Remover alvo ${i + 1}`} onClick={onRemove} className="btn sec mini icone">
           ×
         </button>
       ) : (

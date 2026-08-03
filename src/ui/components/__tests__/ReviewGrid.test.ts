@@ -20,7 +20,7 @@
  * TL-8: calcularLargurasColunas usa a medição contábil na coluna Valor
  */
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, afterEach } from 'vitest'
 import {
   medirLarguraHeuristica,
   medirLarguraValorContabil,
@@ -32,6 +32,7 @@ import {
   calcularLinhaAncoraVisual,
   aplicarRevelacaoInspecao,
   indicesEnvolvidos,
+  lerVarCSS,
   TEMA_INSPECAO_SAI,
   TEMA_INSPECAO_FICA,
   TEMA_ERRO,
@@ -674,5 +675,91 @@ describe('pipeline de inspeção (integração slice -> grid)', () => {
     expect(temasPorLinha[1]).toBe(TEMA_INSPECAO_SAI)
     expect(temasPorLinha[2]).toBe(TEMA_INSPECAO_FICA)
     expect(calcularLinhaAncoraVisual(mapa, aviso)).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Test List — Task T2 (re-tematização: TEMA_GRID e os 5 overrides leem
+// variáveis CSS de :root, definidas em T1, em vez de hex hardcoded)
+//
+// TL-15: lerVarCSS retorna o valor computado quando a variável está definida
+//        no elemento raiz (leitura real da CSSOM).
+// TL-16: lerVarCSS retorna string vazia (sem lançar) quando a variável não
+//        está definida — contrato do fallback em jsdom.
+// TL-17 a TL-21: TEMA_ERRO/TEMA_TRANSFERENCIA/TEMA_INVESTIMENTO/
+//        TEMA_INSPECAO_SAI/TEMA_INSPECAO_FICA refletem, via `.bgCell`, a
+//        variável CSS correspondente quando definida em document.documentElement.
+// TL-22: sem a variável definida, `.bgCell` é string vazia — nunca cai para
+//        um hex hardcoded como substituto.
+// TL-23: identidade referencial dos temas preservada (regressão dos testes
+//        de precedência via `toBe` em calcularTemaLinhaComInspecao).
+// ---------------------------------------------------------------------------
+
+describe('lerVarCSS (Task T2)', () => {
+  afterEach(() => {
+    document.documentElement.style.removeProperty('--teste-cor-t2')
+  })
+
+  it('TL-15: retorna o valor computado quando a variável está definida no elemento raiz', () => {
+    document.documentElement.style.setProperty('--teste-cor-t2', '#123456')
+    expect(lerVarCSS('--teste-cor-t2')).toBe('#123456')
+  })
+
+  it('TL-16: retorna string vazia (sem lançar) quando a variável não está definida', () => {
+    expect(lerVarCSS('--variavel-inexistente-t2')).toBe('')
+  })
+})
+
+describe('temas de linha leem variáveis CSS de :root (Task T2)', () => {
+  const VARS_TEMA = [
+    '--linha-atencao',
+    '--linha-transferencia',
+    '--linha-investimento',
+    '--insp-sai',
+    '--insp-fica',
+  ]
+
+  afterEach(() => {
+    for (const nome of VARS_TEMA) document.documentElement.style.removeProperty(nome)
+  })
+
+  it('TL-17: TEMA_ERRO.bgCell reflete --linha-atencao quando definida', () => {
+    document.documentElement.style.setProperty('--linha-atencao', '#aaaaaa')
+    expect(TEMA_ERRO.bgCell).toBe('#aaaaaa')
+  })
+
+  it('TL-18: TEMA_TRANSFERENCIA.bgCell reflete --linha-transferencia quando definida', () => {
+    document.documentElement.style.setProperty('--linha-transferencia', '#bbbbbb')
+    expect(TEMA_TRANSFERENCIA.bgCell).toBe('#bbbbbb')
+  })
+
+  it('TL-19: TEMA_INVESTIMENTO.bgCell reflete --linha-investimento quando definida', () => {
+    document.documentElement.style.setProperty('--linha-investimento', '#cccccc')
+    expect(TEMA_INVESTIMENTO.bgCell).toBe('#cccccc')
+  })
+
+  it('TL-20: TEMA_INSPECAO_SAI.bgCell reflete --insp-sai quando definida', () => {
+    document.documentElement.style.setProperty('--insp-sai', '#dddddd')
+    expect(TEMA_INSPECAO_SAI.bgCell).toBe('#dddddd')
+  })
+
+  it('TL-21: TEMA_INSPECAO_FICA.bgCell reflete --insp-fica quando definida', () => {
+    document.documentElement.style.setProperty('--insp-fica', '#eeeeee')
+    expect(TEMA_INSPECAO_FICA.bgCell).toBe('#eeeeee')
+  })
+
+  it('TL-22 (contrato do fallback): sem a variável definida, bgCell é string vazia — nunca um hex hardcoded substituto', () => {
+    expect(TEMA_ERRO.bgCell).toBe('')
+    expect(TEMA_TRANSFERENCIA.bgCell).toBe('')
+    expect(TEMA_INVESTIMENTO.bgCell).toBe('')
+    expect(TEMA_INSPECAO_SAI.bgCell).toBe('')
+    expect(TEMA_INSPECAO_FICA.bgCell).toBe('')
+  })
+
+  it('TL-23 (regressão, identidade): temas de inspeção continuam referências estáveis usadas por calcularTemaLinhaComInspecao', () => {
+    const naturezasValidas = ['ALM']
+    const contexto = derivarContextoInspecao(avisoConciliacaoFake())!
+    const l = lancamentoFake({ natureza: 'ALM' })
+    expect(calcularTemaLinhaComInspecao(l, 2, naturezasValidas, contexto)).toBe(TEMA_INSPECAO_SAI)
   })
 })

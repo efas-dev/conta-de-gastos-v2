@@ -131,3 +131,70 @@ describe('SplitModal — ações dos botões', () => {
     expect(mockAplicarSplit).not.toHaveBeenCalled()
   })
 })
+
+describe('SplitModal — classes do design system (T1)', () => {
+  it('TL-11: overlay usa a classe "overlay", sem style inline', () => {
+    render(<SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />)
+    const overlay = screen.getByRole('dialog')
+    expect(overlay).toHaveClass('overlay')
+    expect(overlay).not.toHaveAttribute('style')
+  })
+
+  it('TL-12: container do modal usa a classe "modal", sem style inline', () => {
+    render(<SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />)
+    const modal = screen.getByRole('dialog').firstElementChild as HTMLElement
+    expect(modal).toHaveClass('modal')
+    expect(modal).not.toHaveAttribute('style')
+  })
+
+  it('TL-13: título usa a classe "modal-titulo"', () => {
+    render(<SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />)
+    expect(screen.getByText('Rateio de lançamento')).toHaveClass('modal-titulo')
+  })
+
+  it('TL-14: inputs de iniciais usam a classe "input"', () => {
+    render(<SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />)
+    for (const input of screen.getAllByRole('textbox')) {
+      expect(input).toHaveClass('input')
+      expect(input).not.toHaveClass('dc-input')
+    }
+  })
+
+  it('TL-15: botão "Cancelar" usa as classes "btn sec"', () => {
+    render(<SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />)
+    const botao = screen.getByText('Cancelar')
+    expect(botao).toHaveClass('btn')
+    expect(botao).toHaveClass('sec')
+  })
+
+  it('TL-16: botão "Confirmar" usa as classes "btn pri"', () => {
+    render(<SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />)
+    const botao = screen.getByText('Confirmar')
+    expect(botao).toHaveClass('btn')
+    expect(botao).toHaveClass('pri')
+  })
+
+  it('TL-17: botão "+ Adicionar alvo" usa a classe "btn-limpar"', () => {
+    render(<SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />)
+    expect(screen.getByText(/Adicionar alvo/)).toHaveClass('btn-limpar')
+  })
+
+  it('TL-18: botão de remover alvo usa as classes "btn sec mini icone"', () => {
+    render(<SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />)
+    const remover = screen.getByLabelText('Remover alvo 1')
+    expect(remover).toHaveClass('btn')
+    expect(remover).toHaveClass('sec')
+    expect(remover).toHaveClass('mini')
+    expect(remover).toHaveClass('icone')
+    expect(remover).not.toHaveAttribute('style')
+  })
+
+  it('TL-19: nenhum elemento do modal tem style inline com valor hex', () => {
+    const { container } = render(
+      <SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />,
+    )
+    const comStyle = Array.from(container.querySelectorAll('[style]'))
+    const comHex = comStyle.filter((el) => (el.getAttribute('style') ?? '').includes('#'))
+    expect(comHex).toHaveLength(0)
+  })
+})

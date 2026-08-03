@@ -1,14 +1,18 @@
 // ADR: see Docs/specs/colinha-naturezas.adr.md
+// ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
 
 /**
- * Testes de integração e unidade para T5 — integração do PainelNaturezas em App.tsx.
+ * Testes de integração para T5 (colinha-naturezas) — integração do PainelNaturezas
+ * em App.tsx — e reconciliados na Task T11 (redesign-frontend-claude-design) para a
+ * nova estrutura de componentes: o botão "Naturezas" (antes "Colinha") vive na barra
+ * de ações da tela de revisão e abre a aba "naturezas" do `PainelLateral` (T5/T11).
  *
  * Cobre:
  *   [TL-T5-1][integration] lerNaturezas com Modelo.xlsx real retorna exatamente 15
  *                           entradas com descricao não-vazia.
- *   [TL-T5-2][unit] App.tsx renderiza o botão "Colinha" quando naturezasRicas
+ *   [TL-T5-2][unit] App.tsx renderiza o botão "Naturezas" quando naturezasRicas
  *                   filtrado é não-vazio.
- *   [TL-T5-3][unit] App.tsx NÃO renderiza o botão "Colinha" quando naturezasRicas
+ *   [TL-T5-3][unit] App.tsx NÃO renderiza o botão "Naturezas" quando naturezasRicas
  *                   está vazio.
  */
 
@@ -20,6 +24,7 @@ import { resolve } from 'node:path'
 import { App } from '../App'
 import { useAppStore } from '../ui/store/appStore'
 import { lerNaturezas } from '../excel/reader/leitor'
+import { estadoInicialAvisos } from '../ui/store/avisosSlice'
 
 // ---------------------------------------------------------------------------
 // Mocks de componentes pesados (mesmo padrão de App.dicionarioUnificado.test.tsx)
@@ -36,10 +41,6 @@ vi.mock('../ui/components/ReviewGrid', () => ({
 
 vi.mock('../ui/components/SplitModal', () => ({
   SplitModal: () => React.createElement('div', { 'data-testid': 'split-modal' }),
-}))
-
-vi.mock('../ui/components/AvisoList', () => ({
-  AvisoList: () => React.createElement('div', { 'data-testid': 'aviso-list' }),
 }))
 
 vi.mock('../ui/PipelineState', () => ({
@@ -69,10 +70,8 @@ function resetarStore(): void {
     naturezasRicas: [],
     dicEntries: [],
     avisos: [],
-    historico: [],
-    futuro: [],
-    csvArquivo: null,
     sujo: false,
+    avisosAcionaveis: estadoInicialAvisos,
   })
 }
 
@@ -80,7 +79,7 @@ function resetarStore(): void {
 // Testes
 // ---------------------------------------------------------------------------
 
-describe('T5 — integração PainelNaturezas + App.tsx', () => {
+describe('T5/T11 — integração PainelNaturezas + App.tsx (botão "Naturezas")', () => {
   beforeEach(() => {
     resetarStore()
     vi.clearAllMocks()
@@ -97,20 +96,20 @@ describe('T5 — integração PainelNaturezas + App.tsx', () => {
     expect(comDescricao).toHaveLength(15)
   })
 
-  // [TL-T5-2][unit] Botão "Colinha" aparece quando naturezasRicas filtrado é não-vazio
-  it('renderiza o botão "Colinha" na barra de ações quando naturezasRicas filtrado é não-vazio', async () => {
+  // [TL-T5-2][unit] Botão "Naturezas" aparece quando naturezasRicas filtrado é não-vazio
+  it('renderiza o botão "Naturezas" na barra de ações quando naturezasRicas filtrado é não-vazio', () => {
     // Pré-popula o store com uma natureza que tem descrição (simula pós-upload do Modelo)
     act(() => {
       useAppStore.setState({
         lancamentos: [
           {
             data: '2026-07-01',
-            descricao: 'Teste',
+            transcricao: 'Teste',
+            descricao: '',
             valor: -100,
             natureza: 'ALM',
             fonte: 'NUBANK_CARTAO',
             iniciais: 'ES',
-            nomeArquivo: 'test.csv',
           },
         ],
         naturezasRicas: [
@@ -121,24 +120,24 @@ describe('T5 — integração PainelNaturezas + App.tsx', () => {
 
     render(React.createElement(App))
 
-    const botaoColinha = screen.queryByRole('button', { name: /colinha/i })
-    expect(botaoColinha).not.toBeNull()
+    const botaoNaturezas = screen.queryByRole('button', { name: /naturezas/i })
+    expect(botaoNaturezas).not.toBeNull()
   })
 
-  // [TL-T5-3][unit] Botão "Colinha" ausente quando naturezasRicas é vazio
-  it('NÃO renderiza o botão "Colinha" quando naturezasRicas está vazio', async () => {
+  // [TL-T5-3][unit] Botão "Naturezas" ausente quando naturezasRicas é vazio
+  it('NÃO renderiza o botão "Naturezas" quando naturezasRicas está vazio', () => {
     // Store com lançamentos mas sem naturezas ricas (lista filtrada vazia)
     act(() => {
       useAppStore.setState({
         lancamentos: [
           {
             data: '2026-07-01',
-            descricao: 'Teste',
+            transcricao: 'Teste',
+            descricao: '',
             valor: -100,
             natureza: 'ALM',
             fonte: 'NUBANK_CARTAO',
             iniciais: 'ES',
-            nomeArquivo: 'test.csv',
           },
         ],
         naturezasRicas: [],
@@ -147,7 +146,7 @@ describe('T5 — integração PainelNaturezas + App.tsx', () => {
 
     render(React.createElement(App))
 
-    const botaoColinha = screen.queryByRole('button', { name: /colinha/i })
-    expect(botaoColinha).toBeNull()
+    const botaoNaturezas = screen.queryByRole('button', { name: /naturezas/i })
+    expect(botaoNaturezas).toBeNull()
   })
 })

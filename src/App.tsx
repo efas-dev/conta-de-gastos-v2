@@ -4,15 +4,18 @@
 // ADR: see Docs/specs/dicionario-ponta-a-ponta.adr.md
 // ADR: see Docs/specs/colinha-naturezas.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
+// ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
 
 import { useState, useRef, useEffect } from 'react'
 import { useAppStore } from './ui/store/appStore'
+import { selecionarContagemPendentes } from './ui/store/avisosSlice'
 import {
   produzirLancamentos,
   gerarAPartirDosRevisados,
   computarNomeArquivo,
 } from './ui/PipelineState'
 import { lerNaturezas, lerDicionario, ehDicionario, lerIniciais } from './excel/reader/leitor'
+import { validarLinha } from './dominio/validacao'
 import { defaultMes, detectarMesSugerido, classificarFonte } from './dominio/mes'
 import { detectar } from './parsers/index'
 import { decodificarCsv } from './parsers/decodificar'
@@ -21,13 +24,18 @@ import type { Aviso, Lancamento } from './types'
 import { ReviewGrid } from './ui/components/ReviewGrid'
 import { FiltroBar } from './ui/components/FiltroBar'
 import { SplitModal } from './ui/components/SplitModal'
-import { CentralDeAvisos } from './ui/components/CentralDeAvisos'
 import { FonteRotulo } from './ui/components/FonteRotulo'
-import { PainelNaturezas } from './ui/components/PainelNaturezas'
+import { Cabecalho } from './ui/components/Cabecalho'
+import { ToolbarRevisao } from './ui/components/ToolbarRevisao'
+import { PainelLateral, type AbaPainelLateral } from './ui/components/PainelLateral'
+import { BannerInspecao } from './ui/components/BannerInspecao'
+import { ExportModal } from './ui/components/ExportModal'
+import { CartaoDicionario } from './ui/components/CartaoDicionario'
+import { CartaoBancosSuportados } from './ui/components/CartaoBancosSuportados'
 
 /**
  * Constrói um `Aviso` informativo dispensável para os 5 avisos legados migrados ao
- * canal único (sheet `CentralDeAvisos`, D18 do ADR `inspecao-proposta-conciliacao`
+ * canal único (sheet `PainelLateral`/aba Avisos, D18 do ADR `inspecao-proposta-conciliacao`
  * — Task T9). Convive com o canal legado `avisos: string[]` (`addAviso`/`clearAvisos`)
  * nos call-sites que ainda o alimentam — este helper só adiciona a via nova.
  */
@@ -60,10 +68,18 @@ function criarAvisoInformativo(id: string, origem: string, mensagem: string): Av
  *
  * 1. Upload: iniciais + nome opcional + CSV + dicionário opcional → botão "Produzir".
  * 2. Revisão: `ReviewGrid` editável com avisos e botão "Desfazer".
- * 3. Geração: botão "Gerar" → download imediato com revoke do objectURL (zero-retenção).
+ * 3. Geração: `ExportModal` (fase confirmar → botão "Baixar" chama a geração real e
+ *    dispara o download com revoke do objectURL, zero-retenção).
  *
- * Estado de UI vive exclusivamente no `useAppStore` (Zustand).
- * Sem persistência além da sessão — invariante zero-retenção do projeto.
+ * Estado de UI vive exclusivamente no `useAppStore` (Zustand), mais um pequeno grupo
+ * de estados locais de apresentação (arquivos brutos, mês escolhido, aba do painel
+ * lateral, fase do modal de export) — nenhuma persistência além da sessão.
+ *
+ * Task T11 (spec `redesign-frontend-claude-design`): ponto único de montagem dos
+ * componentes de apresentação extraídos em T1-T10 — `Cabecalho`, `ToolbarRevisao`,
+ * `PainelLateral`, `BannerInspecao`, `ExportModal`, `CartaoDicionario`,
+ * `CartaoBancosSuportados`. Nenhuma lógica de domínio/pipeline foi alterada; é
+ * reestruturação de apresentação sobre os handlers já existentes.
  */
 export function App() {
   // ---------------------------------------------------------------------------
@@ -74,8 +90,10 @@ export function App() {
   const iniciais = useAppStore((s) => s.iniciais)
   const nomeUsuario = useAppStore((s) => s.nomeUsuario)
   const dicEntries = useAppStore((s) => s.dicEntries)
-  const sujo = useAppStore((s) => s.sujo)
+  const naturezasValidas = useAppStore((s) => s.naturezasValidas)
   const naturezasRicas = useAppStore((s) => s.naturezasRicas)
+  const avisosAcionaveis = useAppStore((s) => s.avisosAcionaveis)
+  const contagemAvisosPendentes = useAppStore(selecionarContagemPendentes)
 
   // Actions do store
   const setIniciais = useAppStore((s) => s.setIniciais)
@@ -89,6 +107,9 @@ export function App() {
   // conhece o store; o call-site em App.tsx é quem faz a ligação real).
   const adicionarAvisosAcionaveis = useAppStore((s) => s.adicionarAvisos)
   const clearAvisos = useAppStore((s) => s.clearAvisos)
+  const aplicarAviso = useAppStore((s) => s.aplicar)
+  const dispensarAviso = useAppStore((s) => s.dispensar)
+  const sairInspecao = useAppStore((s) => s.sairInspecao)
   const undo = useAppStore((s) => s.undo)
   const redo = useAppStore((s) => s.redo)
   const marcarLimpo = useAppStore((s) => s.marcarLimpo)
@@ -110,6 +131,11 @@ export function App() {
    * e mesclados, não os Files brutos (mesmo padrão de `dicArquivo`).
    */
   const [csvArquivos, setCsvArquivos] = useState<File[]>([])
+
+  /** Metadados do dicionário `.xlsx` carregado, exibidos por `CartaoDicionario` (T11). */
+  const [dicionarioCarregado, setDicionarioCarregado] = useState<{ nome: string; entradas: number } | null>(
+    null,
+  )
 
   /**
    * Bytes do Modelo.xlsx carregados no "Produzir" e reusados no "Gerar".
@@ -147,11 +173,27 @@ export function App() {
   /** Âncora invisível usada para disparar o download sem abrir nova aba. */
   const anchorRef = useRef<HTMLAnchorElement>(null)
 
+  /** Input de arquivo único (upload unificado) — usado também pelo clique em `CartaoDicionario`. */
+  const inputArquivoRef = useRef<HTMLInputElement>(null)
+
   /** Arrasto de arquivos sobre o dropzone em andamento (feedback visual — item 21). */
   const [arrastando, setArrastando] = useState<boolean>(false)
 
   /** Profundidade de dragEnter acumulada — evita desligar ao atravessar filhos do label. */
   const profundidadeArrastoRef = useRef(0)
+
+  /**
+   * Aba ativa do `PainelLateral` — Task T11. `null` = painel fechado. Substitui os
+   * toggles próprios antigos de `CentralDeAvisos`/`PainelNaturezas` (D3/D4 das
+   * frases de intenção, item 4).
+   */
+  const [painel, setPainel] = useState<AbaPainelLateral>(null)
+
+  /** Fase do `ExportModal` — `null` = fechado (Task T11). */
+  const [exportFase, setExportFase] = useState<'confirmar' | 'feito' | null>(null)
+
+  /** Container da grid — observado para recalcular a largura do Glide (Task T11). */
+  const gridWrapRef = useRef<HTMLDivElement>(null)
 
   // ---------------------------------------------------------------------------
   // Derivações
@@ -163,8 +205,14 @@ export function App() {
   const splitLancamento = splitIndice !== null ? lancamentos[splitIndice] : null
 
   // D5 do ADR colinha-naturezas: lista filtrada — somente naturezas com descrição preenchida.
-  // PainelNaturezas retorna null quando lista vazia (botão não aparece).
   const naturezasDescritas = naturezasRicas.filter((n) => n.descricao !== '')
+
+  const avisoEmInspecao =
+    avisosAcionaveis.avisos.find((a) => a.id === avisosAcionaveis.avisoEmInspecao) ?? null
+
+  const lancamentosPendentes = lancamentos.filter((l) => validarLinha(l, naturezasValidas)).length
+
+  const nomeArquivoExport = emRevisao ? computarNomeArquivo(lancamentos, iniciais) : ''
 
   // ---------------------------------------------------------------------------
   // Atalhos de teclado (estilo Google Sheets) — desfazer/refazer
@@ -195,6 +243,7 @@ export function App() {
 
   // Intercepta fechamento/recarga quando há mutações não exportadas (zero-retenção:
   // não persiste nada, só aciona o prompt nativo do navegador via preventDefault).
+  const sujo = useAppStore((s) => s.sujo)
   useEffect(() => {
     if (!sujo) return
     function onBeforeUnload(e: BeforeUnloadEvent) {
@@ -250,6 +299,25 @@ export function App() {
       ])
     }
   }, [lancamentos, mesEscolhido, adicionarAvisosAcionaveis])
+
+  // Recalcula a largura da grid Glide ao abrir/fechar o PainelLateral (Task T11):
+  // o container da grid vive num flex que muda de largura quando `painel` alterna
+  // entre `null` e uma aba — o `DataEditor` do glide-data-grid (`width="100%"`,
+  // `ReviewGrid.tsx`) observa o próprio container via ResizeObserver interno e
+  // redesenha o canvas sozinho a cada mudança de tamanho; este efeito só existe
+  // para deixar o gatilho explícito (o wrapper muda de largura de fato quando
+  // `painel` muda, o que já é suficiente para o observer interno do Glide disparar
+  // — não há API pública de "remeasure" externo em `DataEditorRef`, ver
+  // iteração-log). Não falha quando `gridWrapRef` ainda não montou (tela de
+  // importação, sem grid).
+  useEffect(() => {
+    const el = gridWrapRef.current
+    if (!el) return
+    // Força um reflow síncrono do container após a mudança de `painel` — garante
+    // que o layout já refletiu a nova largura antes do próximo paint, mesmo em
+    // navegadores que atrasariam o ResizeObserver por um frame.
+    void el.offsetWidth
+  }, [painel])
 
   // ---------------------------------------------------------------------------
   // Handlers
@@ -329,6 +397,7 @@ export function App() {
           }
           const entradas = lerDicionario(bytes)
           setDic(entradas)
+          setDicionarioCarregado({ nome: arquivo.name, entradas: entradas.length })
           dicCarregado = true
           const inicialsDoDic = await lerIniciais(bytes)
           if (inicialsDoDic !== null && !usuarioEditouIniciais) {
@@ -537,7 +606,9 @@ export function App() {
    *
    * Chama `gerarAPartirDosRevisados` com os lançamentos revisados do store,
    * cria o Blob, dispara o download via `<a download>` e revoga o objectURL
-   * imediatamente — zero-retenção (invariante do projeto).
+   * imediatamente — zero-retenção (invariante do projeto). Task T11: agora
+   * disparado pelo botão "Baixar .xlsx" do `ExportModal` (fase confirmar),
+   * não mais diretamente pelo botão "Exportar .xlsx" da toolbar.
    */
   function handleGerar() {
     if (!modeloBytes || lancamentos.length === 0) return
@@ -559,6 +630,16 @@ export function App() {
     a.click()
     marcarLimpo() // seta sujo=false imediatamente após exportação — D6 do ADR
     URL.revokeObjectURL(url) // revoke imediato — zero-retenção
+  }
+
+  /** Confirma a exportação a partir do `ExportModal` (fase confirmar → "Baixar .xlsx"). */
+  function handleConfirmarExport() {
+    handleGerar()
+    setExportFase('feito')
+  }
+
+  function togglePainel(aba: Exclude<AbaPainelLateral, null>) {
+    setPainel((atual) => (atual === aba ? null : aba))
   }
 
   // ---------------------------------------------------------------------------
@@ -585,22 +666,18 @@ export function App() {
       {/* ------------------------------------------------------------------ */}
       {!emRevisao && (
         <div
-          className="dc-card"
           data-testid="tela-importacao"
           data-arrastando={arrastando}
           onDragOver={handleDragOver}
           onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          style={{
-            width: '100%',
-            minHeight: '100vh',
-            display: 'flex',
-            flexDirection: 'column',
-            borderRadius: 0,
-            border: 'none',
-            boxShadow: 'none',
-          }}
+          // `.tela` do protótipo (`height:100vh; display:flex; flex-direction:column`,
+          // `prototipo/Conta de Gastos - Redesign.html:15`) não foi portada para
+          // `src/index.css` por T1 (fora da lista de ~26 classes do checklist) — e
+          // `src/index.css` está fora das Áreas tocadas de T11. Replicado inline
+          // (layout puro, sem cor) até uma task futura portar a classe.
+          style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}
         >
           {/* Overlay de tela cheia durante o arrasto (item 21) — pointerEvents:none
               para o drop atravessar até o container que tem os handlers. */}
@@ -627,150 +704,69 @@ export function App() {
                   borderRadius: 24,
                 }}
               />
-              <span
-                style={{
-                  width: 64,
-                  height: 64,
-                  borderRadius: 18,
-                  background: 'var(--verde)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <IconeUpload cor="#fff" />
-              </span>
               <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--verde)' }}>
                 Solte os arquivos aqui
               </div>
-              <div style={{ fontSize: 15, color: 'var(--muted)' }}>
-                CSV, TXT ou dicionário .xlsx — em qualquer lugar da tela
-              </div>
+              <div className="rotulo">CSV, TXT ou dicionário .xlsx — em qualquer lugar da tela</div>
             </div>
           )}
-          {/* Top bar */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '22px 34px',
-              borderBottom: '1px solid var(--borda-2)',
-              gap: 16,
-              flexWrap: 'wrap',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 10,
-                  background: 'var(--verde)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <IconeMenu />
-              </span>
-              <span style={{ fontWeight: 800, fontSize: 17, letterSpacing: '-0.01em' }}>
-                Conta de Gastos
-              </span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              {/* Central de avisos — botão "Avisos" na top bar da importação
-                  (esta tela não tem a barra de ações com Colinha); mesmo sheet
-                  lateral fixo. Oculto quando não há avisos. */}
-              <CentralDeAvisos />
-              <span className="dc-pill-privado">
-                <IconeCadeado />
-                Seus dados nunca saem do seu computador
-              </span>
-            </div>
-          </div>
 
-          {/* Body — corpo à esquerda + Central de avisos como sheet lateral à direita,
-              mesmo padrão da Etapa 2 (T9, D18: canal único de avisos nas 2 telas). */}
-          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
-            <div
-              style={{
-                flex: 1,
-                minHeight: 0,
-                overflowY: 'auto',
-                padding: '40px 48px 48px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <div style={{ maxWidth: 560, textAlign: 'center' }}>
-                <h1 className="dc-titulo">Importe seus extratos e faturas</h1>
-                <p className="dc-subtitulo">
+          <Cabecalho etapa={0} />
+
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'center', padding: '38px 40px 56px' }}>
+            <div style={{ width: '100%', maxWidth: 960 }}>
+              <div style={{ textAlign: 'center', maxWidth: 600, margin: '0 auto' }}>
+                <h1 className="titulo">Importe seus extratos e faturas</h1>
+                <p className="subtitulo">
                   Solte os arquivos, confira num piscar de olhos e exporte a planilha pronta. Sem
                   copiar e colar, sem enviar nada para lugar nenhum.
                 </p>
+                {avisosAcionaveis.avisos.length > 0 && (
+                  <button
+                    type="button"
+                    className={'btn sec' + (painel === 'avisos' ? ' ativo' : '')}
+                    style={{ marginTop: 14 }}
+                    onClick={() => togglePainel('avisos')}
+                  >
+                    Avisos
+                    {contagemAvisosPendentes > 0 && (
+                      <span className="badge">{contagemAvisosPendentes}</span>
+                    )}
+                  </button>
+                )}
               </div>
 
-              {/* Dropzone (label clicável envolvendo o input escondido; o arrasto é
-                  tratado pela tela inteira — handlers no container tela-importacao) */}
-              <label
+              <div
                 style={{
-                  width: '100%',
-                  maxWidth: 640,
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 340px',
+                  gap: 18,
                   marginTop: 30,
-                  border: '1.5px dashed #c9cfc5',
-                  background: 'var(--branco)',
-                  borderRadius: 18,
-                  padding: '40px 32px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  textAlign: 'center',
-                  cursor: 'pointer',
+                  alignItems: 'start',
                 }}
               >
-                <input
-                  type="file"
-                  accept=".csv,.txt,.xlsx"
-                  multiple
-                  onChange={handleUploadChange}
-                  style={{ display: 'none' }}
-                />
-                <span
-                  style={{
-                    width: 56,
-                    height: 56,
-                    borderRadius: 16,
-                    background: 'var(--verde-suave)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  <IconeUpload />
-                </span>
-                <div style={{ marginTop: 16, fontSize: 17, fontWeight: 700 }}>
-                  Arraste extratos e faturas aqui
-                </div>
-                <div style={{ marginTop: 6, fontSize: 14, color: 'var(--muted)' }}>
-                  ou clique para escolher · CSV ou TXT · vários de uma vez
-                </div>
-              </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {/* Dropzone (label clicável envolvendo o input escondido; o arrasto é
+                      tratado pela tela inteira — handlers no container tela-importacao) */}
+                  <label className="dropzone">
+                    <input
+                      ref={inputArquivoRef}
+                      type="file"
+                      accept=".csv,.txt,.xlsx"
+                      multiple
+                      onChange={handleUploadChange}
+                      style={{ display: 'none' }}
+                    />
+                    <span className="icone-drop">
+                      <IconeUpload />
+                    </span>
+                    <div style={{ marginTop: 14, fontSize: 16.5, fontWeight: 700 }}>
+                      Arraste extratos e faturas aqui
+                    </div>
+                    <div className="rotulo">ou clique para escolher · CSV ou TXT · vários de uma vez</div>
+                  </label>
 
-              {/* Lista de arquivos selecionados */}
-              {csvArquivos.length > 0 && (
-                <div
-                  style={{
-                    width: '100%',
-                    maxWidth: 640,
-                    marginTop: 20,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 10,
-                  }}
-                >
+                  {/* Lista de arquivos selecionados */}
                   {csvArquivos.map((f) => {
                     // Fontes distintas detectadas na leitura antecipada deste arquivo.
                     // Recalcula sempre que mesEscolhido muda (D10, D11 do ADR).
@@ -778,142 +774,134 @@ export function App() {
                     const fontesArquivo = Array.from(new Set(lansArquivo.map((l) => l.fonte)))
 
                     return (
-                    <div
-                      key={f.name}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 14,
-                        background: 'var(--branco)',
-                        border: '1px solid var(--borda-2)',
-                        borderRadius: 13,
-                        padding: '14px 16px',
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: 38,
-                          height: 38,
-                          borderRadius: 10,
-                          background: 'var(--verde-suave)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        <IconeArquivo />
-                      </span>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {f.name}
+                      <div key={f.name} className="arquivo">
+                        <span className="icone-arq">
+                          <IconeArquivo />
+                        </span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontSize: 14,
+                              fontWeight: 700,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {f.name}
+                          </div>
+                          <div className="rotulo" style={{ marginTop: 4 }}>
+                            {fontesArquivo.length > 0 ? (
+                              <span style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                                {fontesArquivo.map((fonte) => (
+                                  <FonteRotulo
+                                    key={fonte}
+                                    fonte={fonte}
+                                    tipo={classificarFonte(fonte, lansArquivo, mesEscolhido)}
+                                  />
+                                ))}
+                              </span>
+                            ) : (
+                              'Pronto para revisar'
+                            )}
+                          </div>
                         </div>
-                        <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 4 }}>
-                          {fontesArquivo.length > 0 ? (
-                            <span style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                              {fontesArquivo.map((fonte) => (
-                                <FonteRotulo
-                                  key={fonte}
-                                  fonte={fonte}
-                                  tipo={classificarFonte(fonte, lansArquivo, mesEscolhido)}
-                                />
-                              ))}
-                            </span>
-                          ) : (
-                            'Pronto para revisar'
-                          )}
-                        </div>
+                        <button
+                          type="button"
+                          className="btn-remover"
+                          onClick={(e) => {
+                            e.preventDefault()
+                            setCsvArquivos((prev) => prev.filter((x) => x !== f))
+                          }}
+                        >
+                          Remover
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.preventDefault()
-                          setCsvArquivos((prev) => prev.filter((x) => x !== f))
-                        }}
-                        style={{
-                          border: 'none',
-                          background: 'none',
-                          color: 'var(--terracota)',
-                          fontSize: 13,
-                          fontWeight: 700,
-                          cursor: 'pointer',
-                          flexShrink: 0,
-                        }}
-                      >
-                        Remover
-                      </button>
-                    </div>
-                  )
+                    )
                   })}
-                </div>
-              )}
 
-              {/* Config: iniciais + nome */}
-              <div
-                style={{
-                  width: '100%',
-                  maxWidth: 640,
-                  marginTop: 26,
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: 16,
-                }}
-              >
-                <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <span className="dc-rotulo">
-                    Suas iniciais <span style={{ color: 'var(--terracota)' }}>*</span>
-                  </span>
-                  <input
-                    className="dc-input"
-                    type="text"
-                    value={iniciais}
-                    placeholder="Ex.: ES"
-                    onChange={(e) => {
-                      setIniciais(e.target.value.trim().toUpperCase())
-                      setUsuarioEditouIniciais(true)
+                  {/* Config: iniciais + nome + mês de referência */}
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: '1fr 1fr 1fr',
+                      gap: 14,
+                      marginTop: 10,
                     }}
-                  />
-                </label>
-                <label style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  <span className="dc-rotulo">
-                    Seu nome <span className="dc-opcional">(opcional)</span>
-                  </span>
-                  <input
-                    className="dc-input"
-                    type="text"
-                    value={nomeUsuario}
-                    placeholder="Ex.: Eduardo"
-                    onChange={(e) => setNomeUsuario(e.target.value)}
-                  />
-                </label>
-              </div>
+                  >
+                    <label className="campo">
+                      <span className="rotulo">
+                        Suas iniciais <em>*</em>
+                      </span>
+                      <input
+                        className="input"
+                        type="text"
+                        value={iniciais}
+                        placeholder="Ex.: ES"
+                        onChange={(e) => {
+                          setIniciais(e.target.value.trim().toUpperCase())
+                          setUsuarioEditouIniciais(true)
+                        }}
+                      />
+                    </label>
+                    <label className="campo">
+                      <span className="rotulo">
+                        Seu nome <span className="opcional">(opcional)</span>
+                      </span>
+                      <input
+                        className="input"
+                        type="text"
+                        value={nomeUsuario}
+                        placeholder="Ex.: Eduardo"
+                        onChange={(e) => setNomeUsuario(e.target.value)}
+                      />
+                    </label>
+                    <div className="campo">
+                      <span className="rotulo">Mês de referência</span>
+                      <SeletorMesReferencia
+                        mesEscolhido={mesEscolhido}
+                        onChange={(novoMes) => {
+                          setMesEscolhido(novoMes)
+                          setUsuarioEditou(true)
+                        }}
+                      />
+                    </div>
+                  </div>
 
-              {/* Campo de mês de referência — D5, D6 do ADR */}
-              <div style={{ width: '100%', maxWidth: 640, marginTop: 14 }}>
-                <span className="dc-rotulo" style={{ display: 'block', marginBottom: 8 }}>
-                  Mês de referência
-                </span>
-                <SeletorMesReferencia
-                  mesEscolhido={mesEscolhido}
-                  onChange={(novoMes) => {
-                    setMesEscolhido(novoMes)
-                    setUsuarioEditou(true)
-                  }}
-                />
-              </div>
+                  {/* CTA */}
+                  <button
+                    className="btn pri cta"
+                    onClick={handleProduzir}
+                    disabled={!podaProduzir}
+                    style={{ marginTop: 8 }}
+                  >
+                    Produzir revisão
+                    <IconeSeta />
+                  </button>
+                </div>
 
-              {/* CTA */}
-              <button
-                className="dc-btn dc-btn-primario dc-btn-cta"
-                onClick={handleProduzir}
-                disabled={!podaProduzir}
-                style={{ maxWidth: 640, marginTop: 30 }}
-              >
-                Produzir revisão
-                <IconeSeta />
-              </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <CartaoDicionario
+                    dicionario={dicionarioCarregado}
+                    onCarregar={() => inputArquivoRef.current?.click()}
+                  />
+                  <CartaoBancosSuportados />
+                </div>
+              </div>
             </div>
           </div>
+
+          {painel && (
+            // Tela de importação não tem layout de flex-row com a grid para o painel
+            // "empurrar" (item 4 das frases de intenção é sobre a tela de revisão) —
+            // aqui o `PainelLateral` sobrepõe como painel fixo à direita, mesmo
+            // componente/abas, só a posição de ancoragem muda (`position:fixed`
+            // aplicado neste wrapper, não no componente em si — T5 removeu
+            // `position:fixed` do componente).
+            <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 40 }}>
+              <PainelLateral aba={painel} setAba={setPainel} naturezas={naturezasDescritas} />
+            </div>
+          )}
         </div>
       )}
 
@@ -921,104 +909,95 @@ export function App() {
       {/* Etapa 2 — Revisão (visível quando há lançamentos no store)          */}
       {/* ------------------------------------------------------------------ */}
       {emRevisao && (
-        <div
-          className="dc-card"
-          style={{
-            width: '100%',
-            height: '100vh',
-            display: 'flex',
-            flexDirection: 'column',
-            borderRadius: 0,
-            border: 'none',
-            boxShadow: 'none',
-          }}
-        >
-          {/* Barra de ações */}
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 16,
-              padding: '20px 28px',
-              borderBottom: '1px solid var(--borda-2)',
-              flexWrap: 'wrap',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-              <span style={{ fontSize: 24, fontWeight: 800, letterSpacing: '-0.02em' }}>
-                {lancamentos.length}
-              </span>
-              <span style={{ fontSize: 15, color: 'var(--texto-3)', fontWeight: 600 }}>
-                lançamentos para revisar
-              </span>
-            </div>
-            <span
-              style={{
-                fontSize: 12.5,
-                color: 'var(--texto-3)',
-                fontWeight: 500,
-                flex: 1,
-                textAlign: 'center',
-              }}
-            >
-              Os dados vivem apenas nesta aba — exporte antes de fechar ou recarregar.
-            </span>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <button className="dc-btn dc-btn-secundario" onClick={undo}>
-                <IconeDesfazer />
-                Desfazer
-              </button>
-              <button className="dc-btn dc-btn-secundario" onClick={redo}>
-                <IconeRefazer />
-                Refazer
-              </button>
-              {/* Seletores de mês de referência — D5 do ADR (dois selects) */}
-              <SeletorMesReferencia
-                mesEscolhido={mesEscolhido}
-                usuarioEditou={usuarioEditou}
-                onChange={(novoMes) => {
-                  setMesEscolhido(novoMes)
-                  setUsuarioEditou(true)
-                }}
-              />
-              {/* Colinha de naturezas — D5 do ADR colinha-naturezas: botão oculto quando lista filtrada é vazia */}
-              <PainelNaturezas
-                naturezas={naturezasDescritas}
-                onClose={() => {}}
-              />
-              {/* Central de avisos — mesmo padrão da Colinha: botão "Avisos" ao
-                  lado, sheet lateral fixo à direita. Oculto quando não há avisos. */}
-              <CentralDeAvisos />
+        <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+          {/* Header único: status de progresso (T7, componente próprio com o
+              wrapper `.toolbar.compacta`) + linha de ações — Task T11 completa
+              com os controles que o protótipo mantém na mesma região (undo/redo,
+              mês de referência, abrir Avisos/Naturezas, Exportar). `ToolbarRevisao`
+              não expõe slot para conteúdo extra (T7, fora de escopo tocar), então
+              as ações vivem numa segunda linha abaixo, mesmo grupo semântico. */}
+          <ToolbarRevisao />
+          <div className="toolbar" style={{ justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <button
-                className="dc-btn dc-btn-primario"
-                onClick={handleGerar}
+                type="button"
+                className="btn sec icone"
+                disabled={lancamentos.length === 0}
+                onClick={undo}
+                title="Desfazer (Ctrl+Z)"
+              >
+                <IconeDesfazer />
+              </button>
+              <button
+                type="button"
+                className="btn sec icone"
+                onClick={redo}
+                title="Refazer (Ctrl+Shift+Z)"
+              >
+                <IconeRefazer />
+              </button>
+              <span className="grupo-mes" title="Mês que dá nome ao arquivo exportado e separa fatura de extrato">
+                <span className="grupo-mes-rotulo">Mês ref.</span>
+                <SeletorMesReferencia
+                  mesEscolhido={mesEscolhido}
+                  usuarioEditou={usuarioEditou}
+                  onChange={(novoMes) => {
+                    setMesEscolhido(novoMes)
+                    setUsuarioEditou(true)
+                  }}
+                />
+              </span>
+              {avisosAcionaveis.avisos.length > 0 && (
+                <button
+                  type="button"
+                  className={'btn sec' + (painel === 'avisos' ? ' ativo' : '')}
+                  style={{ position: 'relative' }}
+                  onClick={() => togglePainel('avisos')}
+                >
+                  Avisos
+                  {contagemAvisosPendentes > 0 && (
+                    <span className="badge">{contagemAvisosPendentes}</span>
+                  )}
+                </button>
+              )}
+              {naturezasDescritas.length > 0 && (
+                <button
+                  type="button"
+                  className={'btn sec' + (painel === 'naturezas' ? ' ativo' : '')}
+                  onClick={() => togglePainel('naturezas')}
+                >
+                  Naturezas
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn pri"
+                onClick={() => setExportFase('confirmar')}
                 disabled={!podaGerar}
-                style={{ padding: '10px 18px' }}
+                style={{ position: 'relative' }}
               >
                 <IconeExportar />
                 Exportar .xlsx
+                {lancamentosPendentes > 0 && <span className="badge peach">{lancamentosPendentes}</span>}
               </button>
             </div>
           </div>
 
-          {/* Legenda de cores */}
+          <div className="rotulo" style={{ textAlign: 'center', padding: '6px 28px' }}>
+            {lancamentos.length} lançamentos para revisar · Os dados vivem apenas nesta aba —
+            exporte antes de fechar ou recarregar.
+          </div>
+
+          {/* Filtros: fonte/natureza (legenda clicável) + legenda de cores */}
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: 22,
-              padding: '12px 28px',
-              background: 'var(--barra)',
-              borderBottom: '1px solid var(--borda-2)',
-              fontSize: 12.5,
-              fontWeight: 600,
-              color: 'var(--texto-3)',
+              padding: '6px 28px 12px',
               flexWrap: 'wrap',
             }}
           >
-            {/* Chips de filtro à esquerda, legenda à direita — barra única
-                (decisão humana de 2026-07-15) */}
             <FiltroBar />
             <span
               style={{
@@ -1035,17 +1014,23 @@ export function App() {
             </span>
           </div>
 
-          {/* Corpo: grid ocupa toda a largura. A Central de avisos deixou de ser
-              uma coluna inline — agora é acionada pelo botão "Avisos" na barra de
-              ações (ao lado da Colinha) e abre como sheet lateral fixo à direita,
-              mesmo padrão de `PainelNaturezas`. Canal único (T9, D18): o footer
-              `AvisoList` foi aposentado; os avisos legados migraram para o slice. */}
-          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'row' }}>
-            <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-              <div style={{ flex: 1, minHeight: 0 }}>
+          {/* Corpo: grid + painel lateral lado a lado (Task T11 — item 4 das
+              frases de intenção: painel lateral empurra a grid em vez de
+              sobrepor como overlay position:fixed). */}
+          <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+              <BannerInspecao
+                aviso={avisoEmInspecao}
+                onAprovar={aplicarAviso}
+                onDispensar={dispensarAviso}
+                onFechar={sairInspecao}
+              />
+              <div ref={gridWrapRef} style={{ flex: 1, minHeight: 0 }}>
                 <ReviewGrid onSplitDetectado={(indice) => setSplitIndice(indice)} />
               </div>
             </div>
+
+            {painel && <PainelLateral aba={painel} setAba={setPainel} naturezas={naturezasDescritas} />}
           </div>
 
           {/* Modal de split — abre quando onSplitDetectado dispara */}
@@ -1054,6 +1039,20 @@ export function App() {
               lancamento={splitLancamento}
               indice={splitIndice}
               onClose={() => setSplitIndice(null)}
+            />
+          )}
+
+          {/* Modal de exportação — Task T11: botão "Exportar .xlsx" abre a fase
+              `confirmar`; "Baixar .xlsx" chama a geração real (`handleGerar`,
+              núcleo intocado) e avança para a fase `feito`. */}
+          {exportFase && (
+            <ExportModal
+              fase={exportFase}
+              nome={nomeArquivoExport}
+              pendentes={lancamentosPendentes}
+              onConfirmar={handleConfirmarExport}
+              onFechar={() => setExportFase(null)}
+              onContinuar={() => setExportFase(null)}
             />
           )}
         </div>
@@ -1066,21 +1065,6 @@ export function App() {
 // Ícones inline (SVG) — coerentes com o handoff de design
 // ---------------------------------------------------------------------------
 
-function IconeMenu() {
-  return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#faf8f3" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 7h18M3 12h18M3 17h10" />
-    </svg>
-  )
-}
-function IconeCadeado() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--verde)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="4" y="10" width="16" height="11" rx="2" />
-      <path d="M8 10V7a4 4 0 0 1 8 0v3" />
-    </svg>
-  )
-}
 function IconeUpload({ cor = 'var(--verde)' }: { cor?: string }) {
   return (
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke={cor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1182,7 +1166,7 @@ function SeletorMesReferencia({ mesEscolhido, onChange }: SeletorMesReferenciaPr
         data-testid="select-mes"
         value={mesStr}
         onChange={handleMes}
-        className="dc-input"
+        className="input"
         style={{ width: 'auto', padding: '6px 8px', fontSize: 13 }}
         aria-label="Mês de referência"
       >
@@ -1194,7 +1178,7 @@ function SeletorMesReferencia({ mesEscolhido, onChange }: SeletorMesReferenciaPr
         data-testid="select-ano"
         value={anoStr}
         onChange={handleAno}
-        className="dc-input"
+        className="input"
         style={{ width: 'auto', padding: '6px 8px', fontSize: 13 }}
         aria-label="Ano de referência"
       >

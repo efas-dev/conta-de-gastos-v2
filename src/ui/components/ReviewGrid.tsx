@@ -197,62 +197,100 @@ const COLUNAS_BASE: (GridColumn & { width: number })[] = [
 // ---------------------------------------------------------------------------
 // Temas visuais de realce (D2 do ADR — getRowThemeOverride)
 // Cores são funcionais; estética refinada fica fora do escopo desta spec (D6 do ADR).
+//
+// Task T2 (re-tematização): o Glide Data Grid pinta em canvas — não resolve
+// var(--x) do CSS nativamente. As cores abaixo são lidas da CSSOM real
+// (`:root`, definido em T1) via `lerVarCSS`, por getter, a cada acesso a
+// `.bgCell` — nunca no escopo do módulo (import time). Motivo: `main.tsx`
+// importa `./App` (que resolve todo o grafo de módulos, incluindo este
+// arquivo) ANTES de `import './index.css'` — uma leitura no topo do módulo
+// ocorreria antes do CSS ser injetado no DOM. Ler sob demanda garante que a
+// leitura só acontece quando o Glide efetivamente desenha (bem depois do
+// React montar, e portanto depois do CSS já aplicado), independentemente da
+// ordem de import. Em jsdom (testes que não montam o componente — Glide
+// depende de Canvas), sem `index.css` carregado, a leitura retorna string
+// vazia — contrato documentado (TL-22), nunca lança e nunca cai para um hex
+// hardcoded como substituto.
 // ---------------------------------------------------------------------------
 
-/** Linha requer atenção — natureza inválida ou ausente. Pêssego/terracota. */
-export const TEMA_ERRO = { bgCell: '#f9e2d6' }
+/** Lê uma variável CSS de `:root` (via `document.documentElement`) em runtime. */
+export function lerVarCSS(nomeVar: string): string {
+  if (typeof document === 'undefined') return ''
+  return getComputedStyle(document.documentElement).getPropertyValue(nomeVar).trim()
+}
 
-/** Lançamento identificado como transferência entre contas próprias. Azul. */
-export const TEMA_TRANSFERENCIA = { bgCell: '#d5e4f2' }
+/** Cria um tema de linha cujo `bgCell` é derivado, por getter, da variável CSS informada. */
+function criarTemaLinha(nomeVar: string): { readonly bgCell: string } {
+  return {
+    get bgCell() {
+      return lerVarCSS(nomeVar)
+    },
+  }
+}
 
-/** Lançamento identificado como aplicação ou resgate de investimento. Verde. */
-export const TEMA_INVESTIMENTO = { bgCell: '#dcedd3' }
+/** Linha requer atenção — natureza inválida ou ausente. Lê `--linha-atencao` (T1). */
+export const TEMA_ERRO = criarTemaLinha('--linha-atencao')
+
+/** Lançamento identificado como transferência entre contas próprias. Lê `--linha-transferencia` (T1). */
+export const TEMA_TRANSFERENCIA = criarTemaLinha('--linha-transferencia')
+
+/** Lançamento identificado como aplicação ou resgate de investimento. Lê `--linha-investimento` (T1). */
+export const TEMA_INVESTIMENTO = criarTemaLinha('--linha-investimento')
 
 /**
  * Linha "sai" durante inspeção de proposta de conciliação (D4/D5 do ADR
- * `inspecao-proposta-conciliacao`). Vermelho saturado — deliberadamente mais
- * saturado que `TEMA_ERRO` (pêssego pálido `#f9e2d6`) para não ser confundido
- * com o realce de atenção. Precedência sobre erro/transferência/investimento
- * enquanto a inspeção está ativa (D4). Validação de contraste no app real
- * fica registrada como checklist manual na Task T5 (D6 do ADR).
+ * `inspecao-proposta-conciliacao`). Lê `--insp-sai` (T1) — vermelho saturado,
+ * deliberadamente distinto de `TEMA_ERRO` (pêssego pálido) para não ser
+ * confundido com o realce de atenção. Precedência sobre erro/transferência/
+ * investimento enquanto a inspeção está ativa (D4). Validação de contraste
+ * no app real fica registrada como checklist manual na Task T5 (D6 do ADR).
  */
-export const TEMA_INSPECAO_SAI = { bgCell: '#e8555a' }
+export const TEMA_INSPECAO_SAI = criarTemaLinha('--insp-sai')
 
 /**
  * Linha "fica" durante inspeção de proposta de conciliação (D4/D5 do ADR
- * `inspecao-proposta-conciliacao`). Verde-menta deliberadamente mais saturado
- * e mais azulado que `TEMA_INVESTIMENTO` (verde pálido/amarelado `#dcedd3`)
+ * `inspecao-proposta-conciliacao`). Lê `--insp-fica` (T1) — verde-menta,
+ * deliberadamente distinto de `TEMA_INVESTIMENTO` (verde pálido/amarelado)
  * para evitar colisão visual entre os dois papéis. Validação de contraste no
  * app real fica registrada como checklist manual na Task T5 (D6 do ADR).
  */
-export const TEMA_INSPECAO_FICA = { bgCell: '#4fd1a5' }
+export const TEMA_INSPECAO_FICA = criarTemaLinha('--insp-fica')
 
 /**
- * Tema base da grid Glide — alinhado à direção visual do handoff de design
- * (paleta terrosa/serena, fonte Manrope, acento verde).
+ * Monta o tema base da grid Glide lendo as variáveis CSS de `:root` (T1).
+ * Chamada uma vez, dentro do componente (via `useMemo`), garantidamente após
+ * o React montar — ponto em que `index.css` já foi injetado, independente
+ * da ordem de import em `main.tsx` (mesmo raciocínio de `criarTemaLinha`
+ * acima). `bgHeaderHovered` não tem uma variável 1:1 exata no design system
+ * portado por T1 (não previu um tom de hover do cabeçalho distinto);
+ * reaproveita `--verde-suave`, o tom mais próximo da paleta (mesma família
+ * de superfície clara com viés de acento) — decisão local registrada no
+ * log de iteração da Task T2.
  */
-const TEMA_GRID = {
-  accentColor: '#5e7c63',
-  accentLight: '#eff3ef',
-  textDark: '#2c2a26',
-  textMedium: '#6b675e',
-  textLight: '#8a867c',
-  textHeader: '#8a867c',
-  textBubble: '#2c2a26',
-  bgCell: '#faf8f3',
-  bgCellMedium: '#f4f1ea',
-  bgHeader: '#f4f1ea',
-  bgHeaderHasFocus: '#eae5db',
-  bgHeaderHovered: '#eef0e9',
-  borderColor: '#eee9df',
-  horizontalBorderColor: '#eee9df',
-  drilldownBorder: '#dad4c8',
-  fontFamily: "'Manrope', system-ui, sans-serif",
-  baseFontStyle: '600 14px',
-  headerFontStyle: '700 12px',
-  editorFontSize: '14px',
-  cellHorizontalPadding: 14,
-  headerBottomBorderColor: '#e1dcd1',
+function criarTemaGrid() {
+  return {
+    accentColor: lerVarCSS('--verde'),
+    accentLight: lerVarCSS('--verde-suave'),
+    textDark: lerVarCSS('--texto'),
+    textMedium: lerVarCSS('--texto-3'),
+    textLight: lerVarCSS('--muted'),
+    textHeader: lerVarCSS('--muted'),
+    textBubble: lerVarCSS('--texto'),
+    bgCell: lerVarCSS('--superficie'),
+    bgCellMedium: lerVarCSS('--barra'),
+    bgHeader: lerVarCSS('--barra'),
+    bgHeaderHasFocus: lerVarCSS('--borda-2'),
+    bgHeaderHovered: lerVarCSS('--verde-suave'),
+    borderColor: lerVarCSS('--borda-linha'),
+    horizontalBorderColor: lerVarCSS('--borda-linha'),
+    drilldownBorder: lerVarCSS('--borda-3'),
+    fontFamily: "'Manrope', system-ui, sans-serif",
+    baseFontStyle: '600 14px',
+    headerFontStyle: '700 12px',
+    editorFontSize: '14px',
+    cellHorizontalPadding: 14,
+    headerBottomBorderColor: lerVarCSS('--borda'),
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -482,6 +520,9 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   const ciclarOrdenacao = useAppStore((s) => s.ciclarOrdenacao)
   const avisos = useAppStore((s) => s.avisosAcionaveis.avisos)
   const avisoEmInspecaoId = useAppStore((s) => s.avisosAcionaveis.avisoEmInspecao)
+
+  // Tema base do Glide — montado uma vez, após o mount (T2: lê variáveis CSS de :root).
+  const temaGrid = useMemo(() => criarTemaGrid(), [])
 
   // -----------------------------------------------------------------
   // Inspeção de proposta (Task T4, estendida por T8 — D3/D4/D7/D8/D16/D17 do ADR
@@ -1008,7 +1049,7 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
           smoothScrollY
           width="100%"
           height="100%"
-          theme={TEMA_GRID}
+          theme={temaGrid}
           headerHeight={38}
           rowHeight={40}
           /* Copiar (Ctrl/Cmd+C) usa getCellsForSelection; colar (Ctrl/Cmd+V) via onPaste.
@@ -1040,27 +1081,9 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
       </div>
 
       {somaSelecao !== null && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'flex-end',
-            gap: 10,
-            padding: '13px 28px',
-            borderTop: '1px solid #e1dcd1',
-            background: '#f4f1ea',
-            fontFamily: "'Manrope', system-ui, sans-serif",
-          }}
-        >
-          <span style={{ fontSize: 15, fontWeight: 800, color: '#2c2a26' }}>Soma da seleção</span>
-          <span
-            style={{
-              fontSize: 15,
-              fontWeight: 800,
-              color: somaSelecao < 0 ? '#b4654a' : '#4e6a53',
-              fontVariantNumeric: 'tabular-nums',
-            }}
-          >
+        <div className="rodape-soma">
+          <span>Soma da seleção</span>
+          <span className={'valor ' + (somaSelecao < 0 ? 'neg' : 'pos')}>
             {somaSelecao.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
           </span>
         </div>

@@ -28,6 +28,20 @@ describe('FonteRotulo — rótulo "extrato"', () => {
   })
 })
 
+describe('FonteRotulo — migração para className', () => {
+  it('TL-12: badge usa className "tag-tipo fatura"/"tag-tipo extrato" em vez de style inline', () => {
+    const { rerender } = render(<FonteRotulo fonte="Nubank" tipo="fatura" />)
+    let rotulo = screen.getByRole('status')
+    expect(rotulo).toHaveClass('tag-tipo', 'fatura')
+    expect(rotulo).not.toHaveAttribute('style')
+
+    rerender(<FonteRotulo fonte="Itaú" tipo="extrato" />)
+    rotulo = screen.getByRole('status')
+    expect(rotulo).toHaveClass('tag-tipo', 'extrato')
+    expect(rotulo).not.toHaveAttribute('style')
+  })
+})
+
 describe('FonteRotulo — discriminação visual', () => {
   it('TL6-5: fatura e extrato têm aria-label distintos', () => {
     const { rerender } = render(<FonteRotulo fonte="Nubank" tipo="fatura" />)
