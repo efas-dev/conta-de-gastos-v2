@@ -910,78 +910,75 @@ export function App() {
       {/* ------------------------------------------------------------------ */}
       {emRevisao && (
         <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-          {/* Header único: status de progresso (T7, componente próprio com o
-              wrapper `.toolbar.compacta`) + linha de ações — Task T11 completa
-              com os controles que o protótipo mantém na mesma região (undo/redo,
-              mês de referência, abrir Avisos/Naturezas, Exportar). `ToolbarRevisao`
-              não expõe slot para conteúdo extra (T7, fora de escopo tocar), então
-              as ações vivem numa segunda linha abaixo, mesmo grupo semântico. */}
-          <ToolbarRevisao />
-          <div className="toolbar" style={{ justifyContent: 'flex-end' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {/* Header único (faixa só): status de progresso à esquerda + ações à
+              direita, numa única `.toolbar.compacta` — fiel ao protótipo
+              (`prototipo/cdg-revisao.jsx:163-191`), que distribui os dois grupos
+              via `justify-content:space-between`. As ações (undo/redo, mês de
+              referência, abrir Avisos/Naturezas, Exportar) entram pelo slot
+              `children` de `ToolbarRevisao`, não numa segunda faixa empilhada. */}
+          <ToolbarRevisao>
+            <button
+              type="button"
+              className="btn sec icone"
+              disabled={lancamentos.length === 0}
+              onClick={undo}
+              title="Desfazer (Ctrl+Z)"
+            >
+              <IconeDesfazer />
+            </button>
+            <button
+              type="button"
+              className="btn sec icone"
+              onClick={redo}
+              title="Refazer (Ctrl+Shift+Z)"
+            >
+              <IconeRefazer />
+            </button>
+            <span className="grupo-mes" title="Mês que dá nome ao arquivo exportado e separa fatura de extrato">
+              <span className="grupo-mes-rotulo">Mês ref.</span>
+              <SeletorMesReferencia
+                mesEscolhido={mesEscolhido}
+                usuarioEditou={usuarioEditou}
+                onChange={(novoMes) => {
+                  setMesEscolhido(novoMes)
+                  setUsuarioEditou(true)
+                }}
+              />
+            </span>
+            {avisosAcionaveis.avisos.length > 0 && (
               <button
                 type="button"
-                className="btn sec icone"
-                disabled={lancamentos.length === 0}
-                onClick={undo}
-                title="Desfazer (Ctrl+Z)"
-              >
-                <IconeDesfazer />
-              </button>
-              <button
-                type="button"
-                className="btn sec icone"
-                onClick={redo}
-                title="Refazer (Ctrl+Shift+Z)"
-              >
-                <IconeRefazer />
-              </button>
-              <span className="grupo-mes" title="Mês que dá nome ao arquivo exportado e separa fatura de extrato">
-                <span className="grupo-mes-rotulo">Mês ref.</span>
-                <SeletorMesReferencia
-                  mesEscolhido={mesEscolhido}
-                  usuarioEditou={usuarioEditou}
-                  onChange={(novoMes) => {
-                    setMesEscolhido(novoMes)
-                    setUsuarioEditou(true)
-                  }}
-                />
-              </span>
-              {avisosAcionaveis.avisos.length > 0 && (
-                <button
-                  type="button"
-                  className={'btn sec' + (painel === 'avisos' ? ' ativo' : '')}
-                  style={{ position: 'relative' }}
-                  onClick={() => togglePainel('avisos')}
-                >
-                  Avisos
-                  {contagemAvisosPendentes > 0 && (
-                    <span className="badge">{contagemAvisosPendentes}</span>
-                  )}
-                </button>
-              )}
-              {naturezasDescritas.length > 0 && (
-                <button
-                  type="button"
-                  className={'btn sec' + (painel === 'naturezas' ? ' ativo' : '')}
-                  onClick={() => togglePainel('naturezas')}
-                >
-                  Naturezas
-                </button>
-              )}
-              <button
-                type="button"
-                className="btn pri"
-                onClick={() => setExportFase('confirmar')}
-                disabled={!podaGerar}
+                className={'btn sec' + (painel === 'avisos' ? ' ativo' : '')}
                 style={{ position: 'relative' }}
+                onClick={() => togglePainel('avisos')}
               >
-                <IconeExportar />
-                Exportar .xlsx
-                {lancamentosPendentes > 0 && <span className="badge peach">{lancamentosPendentes}</span>}
+                Avisos
+                {contagemAvisosPendentes > 0 && (
+                  <span className="badge">{contagemAvisosPendentes}</span>
+                )}
               </button>
-            </div>
-          </div>
+            )}
+            {naturezasDescritas.length > 0 && (
+              <button
+                type="button"
+                className={'btn sec' + (painel === 'naturezas' ? ' ativo' : '')}
+                onClick={() => togglePainel('naturezas')}
+              >
+                Naturezas
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn pri"
+              onClick={() => setExportFase('confirmar')}
+              disabled={!podaGerar}
+              style={{ position: 'relative' }}
+            >
+              <IconeExportar />
+              Exportar .xlsx
+              {lancamentosPendentes > 0 && <span className="badge peach">{lancamentosPendentes}</span>}
+            </button>
+          </ToolbarRevisao>
 
           <div className="rotulo" style={{ textAlign: 'center', padding: '6px 28px' }}>
             {lancamentos.length} lançamentos para revisar · Os dados vivem apenas nesta aba —
