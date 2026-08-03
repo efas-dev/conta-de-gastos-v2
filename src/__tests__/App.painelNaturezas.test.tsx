@@ -86,14 +86,14 @@ describe('T5/T11 — integração PainelNaturezas + App.tsx (botão "Naturezas")
   })
 
   // [TL-T5-1][integration] Modelo.xlsx real
-  it('lerNaturezas com Modelo.xlsx real retorna exatamente 15 entradas com descricao não-vazia', () => {
+  it('lerNaturezas com Modelo.xlsx real retorna exatamente 16 entradas com descricao não-vazia', () => {
     const caminhoModelo = resolve(__dirname, '../../public/Modelo.xlsx')
     const bytes = new Uint8Array(readFileSync(caminhoModelo))
 
     const ricas = lerNaturezas(bytes)
 
     const comDescricao = ricas.filter((n) => n.descricao !== '')
-    expect(comDescricao).toHaveLength(15)
+    expect(comDescricao).toHaveLength(16)
   })
 
   // [TL-T5-2][unit] Botão "Naturezas" aparece quando naturezasRicas filtrado é não-vazio
