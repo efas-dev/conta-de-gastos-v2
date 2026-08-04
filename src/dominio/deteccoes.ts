@@ -1,5 +1,6 @@
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
+// ADR: see spec/fundacao-operacoes.adr.md
 
 import type { Aviso, Lancamento } from '../types'
 
