@@ -1,7 +1,8 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
+// ADR: see spec/fundacao-operacoes.adr.md
 import { describe, it, expect } from 'vitest'
-import type { Lancamento, DicEntry, ResultadoParse, Aviso } from '../types'
+import type { Lancamento, DicEntry, ResultadoParse, Aviso, Mutacao } from '../types'
 
 // TL-01 a TL-07: Lancamento possui todos os campos esperados com os tipos corretos
 describe('Lancamento', () => {
@@ -310,5 +311,47 @@ describe('Aviso', () => {
     }
     expect(Array.isArray(aviso.alvo)).toBe(true)
     expect(aviso.alvo.every(id => typeof id === 'string')).toBe(true)
+  })
+})
+
+// TL-31 a TL-34: Mutacao (verbo único 'remover') e Aviso.mutacaoProposta (ADR fundacao-operacoes, Decisão 5)
+describe('Mutacao', () => {
+  it("verbo 'remover' tem a forma { verbo: 'remover'; alvo: number[] } (TL-31)", () => {
+    const mutacao: Mutacao = { verbo: 'remover', alvo: [1, 2, 3] }
+    expect(mutacao.verbo).toBe('remover')
+    expect(mutacao.alvo).toEqual([1, 2, 3])
+  })
+
+  it('alvo é number[] de ids de Lancamento, não string[] (TL-32)', () => {
+    const mutacao: Mutacao = { verbo: 'remover', alvo: [42] }
+    expect(Array.isArray(mutacao.alvo)).toBe(true)
+    expect(mutacao.alvo.every(id => typeof id === 'number')).toBe(true)
+  })
+
+  it('Aviso.mutacaoProposta aceita uma Mutacao de remover com ids numéricos (TL-33)', () => {
+    const aviso: Aviso = {
+      id: 'aviso-6',
+      tipo: 'proposta',
+      origem: 'conciliacao',
+      mensagem: 'teste',
+      alvo: ['lanc-1'],
+      permanece: [],
+      estado: 'pendente',
+      mutacaoProposta: { verbo: 'remover', alvo: [7, 8] },
+    }
+    expect(aviso.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [7, 8] })
+  })
+
+  it('Aviso.mutacaoProposta é opcional — Aviso sem o campo continua válido (TL-34)', () => {
+    const aviso: Aviso = {
+      id: 'aviso-7',
+      tipo: 'informativo',
+      origem: 'valor-pendente',
+      mensagem: 'teste',
+      alvo: [],
+      permanece: [],
+      estado: 'pendente',
+    }
+    expect(aviso.mutacaoProposta).toBeUndefined()
   })
 })

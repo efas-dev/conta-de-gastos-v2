@@ -112,6 +112,23 @@ export interface ResultadoParse {
 }
 
 /**
+ * Mutação declarativa que um `Aviso` do tipo `'proposta'` pode carregar em
+ * `mutacaoProposta`: descreve o que aplicar/desfazer sem que o `avisosSlice`
+ * precise conhecer a semântica de cada detector (ver ADR `fundacao-operacoes`,
+ * Decisões 1 e 5).
+ *
+ * União TypeScript extensível por verbo — hoje só `'remover'`. Novos verbos
+ * (ex.: `'editar'`) só entram quando uma spec futura os exigir; nenhum outro
+ * verbo existe no código desta spec.
+ */
+export type Mutacao = {
+  /** Verbo único suportado nesta spec: remove os lançamentos de `alvo`. */
+  verbo: 'remover'
+  /** Ids (`Lancamento.id`) dos lançamentos alvo da mutação. */
+  alvo: number[]
+}
+
+/**
  * Aviso acionável exibido na Central de Avisos (ver ADR `avisos-acionaveis`, Decisão 5).
  *
  * `tipo: 'informativo'` é somente leitura; `tipo: 'proposta'` pode ser aceita/ignorada.
@@ -144,4 +161,13 @@ export interface Aviso {
   resumo?: string
   /** Estado do ciclo de vida do aviso */
   estado: 'pendente' | 'aplicado' | 'dispensado'
+  /**
+   * Mutação declarativa proposta por este aviso, interpretada genericamente pelo
+   * `avisosSlice` em `aplicar`/`desfazer` (ver ADR `fundacao-operacoes`, Decisão 1).
+   * Opcional nesta task (T02): os detectores existentes ainda não a populam — isso
+   * é feito em T06/T07/T07-bis. `undefined` = aviso sem proposta de mutação
+   * estruturada (ex.: avisos informativos, ou propostas ainda não migradas ao
+   * registry).
+   */
+  mutacaoProposta?: Mutacao
 }
