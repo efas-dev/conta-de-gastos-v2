@@ -9,18 +9,18 @@
 import { useState, useRef, useEffect } from 'react'
 import { useAppStore } from './ui/store/appStore'
 import { selecionarContagemPendentes } from './ui/store/avisosSlice'
+import { computarNomeArquivo } from './ui/PipelineState'
 import {
-  produzirLancamentos,
-  gerarAPartirDosRevisados,
-  computarNomeArquivo,
-} from './ui/PipelineState'
-import { lerNaturezas, lerDicionario, ehDicionario, lerIniciais } from './excel/reader/leitor'
+  lerTextoArquivo,
+  criarAvisoInformativo,
+  handleProduzir as handleProduzirPipeline,
+  handleGerar as handleGerarPipeline,
+} from './ui/handlersPipeline'
+import { lerDicionario, ehDicionario, lerIniciais } from './excel/reader/leitor'
 import { validarLinha } from './dominio/validacao'
 import { defaultMes, detectarMesSugerido, classificarFonte } from './dominio/mes'
 import { detectar } from './parsers/index'
-import { decodificarCsv } from './parsers/decodificar'
-import { detectarConciliacao, detectarValorPendente, detectarPagamentoRecebido } from './dominio/deteccoes'
-import type { Aviso, Lancamento } from './types'
+import type { Lancamento } from './types'
 import { ReviewGrid } from './ui/components/ReviewGrid'
 import { FiltroBar } from './ui/components/FiltroBar'
 import { SplitModal } from './ui/components/SplitModal'
@@ -32,36 +32,6 @@ import { BannerInspecao } from './ui/components/BannerInspecao'
 import { ExportModal } from './ui/components/ExportModal'
 import { CartaoDicionario } from './ui/components/CartaoDicionario'
 import { CartaoBancosSuportados } from './ui/components/CartaoBancosSuportados'
-
-/**
- * Constrói um `Aviso` informativo dispensável para os 5 avisos legados migrados ao
- * canal único (sheet `PainelLateral`/aba Avisos, D18 do ADR `inspecao-proposta-conciliacao`
- * — Task T9). Convive com o canal legado `avisos: string[]` (`addAviso`/`clearAvisos`)
- * nos call-sites que ainda o alimentam — este helper só adiciona a via nova.
- */
-/**
- * Lê um arquivo CSV/TXT como texto, decodificando o encoding de forma robusta.
- *
- * Não usa `File.text()` (que assume UTF-8): alguns bancos exportam em ISO-8859-1
- * (ex.: Banco do Brasil), e a decodificação com fallback (`decodificarCsv`)
- * evita acentos corrompidos. Ver `parsers/decodificar.ts`.
- */
-async function lerTextoArquivo(arquivo: File): Promise<string> {
-  const bytes = new Uint8Array(await arquivo.arrayBuffer())
-  return decodificarCsv(bytes)
-}
-
-function criarAvisoInformativo(id: string, origem: string, mensagem: string): Aviso {
-  return {
-    id,
-    tipo: 'informativo',
-    origem,
-    mensagem,
-    alvo: [],
-    permanece: [],
-    estado: 'pendente',
-  }
-}
 
 /**
  * App — Orquestra o fluxo de três etapas:
@@ -466,170 +436,39 @@ export function App() {
   /**
    * Etapa 1 — Parse + enriquecimento.
    *
-   * Lê CSV como texto, carrega dicionário opcional como bytes,
-   * busca Modelo.xlsx, chama `produzirLancamentos` e povoa o store.
-   * Também lê `lerNaturezas` do modelo e grava `naturezasValidas` no store.
+   * Delega para `handlersPipeline.ts` (Task T11, spec `fundacao-operacoes`) — o
+   * corpo real (parse por arquivo, detecção de valor-pendente/pagamento-recebido/
+   * conciliação, população do store) vive no módulo extraído; este wrapper só
+   * conecta o estado local/store do componente às dependências explícitas da
+   * função extraída.
    */
   async function handleProduzir() {
-    if (csvArquivos.length === 0) return
-
     clearAvisos()
-
-    let modelo: Uint8Array
-    try {
-      // BASE_URL resolve o subcaminho do GitHub Pages ('/' em dev)
-      const resp = await fetch(`${import.meta.env.BASE_URL}Modelo.xlsx`)
-      modelo = new Uint8Array(await resp.arrayBuffer())
-    } catch (err) {
-      console.error('[App] Falha ao carregar Modelo.xlsx:', err)
-      const mensagem = 'Erro ao carregar Modelo.xlsx — verifique o servidor'
-      addAviso(mensagem)
-      adicionarAvisosAcionaveis([
-        criarAvisoInformativo(crypto.randomUUID(), 'erro-modelo-xlsx', mensagem),
-      ])
-      return
-    }
-
-    // Cada arquivo é parseado independentemente (pode ser de banco/formato
-    // diferente — `detectar` roda por arquivo) e os lançamentos são concatenados
-    // na ordem dos arquivos selecionados. O dicionário (dicEntries do store,
-    // carregado pelo upload unificado) e as naturezas são os mesmos para todos.
-    const todosLancamentos: typeof lancamentos = []
-    for (const arquivo of csvArquivos) {
-      const csvConteudo = await lerTextoArquivo(arquivo)
-      const { lancamentos: lans, avisos: avs } = produzirLancamentos(
-        csvConteudo,
-        dicEntries,
-        iniciais,
-        nomeUsuario || undefined,
-        [],
-        adicionarAvisosAcionaveis,
-      )
-      todosLancamentos.push(...lans)
-      for (const av of avs) {
-        addAviso(`${arquivo.name}: ${av}`)
-      }
-    }
-
-    // Task T11 do ADR `inspecao-proposta-conciliacao`: valor-pendente/pagamento-recebido
-    // precisam ser detectados sobre o array TOTAL já concatenado (`todosLancamentos`),
-    // não a sublista per-arquivo — `produzirLancamentos` (acima) parava de fazer isso
-    // internamente por rodar por arquivo (T11, ver PipelineState.ts). Como
-    // `origemEspecial` está presente em cada lançamento do total, `alvo` já nasce como
-    // índice real, sem remapeamento de offset (mesmo padrão de `detectarConciliacao`
-    // abaixo, mas sem precisar de `indicesFaturaNoTotal`/`indicesExtratoNoTotal` porque
-    // a detecção já roda direto sobre o total). Corrige o bug achado na validação
-    // visual manual (2026-08-01): quando a fatura não é o 1º arquivo do lote, o `alvo`
-    // relativo à sublista per-arquivo casava com a linha errada em `state.lancamentos`.
-    const avisosValorPendente = detectarValorPendente(todosLancamentos)
-    const avisosPagamentoRecebido = detectarPagamentoRecebido(todosLancamentos)
-    adicionarAvisosAcionaveis([...avisosValorPendente, ...avisosPagamentoRecebido])
-
-    // Task 8 do ADR avisos-acionaveis: correlaciona fatura×extrato pelo campo
-    // `fonte` que os parsers já gravam em cada lançamento — sem heurística de
-    // nome de arquivo (decisão humana, ver spec Task 8). Reutiliza
-    // `classificarFonte` (já usado acima para os rótulos fatura/extrato da
-    // lista de arquivos) como única fonte de verdade, em vez de introduzir
-    // uma segunda heurística. `produzirLancamentos` sempre roda por arquivo
-    // com `lancamentosExtrato=[]` (linha 366: 5º argumento), então
-    // `detectarConciliacao` nunca dispara ali — esta é a única chamada,
-    // evitando dupla emissão de propostas. Só executa quando o lote produzido
-    // tem ao menos uma fonte de cada lado; um único arquivo (só fatura ou só
-    // extrato) fica sem proposta e sem o aviso informativo "não conciliada",
-    // preservando o comportamento anterior.
-    const fontesProduzidas = Array.from(new Set(todosLancamentos.map((l) => l.fonte)))
-    const fontesFaturaProduzidas = fontesProduzidas.filter(
-      (fonte) => classificarFonte(fonte, todosLancamentos, mesEscolhido) === 'fatura',
-    )
-    const fontesExtratoProduzidas = fontesProduzidas.filter(
-      (fonte) => classificarFonte(fonte, todosLancamentos, mesEscolhido) === 'extrato',
-    )
-
-    if (fontesFaturaProduzidas.length > 0 && fontesExtratoProduzidas.length > 0) {
-      const lancamentosExtratoTotal = todosLancamentos.filter((l) =>
-        fontesExtratoProduzidas.includes(l.fonte),
-      )
-      // `detectarConciliacao` (T3, função pura) devolve `aviso.alvo` como índice
-      // posicional relativo ao array `lancamentosExtrato` que ela recebeu — aqui,
-      // o subconjunto filtrado `lancamentosExtratoTotal`, não `todosLancamentos`
-      // inteiro. `avisosSlice.aplicar` (T4), por sua vez, interpreta `alvo` como
-      // índice posicional em `state.lancamentos`, que é `todosLancamentos` sem
-      // filtro (ver `setLancamentos(todosLancamentos)` abaixo). Os dois contratos
-      // são internamente corretos, mas divergem no índice-base; sem remapear
-      // aqui, `aplicar` removeria o item errado sempre que a fatura precedesse o
-      // extrato no lote (evidência: Docs/.harness/iteracao-log-spec-20260720-avisos-acionaveis.md,
-      // bloco "Debugging gate" da Task 7, 2ª tentativa). `indicesExtratoNoTotal[i]`
-      // traduz o índice i dentro do subconjunto filtrado para o índice real em
-      // `todosLancamentos`.
-      const indicesExtratoNoTotal = todosLancamentos
-        .map((l, indice) => ({ l, indice }))
-        .filter(({ l }) => fontesExtratoProduzidas.includes(l.fonte))
-        .map(({ indice }) => indice)
-      // Par único por fatura (Decisão R2 do ADR): uma chamada de detectarConciliacao
-      // por fonte de fatura, nunca as faturas somadas entre si.
-      for (const fonteFatura of fontesFaturaProduzidas) {
-        const lancamentosDestaFatura = todosLancamentos.filter((l) => l.fonte === fonteFatura)
-        // Mesmo padrão de `indicesExtratoNoTotal` acima, agora para o lado da fatura:
-        // `aviso.permanece` (T0, ADR `inspecao-proposta-conciliacao`) também é um índice
-        // posicional relativo ao subconjunto filtrado que `detectarConciliacao` recebeu —
-        // aqui, `lancamentosDestaFatura` — não a `todosLancamentos` inteiro. Sem este
-        // remapeamento, `permanece` aponta para a linha errada sempre que a fatura não é o
-        // primeiro arquivo do lote (dívida registrada em
-        // Docs/debt/tecnica/remapeamento-permanece-ausente-app-tsx.md).
-        const indicesFaturaNoTotal = todosLancamentos
-          .map((l, indice) => ({ l, indice }))
-          .filter(({ l }) => l.fonte === fonteFatura)
-          .map(({ indice }) => indice)
-        const avisosConciliacao = detectarConciliacao(lancamentosDestaFatura, lancamentosExtratoTotal)
-        const avisosRemapeados = avisosConciliacao.map((aviso) => ({
-          ...aviso,
-          alvo: aviso.alvo.map((indiceStr) => String(indicesExtratoNoTotal[Number(indiceStr)])),
-          permanece: aviso.permanece.map((indiceStr) => String(indicesFaturaNoTotal[Number(indiceStr)])),
-        }))
-        adicionarAvisosAcionaveis(avisosRemapeados)
-      }
-    }
-
-    // Parseia naturezas uma única vez e deriva ambos os campos (D2 do ADR colinha-naturezas).
-    const ricas = lerNaturezas(modelo)
-
-    setLancamentos(todosLancamentos)
-    setNaturezasRicas(ricas)
-    // `naturezasValidas` derivado das siglas — sem parse adicional (D2 do ADR colinha-naturezas).
-    useAppStore.setState({ naturezasValidas: ricas.map((n) => n.sigla) })
-
-    setModeloBytes(modelo)
+    await handleProduzirPipeline({
+      csvArquivos,
+      dicEntries,
+      iniciais,
+      nomeUsuario,
+      mesEscolhido,
+      addAviso,
+      adicionarAvisosAcionaveis,
+      setLancamentos,
+      setNaturezasRicas,
+      setNaturezasValidas: (siglas) => useAppStore.setState({ naturezasValidas: siglas }),
+      setModeloBytes,
+    })
   }
 
   /**
    * Etapa 3 — Aprendizado do dicionário + geração do .xlsx.
    *
-   * Chama `gerarAPartirDosRevisados` com os lançamentos revisados do store,
-   * cria o Blob, dispara o download via `<a download>` e revoga o objectURL
-   * imediatamente — zero-retenção (invariante do projeto). Task T11: agora
-   * disparado pelo botão "Baixar .xlsx" do `ExportModal` (fase confirmar),
-   * não mais diretamente pelo botão "Exportar .xlsx" da toolbar.
+   * Delega para `handlersPipeline.ts` (Task T11). Task T11 (spec
+   * `redesign-frontend-claude-design`): disparado pelo botão "Baixar .xlsx" do
+   * `ExportModal` (fase confirmar), não mais diretamente pelo botão "Exportar
+   * .xlsx" da toolbar.
    */
   function handleGerar() {
-    if (!modeloBytes || lancamentos.length === 0) return
-
-    const xlsxBytes = gerarAPartirDosRevisados(modeloBytes, iniciais, lancamentos, dicEntries, mesEscolhido)
-
-    // `.slice()` materializa Uint8Array<ArrayBuffer> puro a partir do
-    // Uint8Array<ArrayBufferLike> do fflate — necessário para BlobPart no TS ≥ 5.7.
-    const blob = new Blob([xlsxBytes.slice()], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    })
-    const nome = computarNomeArquivo(lancamentos, iniciais)
-
-    const url = URL.createObjectURL(blob)
-    const a = anchorRef.current
-    if (!a) return
-    a.href = url
-    a.download = nome
-    a.click()
-    marcarLimpo() // seta sujo=false imediatamente após exportação — D6 do ADR
-    URL.revokeObjectURL(url) // revoke imediato — zero-retenção
+    handleGerarPipeline({ modeloBytes, lancamentos, iniciais, dicEntries, mesEscolhido, anchorRef, marcarLimpo })
   }
 
   /** Confirma a exportação a partir do `ExportModal` (fase confirmar → "Baixar .xlsx"). */
