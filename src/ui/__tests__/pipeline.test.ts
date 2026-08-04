@@ -68,10 +68,10 @@ import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao }
 
 // ---------------------------------------------------------------------------
 // Nota: os testes dos grupos `estadoInicial` e `reduzir — *` foram removidos
-// nesta migração (T10). A função `reduzir` e `estadoInicial` permanecem
-// exportadas em PipelineState.ts mas são código morto a partir de T6/T9
-// (o estado de UI migrou para o store Zustand). A limpeza do código morto
-// fica fora do escopo de T10 (Áreas tocadas = apenas arquivos de teste).
+// numa migração anterior (spec mvp-vertical-nubank). O reducer paralelo
+// (`reduzir`/`Estado`/`Acao`/`estadoInicial`) em si — código morto desde que
+// o estado de UI migrou para o store Zustand — foi deletado de
+// PipelineState.ts na Task T10 da spec fundacao-operacoes.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
