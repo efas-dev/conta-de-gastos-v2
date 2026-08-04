@@ -67,6 +67,8 @@ export function TelaImportacao({
   const setNaturezasRicas = useAppStore((s) => s.setNaturezasRicas)
   const addAviso = useAppStore((s) => s.addAviso)
   const adicionarAvisosAcionaveis = useAppStore((s) => s.adicionarAvisos)
+  /** Ação do avisosSlice (T09) que zera `avisosAcionaveis` — política D8, cutover T14. */
+  const limparAvisosAcionaveis = useAppStore((s) => s.limparAvisos)
 
   /** Flag: usuário editou manualmente o campo de iniciais na sessão (não sobrescrito por lerIniciais). */
   const [usuarioEditouIniciais, setUsuarioEditouIniciais] = useState<boolean>(false)
@@ -261,6 +263,7 @@ export function TelaImportacao({
       mesEscolhido,
       addAviso,
       adicionarAvisosAcionaveis,
+      limparAvisos: limparAvisosAcionaveis,
       setLancamentos,
       setNaturezasRicas,
       setNaturezasValidas: (siglas) => useAppStore.setState({ naturezasValidas: siglas }),

@@ -33,6 +33,7 @@ const {
   addAviso,
   adicionarAvisos,
   clearAvisos,
+  limparAvisos,
   mockSetState,
   mockHandleProduzirPipeline,
 } = vi.hoisted(() => ({
@@ -44,6 +45,7 @@ const {
   addAviso: vi.fn(),
   adicionarAvisos: vi.fn(),
   clearAvisos: vi.fn(),
+  limparAvisos: vi.fn(),
   mockSetState: vi.fn(),
   mockHandleProduzirPipeline: vi.fn(async () => {}),
 }))
@@ -58,6 +60,7 @@ function acoes() {
     addAviso,
     adicionarAvisos,
     clearAvisos,
+    limparAvisos,
   }
 }
 
@@ -270,5 +273,27 @@ describe('TelaImportacao', () => {
 
     rerender(<TelaImportacao {...props({ painel: 'naturezas' })} />)
     expect(screen.getByTestId('painel-lateral')).toBeInTheDocument()
+  })
+
+  // Task T14 (spec fundacao-operacoes): cutover do registry — o wrapper local
+  // handleProduzir passa a repassar `limparAvisos` (ação do avisosSlice, política D8)
+  // como dependência de `handleProduzirPipeline`, junto das demais já cobertas.
+  it('clicar em "Produzir revisão" chama handleProduzirPipeline com limparAvisos do store (T14)', async () => {
+    estado.iniciais = 'ES'
+    const { container } = render(<TelaImportacao {...props()} />)
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [csvFile('nubank.csv')] } })
+    })
+    await waitFor(() => expect(screen.getByText('nubank.csv')).toBeInTheDocument())
+
+    await act(async () => {
+      fireEvent.click(screen.getByText('Produzir revisão'))
+    })
+
+    expect(mockHandleProduzirPipeline).toHaveBeenCalledTimes(1)
+    const deps = mockHandleProduzirPipeline.mock.calls[0][0] as { limparAvisos: unknown }
+    expect(deps.limparAvisos).toBe(limparAvisos)
   })
 })

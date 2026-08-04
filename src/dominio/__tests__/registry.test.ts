@@ -463,10 +463,12 @@ describe('detectores — T06 (migração dos 3 detectores legados)', () => {
       }
     }
 
-    // Filtra às 3 origens desta paridade — o fixture usa "Pagamento de fatura" (extratoPagamento),
-    // que a partir de T07-bis também casa com `detectarTransferenciaInterna` (padrão genérico
-    // `PADROES_INTERNOS`); o aviso extra de `transferencia-interna` é esperado e correto, mas não
-    // faz parte do call-site legado de T06 reproduzido manualmente acima.
+    // Filtra às 3 origens desta paridade — o fixture usa "Pagamento de fatura" (extratoPagamento).
+    // Até a Task T14, esse texto também casava com `detectarTransferenciaInterna` (padrão genérico
+    // `PADROES_INTERNOS`), gerando um aviso extra de `transferencia-interna` sobre a mesma linha.
+    // T14 removeu `/Pagamento de fatura/i` de `PADROES_INTERNOS` (decisão de domínio: conciliação,
+    // item 26, já é dona dessa linha) — o filtro abaixo é mantido por robustez/clareza de intenção,
+    // mas o aviso extra não ocorre mais para este fixture.
     const origensDestaParidade = ['valor-pendente', 'pagamento-recebido', 'conciliacao']
     const avisosNovo = orquestrarDeteccao(todosLancamentos, detectores, undefined, mesRef).filter(
       (a) => origensDestaParidade.includes(a.origem),
@@ -571,12 +573,20 @@ describe('detectores — T07-bis (transferência interna)', () => {
   })
 
   it('PARIDADE: aviso de transferência interna aponta o mesmo id do lançamento independentemente de qual fonte aparece primeiro no array total', () => {
+    // Fixture trocada de "Pagamento de fatura Nubank" p/ "ITAU BLACK pagamento fatura"
+    // (Task T14, decisão de domínio 2026-08-04): "Pagamento de fatura" deixou de
+    // casar com `detectarTransferenciaInterna` — conciliação (item 26) é dona
+    // dessa linha, `/Pagamento de fatura/i` foi removido de `PADROES_INTERNOS`
+    // (`../transferencia.ts`) para eliminar a colisão de duas propostas
+    // concorrentes sobre o mesmo lançamento. O padrão genérico de fatura sem
+    // correlação de conciliação ("ITAU BLACK") continua ativo e serve igualmente
+    // ao propósito original deste teste (paridade de id independente de ordem).
     const extrato = lancamento({ id: 1, fonte: 'Itaú', transcricao: 'Débito extrato' })
     const faturaComum = lancamento({ id: 2, fonte: 'Nubank', transcricao: 'Compra qualquer' })
     const faturaTransferencia = lancamento({
       id: 3,
       fonte: 'Nubank',
-      transcricao: 'Pagamento de fatura Nubank',
+      transcricao: 'ITAU BLACK pagamento fatura',
       valor: -300,
     })
     const todosLancamentos = [extrato, faturaComum, faturaTransferencia]

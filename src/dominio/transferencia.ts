@@ -8,10 +8,20 @@ import type { Aviso, Lancamento } from '../types'
  * Ref. legado: `legado/src/gastos/modelos.py` — `_PADROES_INTERNOS`.
  * Padrões de investimento (APLICACAO, RESGATE, RDB, CDB) são tratados
  * por `detectarInvestimento` (src/dominio/investimento.ts).
+ *
+ * Decisão de domínio (2026-08-04, Task T14, autorizada pelo usuário — ver ADR
+ * `fundacao-operacoes`): `/Pagamento de fatura/i` foi REMOVIDO deste conjunto.
+ * Ligar o registry (5 detectores) ao fluxo real de produção (T14) revelou que
+ * esse padrão colidia com `detectarConciliacaoRegistry` — a mesma linha do
+ * extrato ("Pagamento de fatura") casava simultaneamente com conciliação e com
+ * transferência interna, gerando duas propostas concorrentes para o mesmo
+ * lançamento. Conciliação (item 26 do TODO) já é dona dessa linha — o pagamento
+ * de fatura é resolvido por correlação fatura×extrato, não por palavra-chave
+ * genérica. Padrões de fatura de cartão SEM correlação de conciliação (ex.:
+ * "ITAU BLACK") continuam cobertos por padrão dedicado abaixo.
  */
 const PADROES_INTERNOS: RegExp[] = [
   /Open Banking/i,
-  /Pagamento de fatura/i,
   /ITAU BLACK/i,
 ]
 

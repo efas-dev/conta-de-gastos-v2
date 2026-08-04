@@ -41,6 +41,11 @@ vi.mock('../ui/PipelineState', () => ({
   produzirLancamentos: vi.fn(() => ({ lancamentos: [], dicEntries: [], avisos: [] })),
   gerarAPartirDosRevisados: vi.fn(() => new Uint8Array([1, 2, 3])),
   computarNomeArquivo: vi.fn(() => 'extrato.xlsx'),
+  // Task T14 (cutover): handlersPipeline.handleProduzir agora importa reproduzirAvisos
+  // de PipelineState — mock no-op preserva o comportamento anterior destes testes (que
+  // exercitam o canal avisosAcionaveis via o 6º argumento de produzirLancamentos, não
+  // via reproduzirAvisos/registry).
+  reproduzirAvisos: vi.fn(),
 }))
 
 // Mock do leitor — controla ehDicionario/lerDicionario/lerIniciais nos testes de

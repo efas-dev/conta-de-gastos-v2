@@ -22,10 +22,6 @@ describe('detectarTransferenciaInterna', () => {
       expect(detectarTransferenciaInterna(lancamentoOpenBanking)).toBe(true)
     })
 
-    it('retorna true para "Pagamento de fatura" (TL-2)', () => {
-      expect(detectarTransferenciaInterna(lancamentoPagFatura)).toBe(true)
-    })
-
     it('retorna true para "ITAU BLACK" (TL-3)', () => {
       expect(detectarTransferenciaInterna(lancamentoItauBlack)).toBe(true)
     })
@@ -56,6 +52,20 @@ describe('detectarTransferenciaInterna', () => {
 
     it('retorna false para transcrição vazia (TL-9)', () => {
       expect(detectarTransferenciaInterna(lancamentoTranscricaoVazia)).toBe(false)
+    })
+
+    /**
+     * TL-2 (redefinido, Task T14, decisão de domínio 2026-08-04): "Pagamento de
+     * fatura" deixou de ser transferência interna. Ligar o registry ao fluxo real
+     * de produção revelou colisão com `detectarConciliacaoRegistry` — a mesma
+     * linha do extrato gerava duas propostas concorrentes (conciliação E
+     * transferência interna). Conciliação (item 26) já é dona dessa linha via
+     * correlação fatura×extrato; `/Pagamento de fatura/i` foi removido de
+     * `PADROES_INTERNOS` (`../transferencia.ts`). Antes desta task, este mesmo
+     * fixture (`lancamentoPagFatura`) provava o oposto (`toBe(true)`).
+     */
+    it('retorna false para "Pagamento de fatura" — conciliação já é dona dessa linha (TL-2)', () => {
+      expect(detectarTransferenciaInterna(lancamentoPagFatura)).toBe(false)
     })
   })
 })
@@ -117,7 +127,7 @@ describe('detectarTransferenciaInternaAvisos', () => {
     expect(aviso.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [43] })
   })
 
-  it('gera um Aviso por lançamento de transferência interna, cada um mirando o próprio id (TL-28)', () => {
+  it('gera um Aviso por lançamento de transferência interna, cada um mirando o próprio id — "Pagamento de fatura" NÃO gera proposta (conciliação já é dona dessa linha, Task T14) (TL-28)', () => {
     const comum = lancamentoComId({ id: 1, transcricao: 'Compra mercado' })
     const openBanking = lancamentoComId({
       id: 2,
@@ -127,8 +137,8 @@ describe('detectarTransferenciaInternaAvisos', () => {
     const pagFatura = lancamentoComId({ id: 3, transcricao: 'Pagamento de fatura Nubank', valor: -1200 })
     const avisos = detectarTransferenciaInternaAvisos([comum, openBanking, pagFatura])
 
-    expect(avisos).toHaveLength(2)
-    expect(avisos.map((a) => a.mutacaoProposta?.alvo)).toEqual([[2], [3]])
+    expect(avisos).toHaveLength(1)
+    expect(avisos.map((a) => a.mutacaoProposta?.alvo)).toEqual([[2]])
   })
 
   it('Aviso.alvo (legado) contém o id como string e Aviso.permanece é sempre [] (TL-29)', () => {
@@ -140,21 +150,26 @@ describe('detectarTransferenciaInternaAvisos', () => {
   })
 
   it('Aviso nasce com estado pendente (TL-30)', () => {
-    const transferencia = lancamentoComId({ id: 8, transcricao: 'Pagamento de fatura Nubank', valor: -100 })
+    // Fixture trocada de "Pagamento de fatura Nubank" p/ "ITAU BLACK pagamento fatura"
+    // (Task T14): o padrão genérico de fatura sem correlação de conciliação
+    // continua ativo; só "Pagamento de fatura" (dono: conciliação) foi removido.
+    const transferencia = lancamentoComId({ id: 8, transcricao: 'ITAU BLACK pagamento fatura', valor: -100 })
     const [aviso] = detectarTransferenciaInternaAvisos([transferencia])
 
     expect(aviso.estado).toBe('pendente')
   })
 
   it('mensagem menciona a transcrição do lançamento (TL-31)', () => {
+    // Fixture trocada de "Pagamento de fatura Nubank" p/ "ITAU BLACK pagamento fatura"
+    // pelo mesmo motivo do TL-30 acima.
     const transferencia = lancamentoComId({
       id: 9,
-      transcricao: 'Pagamento de fatura Nubank',
+      transcricao: 'ITAU BLACK pagamento fatura',
       valor: -1234.56,
     })
     const [aviso] = detectarTransferenciaInternaAvisos([transferencia])
 
-    expect(aviso.mensagem).toContain('Pagamento de fatura Nubank')
+    expect(aviso.mensagem).toContain('ITAU BLACK pagamento fatura')
   })
 
   it('id do Aviso é determinístico e único por lançamento (TL-32)', () => {

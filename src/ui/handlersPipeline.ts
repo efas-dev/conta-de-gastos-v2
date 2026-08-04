@@ -3,15 +3,10 @@ import {
   produzirLancamentos,
   gerarAPartirDosRevisados,
   computarNomeArquivo,
+  reproduzirAvisos,
 } from './PipelineState'
 import { lerNaturezas } from '../excel/reader/leitor'
-import { classificarFonte } from '../dominio/mes'
 import { decodificarCsv } from '../parsers/decodificar'
-import {
-  detectarConciliacao,
-  detectarValorPendente,
-  detectarPagamentoRecebido,
-} from '../dominio/deteccoes'
 import type { Aviso, DicEntry, Lancamento, NaturezaRica } from '../types'
 
 /**
@@ -61,6 +56,13 @@ export interface DepsHandleProduzir {
   mesEscolhido: string
   addAviso: (mensagem: string) => void
   adicionarAvisosAcionaveis: (avisos: Aviso[]) => void
+  /**
+   * Ação do avisosSlice (T09) que zera `avisosAcionaveis` por inteiro — chamada por
+   * `reproduzirAvisos` (política D8) antes de re-rodar o registry. Task T14: novo campo,
+   * único jeito de o cutover ficar OBSERVÁVEL em produção (sem ele, `reproduzirAvisos`
+   * não tem como limpar o canal real do store).
+   */
+  limparAvisos: () => void
   setLancamentos: (lancamentos: Lancamento[]) => void
   setNaturezasRicas: (naturezas: NaturezaRica[]) => void
   setNaturezasValidas: (siglas: string[]) => void
@@ -74,10 +76,11 @@ export interface DepsHandleProduzir {
  * busca Modelo.xlsx, chama `produzirLancamentos` e povoa o store.
  * Também lê `lerNaturezas` do modelo e grava `naturezasValidas` no store.
  *
- * Task T11 (spec `fundacao-operacoes`): extraído de `App.tsx::handleProduzir`,
- * comportamento preservado byte-a-byte (mesmas chamadas de detecção legadas —
- * o cutover para `reproduzirAvisos`/registry (D8/T09) fica DIFERIDO, ver
- * iteração-log desta task).
+ * Task T11 (spec `fundacao-operacoes`): extraído de `App.tsx::handleProduzir`.
+ * Task T14 (spec `fundacao-operacoes`): cutover — as detecções diretas de
+ * valor-pendente/pagamento-recebido/conciliação foram substituídas por uma única
+ * chamada a `reproduzirAvisos` (política D8/T09: zera `avisosAcionaveis` e roda os 5
+ * detectores do registry sobre `todosLancamentos`).
  */
 export async function handleProduzir(deps: DepsHandleProduzir): Promise<void> {
   const {
@@ -88,6 +91,7 @@ export async function handleProduzir(deps: DepsHandleProduzir): Promise<void> {
     mesEscolhido,
     addAviso,
     adicionarAvisosAcionaveis,
+    limparAvisos,
     setLancamentos,
     setNaturezasRicas,
     setNaturezasValidas,
@@ -132,84 +136,24 @@ export async function handleProduzir(deps: DepsHandleProduzir): Promise<void> {
     }
   }
 
-  // Task T11 do ADR `inspecao-proposta-conciliacao`: valor-pendente/pagamento-recebido
-  // precisam ser detectados sobre o array TOTAL já concatenado (`todosLancamentos`),
-  // não a sublista per-arquivo — `produzirLancamentos` (acima) parava de fazer isso
-  // internamente por rodar por arquivo (T11, ver PipelineState.ts). Como
-  // `origemEspecial` está presente em cada lançamento do total, `alvo` já nasce como
-  // índice real, sem remapeamento de offset (mesmo padrão de `detectarConciliacao`
-  // abaixo, mas sem precisar de `indicesFaturaNoTotal`/`indicesExtratoNoTotal` porque
-  // a detecção já roda direto sobre o total). Corrige o bug achado na validação
-  // visual manual (2026-08-01): quando a fatura não é o 1º arquivo do lote, o `alvo`
-  // relativo à sublista per-arquivo casava com a linha errada em `state.lancamentos`.
-  const avisosValorPendente = detectarValorPendente(todosLancamentos)
-  const avisosPagamentoRecebido = detectarPagamentoRecebido(todosLancamentos)
-  adicionarAvisosAcionaveis([...avisosValorPendente, ...avisosPagamentoRecebido])
-
-  // Task 8 do ADR avisos-acionaveis: correlaciona fatura×extrato pelo campo
-  // `fonte` que os parsers já gravam em cada lançamento — sem heurística de
-  // nome de arquivo (decisão humana, ver spec Task 8). Reutiliza
-  // `classificarFonte` (já usado acima para os rótulos fatura/extrato da
-  // lista de arquivos) como única fonte de verdade, em vez de introduzir
-  // uma segunda heurística. `produzirLancamentos` sempre roda por arquivo
-  // com `lancamentosExtrato=[]` (linha 366: 5º argumento), então
-  // `detectarConciliacao` nunca dispara ali — esta é a única chamada,
-  // evitando dupla emissão de propostas. Só executa quando o lote produzido
-  // tem ao menos uma fonte de cada lado; um único arquivo (só fatura ou só
-  // extrato) fica sem proposta e sem o aviso informativo "não conciliada",
-  // preservando o comportamento anterior.
-  const fontesProduzidas = Array.from(new Set(todosLancamentos.map((l) => l.fonte)))
-  const fontesFaturaProduzidas = fontesProduzidas.filter(
-    (fonte) => classificarFonte(fonte, todosLancamentos, mesEscolhido) === 'fatura',
+  // Task T14 (spec `fundacao-operacoes`): cutover para o registry — política D8 (T09):
+  // `reproduzirAvisos` zera `avisosAcionaveis` por inteiro (incluindo decisões de rodadas
+  // anteriores E os informativos já emitidos acima nesta mesma rodada, ex.: "linhas
+  // ignoradas" — D8 não filtra por origem/rodada, ver Test List de T09) e roda os 5
+  // detectores registrados (`src/dominio/registry.ts`: valor-pendente, pagamento-recebido,
+  // conciliação, investimento, transferência interna) sobre `todosLancamentos` já
+  // concatenado. Substitui as 3 chamadas legadas diretas
+  // (`detectarValorPendente`/`detectarPagamentoRecebido`/`detectarConciliacao`) e o
+  // remapeamento manual de índice que viviam aqui — o wrapper de conciliação do registry
+  // (`registry.ts::detectarConciliacaoRegistry`) já reproduz essa mesma lógica de
+  // classificação/agrupamento/remapeamento (ver iteração-log de T06).
+  reproduzirAvisos(
+    todosLancamentos,
+    nomeUsuario || undefined,
+    mesEscolhido,
+    limparAvisos,
+    adicionarAvisosAcionaveis,
   )
-  const fontesExtratoProduzidas = fontesProduzidas.filter(
-    (fonte) => classificarFonte(fonte, todosLancamentos, mesEscolhido) === 'extrato',
-  )
-
-  if (fontesFaturaProduzidas.length > 0 && fontesExtratoProduzidas.length > 0) {
-    const lancamentosExtratoTotal = todosLancamentos.filter((l) =>
-      fontesExtratoProduzidas.includes(l.fonte),
-    )
-    // `detectarConciliacao` (T3, função pura) devolve `aviso.alvo` como índice
-    // posicional relativo ao array `lancamentosExtrato` que ela recebeu — aqui,
-    // o subconjunto filtrado `lancamentosExtratoTotal`, não `todosLancamentos`
-    // inteiro. `avisosSlice.aplicar` (T4), por sua vez, interpreta `alvo` como
-    // índice posicional em `state.lancamentos`, que é `todosLancamentos` sem
-    // filtro (ver `setLancamentos(todosLancamentos)` abaixo). Os dois contratos
-    // são internamente corretos, mas divergem no índice-base; sem remapear
-    // aqui, `aplicar` removeria o item errado sempre que a fatura precedesse o
-    // extrato no lote (evidência: Docs/.harness/iteracao-log-spec-20260720-avisos-acionaveis.md,
-    // bloco "Debugging gate" da Task 7, 2ª tentativa). `indicesExtratoNoTotal[i]`
-    // traduz o índice i dentro do subconjunto filtrado para o índice real em
-    // `todosLancamentos`.
-    const indicesExtratoNoTotal = todosLancamentos
-      .map((l, indice) => ({ l, indice }))
-      .filter(({ l }) => fontesExtratoProduzidas.includes(l.fonte))
-      .map(({ indice }) => indice)
-    // Par único por fatura (Decisão R2 do ADR): uma chamada de detectarConciliacao
-    // por fonte de fatura, nunca as faturas somadas entre si.
-    for (const fonteFatura of fontesFaturaProduzidas) {
-      const lancamentosDestaFatura = todosLancamentos.filter((l) => l.fonte === fonteFatura)
-      // Mesmo padrão de `indicesExtratoNoTotal` acima, agora para o lado da fatura:
-      // `aviso.permanece` (T0, ADR `inspecao-proposta-conciliacao`) também é um índice
-      // posicional relativo ao subconjunto filtrado que `detectarConciliacao` recebeu —
-      // aqui, `lancamentosDestaFatura` — não a `todosLancamentos` inteiro. Sem este
-      // remapeamento, `permanece` aponta para a linha errada sempre que a fatura não é o
-      // primeiro arquivo do lote (dívida registrada em
-      // Docs/debt/tecnica/remapeamento-permanece-ausente-app-tsx.md).
-      const indicesFaturaNoTotal = todosLancamentos
-        .map((l, indice) => ({ l, indice }))
-        .filter(({ l }) => l.fonte === fonteFatura)
-        .map(({ indice }) => indice)
-      const avisosConciliacao = detectarConciliacao(lancamentosDestaFatura, lancamentosExtratoTotal)
-      const avisosRemapeados = avisosConciliacao.map((aviso) => ({
-        ...aviso,
-        alvo: aviso.alvo.map((indiceStr) => String(indicesExtratoNoTotal[Number(indiceStr)])),
-        permanece: aviso.permanece.map((indiceStr) => String(indicesFaturaNoTotal[Number(indiceStr)])),
-      }))
-      adicionarAvisosAcionaveis(avisosRemapeados)
-    }
-  }
 
   // Parseia naturezas uma única vez e deriva ambos os campos (D2 do ADR colinha-naturezas).
   const ricas = lerNaturezas(modelo)
