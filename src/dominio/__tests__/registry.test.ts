@@ -3,6 +3,8 @@
 import { describe, it, expect } from 'vitest'
 import type { Detector, ContextoDeteccao } from '../registry'
 import { detectores, orquestrarDeteccao } from '../registry'
+import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from '../deteccoes'
+import { classificarFonte } from '../mes'
 import type { Aviso, Lancamento } from '../../types'
 
 function lancamento(overrides: Partial<Lancamento> = {}): Lancamento {
@@ -47,7 +49,7 @@ describe('Detector — contrato', () => {
     const fakePorFonte: Detector = { origem: 'a', escopo: 'por-fonte', detectar: () => [] }
     const fakeGlobal: Detector = { origem: 'b', escopo: 'global', detectar: () => [] }
     const lista: Detector[] = [...detectores, fakePorFonte, fakeGlobal]
-    expect(lista).toHaveLength(2)
+    expect(lista).toHaveLength(detectores.length + 2)
   })
 
   it('a função de detecção devolve Aviso[] e recebe lancamentos + contexto sem mutar a entrada', () => {
@@ -97,8 +99,10 @@ describe('registry — lista de detectores', () => {
     expect(Array.isArray(detectores)).toBe(true)
   })
 
-  it('nasce vazio nesta task — nenhum detector existente satisfaz o contrato sem migração (T06/T07/T07-bis)', () => {
-    expect(detectores).toHaveLength(0)
+  it('T06 migra 3 detectores (valor-pendente, pagamento-recebido, conciliação); investimento e transferência interna ainda faltam (T07/T07-bis)', () => {
+    expect(detectores).toHaveLength(3)
+    expect(detectores.map((d) => d.origem)).not.toContain('investimento')
+    expect(detectores.map((d) => d.origem)).not.toContain('transferencia-interna')
   })
 })
 
@@ -289,5 +293,174 @@ describe('orquestrarDeteccao — detectores mistos e agregação', () => {
     }
     orquestrarDeteccao([lancamento({ fonte: 'Nubank' })], [fakePorFonte, fakeGlobal], 'Fulano')
     expect(nomesVistos).toEqual(['Fulano', 'Fulano'])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// T06 — migração de detectarValorPendente/detectarPagamentoRecebido/detectarConciliacao
+// ---------------------------------------------------------------------------
+
+describe('detectores — T06 (migração dos 3 detectores legados)', () => {
+  it('contém exatamente 3 entradas: valor-pendente, pagamento-recebido, conciliacao', () => {
+    expect(detectores.map((d) => d.origem)).toEqual([
+      'valor-pendente',
+      'pagamento-recebido',
+      'conciliacao',
+    ])
+  })
+
+  it('valor-pendente e pagamento-recebido têm escopo "global" (não "por-fonte")', () => {
+    const valorPendente = detectores.find((d) => d.origem === 'valor-pendente')
+    const pagamentoRecebido = detectores.find((d) => d.origem === 'pagamento-recebido')
+    expect(valorPendente?.escopo).toBe('global')
+    expect(pagamentoRecebido?.escopo).toBe('global')
+  })
+
+  it('conciliacao tem escopo "global"', () => {
+    const conciliacao = detectores.find((d) => d.origem === 'conciliacao')
+    expect(conciliacao?.escopo).toBe('global')
+  })
+
+  it('valor-pendente: alvo aponta o índice GLOBAL correto mesmo quando a fatura não é a primeira fonte do array total', () => {
+    const extrato1 = lancamento({ id: 1, fonte: 'Itaú', transcricao: 'Débito extrato' })
+    const extrato2 = lancamento({ id: 2, fonte: 'Itaú', transcricao: 'Outro débito extrato' })
+    const faturaComum = lancamento({ id: 3, fonte: 'Nubank', transcricao: 'Compra qualquer' })
+    const faturaValorPendente = lancamento({
+      id: 4,
+      fonte: 'Nubank',
+      transcricao: 'Valor pendente do mês anterior',
+      valor: -80,
+      origemEspecial: 'valor-pendente',
+    })
+    const todosLancamentos = [extrato1, extrato2, faturaComum, faturaValorPendente]
+
+    const avisos = orquestrarDeteccao(todosLancamentos, detectores)
+    const avisoValorPendente = avisos.find((a) => a.origem === 'valor-pendente')
+
+    expect(avisoValorPendente).toBeDefined()
+    // índice 3 = posição real de faturaValorPendente em todosLancamentos, não 1
+    // (que seria o índice relativo à fatia por fonte 'Nubank': [faturaComum, faturaValorPendente]).
+    expect(avisoValorPendente?.alvo).toEqual(['3'])
+  })
+
+  it('pagamento-recebido: alvo aponta o índice GLOBAL correto mesmo quando a fatura não é a primeira fonte do array total', () => {
+    const extrato1 = lancamento({ id: 1, fonte: 'Itaú', transcricao: 'Débito extrato' })
+    const faturaComum = lancamento({ id: 2, fonte: 'Nubank', transcricao: 'Compra qualquer' })
+    const faturaPagamentoRecebido = lancamento({
+      id: 3,
+      fonte: 'Nubank',
+      transcricao: 'Pagamento recebido',
+      valor: 300,
+      origemEspecial: 'pagamento-recebido',
+    })
+    const todosLancamentos = [extrato1, faturaComum, faturaPagamentoRecebido]
+
+    const avisos = orquestrarDeteccao(todosLancamentos, detectores)
+    const avisoPagamentoRecebido = avisos.find((a) => a.origem === 'pagamento-recebido')
+
+    expect(avisoPagamentoRecebido).toBeDefined()
+    expect(avisoPagamentoRecebido?.alvo).toEqual(['2'])
+  })
+
+  it('conciliacao: com mesRef fornecido, alvo/permanece remapeados para índices globais idênticos ao call-site legado', () => {
+    // Mesmo padrão de App.tsx: extrato antes, fatura depois no array total.
+    const extratoOutro = lancamento({ id: 1, fonte: 'Itaú', data: '2026-07-05', transcricao: 'Débito qualquer', valor: -999 })
+    const extratoPagamento = lancamento({ id: 2, fonte: 'Itaú', data: '2026-07-10', transcricao: 'Pagamento de fatura', valor: -150.32 })
+    const faturaA = lancamento({ id: 3, fonte: 'Nubank', data: '2026-06-05', transcricao: 'Item A', valor: -100 })
+    const faturaB = lancamento({ id: 4, fonte: 'Nubank', data: '2026-06-10', transcricao: 'Item B', valor: -50.3 })
+    const todosLancamentos = [extratoOutro, extratoPagamento, faturaA, faturaB]
+    const mesRef = '2026-07' // Nubank (datas de junho) < mesRef → fatura; Itaú (datas de julho) === mesRef → extrato
+
+    const avisos = orquestrarDeteccao(todosLancamentos, detectores, undefined, mesRef)
+    const avisoConciliacao = avisos.find((a) => a.origem === 'conciliacao' && a.tipo === 'proposta')
+
+    expect(avisoConciliacao).toBeDefined()
+    // alvo: índice global de extratoPagamento (1); permanece: índices globais de faturaA/faturaB (2, 3).
+    expect(avisoConciliacao?.alvo).toEqual(['1'])
+    expect(avisoConciliacao?.permanece).toEqual(['2', '3'])
+  })
+
+  it('conciliacao: sem mesRef no contexto, não produz aviso (degradação sem quebrar)', () => {
+    const extrato = lancamento({ id: 1, fonte: 'Itaú', data: '2026-07-10', transcricao: 'Pagamento de fatura', valor: -150.32 })
+    const fatura = lancamento({ id: 2, fonte: 'Nubank', data: '2026-06-05', transcricao: 'Item A', valor: -150.3 })
+    const avisos = orquestrarDeteccao([extrato, fatura], detectores)
+    expect(avisos.some((a) => a.origem === 'conciliacao')).toBe(false)
+  })
+
+  it('conciliacao: só há fonte fatura (sem extrato) — não produz aviso, mesmo guard de App.tsx', () => {
+    const faturaA = lancamento({ id: 1, fonte: 'Nubank', data: '2026-06-05', transcricao: 'Item A', valor: -100 })
+    const avisos = orquestrarDeteccao([faturaA], detectores, undefined, '2026-07')
+    expect(avisos.some((a) => a.origem === 'conciliacao')).toBe(false)
+  })
+
+  it('PARIDADE: fixture combinado (valor-pendente + pagamento-recebido + conciliação) produz avisos idênticos ao call-site legado reproduzido passo a passo', () => {
+    const extratoDebito = lancamento({ id: 1, fonte: 'Itaú', data: '2026-07-03', transcricao: 'Débito qualquer', valor: -999 })
+    const extratoPagamento = lancamento({ id: 2, fonte: 'Itaú', data: '2026-07-10', transcricao: 'Pagamento de fatura', valor: -150.32 })
+    const faturaComum = lancamento({ id: 3, fonte: 'Nubank', data: '2026-06-05', transcricao: 'Compra qualquer', valor: -20 })
+    const faturaA = lancamento({ id: 4, fonte: 'Nubank', data: '2026-06-06', transcricao: 'Item A', valor: -100 })
+    const faturaB = lancamento({ id: 5, fonte: 'Nubank', data: '2026-06-07', transcricao: 'Item B', valor: -50.3 })
+    const faturaValorPendente = lancamento({
+      id: 6,
+      fonte: 'Nubank',
+      data: '2026-06-08',
+      transcricao: 'Valor pendente do mês anterior',
+      valor: -40,
+      origemEspecial: 'valor-pendente',
+    })
+    const faturaPagamentoRecebido = lancamento({
+      id: 7,
+      fonte: 'Nubank',
+      data: '2026-06-09',
+      transcricao: 'Pagamento recebido',
+      valor: 300,
+      origemEspecial: 'pagamento-recebido',
+    })
+    const todosLancamentos = [
+      extratoDebito,
+      extratoPagamento,
+      faturaComum,
+      faturaA,
+      faturaB,
+      faturaValorPendente,
+      faturaPagamentoRecebido,
+    ]
+    const mesRef = '2026-07'
+
+    // Reproduz passo a passo o call-site legado (App.tsx:524-590).
+    const avisosLegado: Aviso[] = []
+    avisosLegado.push(...detectarValorPendente(todosLancamentos))
+    avisosLegado.push(...detectarPagamentoRecebido(todosLancamentos))
+    const fontesProduzidas = Array.from(new Set(todosLancamentos.map((l) => l.fonte)))
+    const fontesFatura = fontesProduzidas.filter(
+      (f) => classificarFonte(f, todosLancamentos, mesRef) === 'fatura',
+    )
+    const fontesExtrato = fontesProduzidas.filter(
+      (f) => classificarFonte(f, todosLancamentos, mesRef) === 'extrato',
+    )
+    if (fontesFatura.length > 0 && fontesExtrato.length > 0) {
+      const lancamentosExtratoTotal = todosLancamentos.filter((l) => fontesExtrato.includes(l.fonte))
+      const indicesExtratoNoTotal = todosLancamentos
+        .map((l, indice) => ({ l, indice }))
+        .filter(({ l }) => fontesExtrato.includes(l.fonte))
+        .map(({ indice }) => indice)
+      for (const fonteFatura of fontesFatura) {
+        const lancamentosDestaFatura = todosLancamentos.filter((l) => l.fonte === fonteFatura)
+        const indicesFaturaNoTotal = todosLancamentos
+          .map((l, indice) => ({ l, indice }))
+          .filter(({ l }) => l.fonte === fonteFatura)
+          .map(({ indice }) => indice)
+        const avisosConciliacao = detectarConciliacao(lancamentosDestaFatura, lancamentosExtratoTotal)
+        const avisosRemapeados = avisosConciliacao.map((aviso) => ({
+          ...aviso,
+          alvo: aviso.alvo.map((indiceStr) => String(indicesExtratoNoTotal[Number(indiceStr)])),
+          permanece: aviso.permanece.map((indiceStr) => String(indicesFaturaNoTotal[Number(indiceStr)])),
+        }))
+        avisosLegado.push(...avisosRemapeados)
+      }
+    }
+
+    const avisosNovo = orquestrarDeteccao(todosLancamentos, detectores, undefined, mesRef)
+
+    expect(avisosNovo).toEqual(avisosLegado)
   })
 })

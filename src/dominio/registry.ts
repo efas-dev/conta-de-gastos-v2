@@ -1,6 +1,8 @@
 // ADR: see spec/fundacao-operacoes.adr.md
 
 import type { Aviso, Lancamento } from '../types'
+import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from './deteccoes'
+import { classificarFonte } from './mes'
 
 /**
  * Escopo de execução declarado por um detector (ver ADR `fundacao-operacoes`, Decisão 3):
@@ -24,6 +26,14 @@ export interface ContextoDeteccao {
   todosLancamentos: Lancamento[]
   /** Nome do usuário, quando informado — habilita heurísticas nominais (ex.: Pix nominal). */
   nomeUsuario?: string
+  /**
+   * Mês de referência (formato `YYYY-MM`), quando informado — necessário para
+   * `classificarFonte` (`src/dominio/mes.ts`) distinguir fatura de extrato por fonte
+   * (ver ADR `fundacao-operacoes`, Task T06). Campo aditivo introduzido em T06 para o
+   * detector de conciliação; sem ele, conciliação não tem como classificar as fontes e
+   * não produz aviso (ver `detectarConciliacaoRegistry`).
+   */
+  mesRef?: string
 }
 
 /**
@@ -52,17 +62,86 @@ export interface Detector {
 }
 
 /**
+ * Wrapper de conciliação para o contrato `Detector` (T06, ver ADR `fundacao-operacoes`).
+ *
+ * A função pura `detectarConciliacao` (`src/dominio/deteccoes.ts`) permanece intocada — recebe
+ * `lancamentosFatura`/`lancamentosExtrato` já filtrados e devolve `alvo`/`permanece` como índices
+ * relativos a esses arrays filtrados. Este wrapper reproduz, célula a célula, a orquestração que
+ * hoje vive em `App.tsx` (linhas 528-591): classifica cada fonte presente em `lancamentos` como
+ * fatura/extrato via `classificarFonte` (exige `contexto.mesRef` — sem ele, não há como
+ * classificar e o detector não produz nada), agrupa todas as fontes de extrato num único array
+ * (`lancamentosExtratoTotal`), e itera uma vez por fonte de FATURA chamando `detectarConciliacao`
+ * e remapeando os índices locais de volta para índices globais em `lancamentos`.
+ *
+ * Escopo `'global'` (ver Decisão de escopo no iteração-log de T06): conciliação precisa enxergar
+ * todas as fontes simultaneamente para classificar e casar através delas — um fatiamento cego
+ * `'por-fonte'` do orquestrador (T05) isolaria cada fonte sem o contexto cruzado necessário.
+ */
+function detectarConciliacaoRegistry(lancamentos: Lancamento[], contexto: ContextoDeteccao): Aviso[] {
+  const mesRef = contexto.mesRef
+  if (!mesRef) return []
+
+  const fontesProduzidas = Array.from(new Set(lancamentos.map((l) => l.fonte)))
+  const fontesFatura = fontesProduzidas.filter(
+    (fonte) => classificarFonte(fonte, lancamentos, mesRef) === 'fatura',
+  )
+  const fontesExtrato = fontesProduzidas.filter(
+    (fonte) => classificarFonte(fonte, lancamentos, mesRef) === 'extrato',
+  )
+
+  if (fontesFatura.length === 0 || fontesExtrato.length === 0) return []
+
+  const lancamentosExtratoTotal = lancamentos.filter((l) => fontesExtrato.includes(l.fonte))
+  const indicesExtratoNoTotal = lancamentos
+    .map((l, indice) => ({ l, indice }))
+    .filter(({ l }) => fontesExtrato.includes(l.fonte))
+    .map(({ indice }) => indice)
+
+  const avisos: Aviso[] = []
+  for (const fonteFatura of fontesFatura) {
+    const lancamentosDestaFatura = lancamentos.filter((l) => l.fonte === fonteFatura)
+    const indicesFaturaNoTotal = lancamentos
+      .map((l, indice) => ({ l, indice }))
+      .filter(({ l }) => l.fonte === fonteFatura)
+      .map(({ indice }) => indice)
+    const avisosConciliacao = detectarConciliacao(lancamentosDestaFatura, lancamentosExtratoTotal)
+    const avisosRemapeados = avisosConciliacao.map((aviso) => ({
+      ...aviso,
+      alvo: aviso.alvo.map((indiceStr) => String(indicesExtratoNoTotal[Number(indiceStr)])),
+      permanece: aviso.permanece.map((indiceStr) => String(indicesFaturaNoTotal[Number(indiceStr)])),
+    }))
+    avisos.push(...avisosRemapeados)
+  }
+  return avisos
+}
+
+/**
  * Registro de detectores disponíveis, análogo ao array `parsers` de `src/parsers/index.ts`.
  *
- * Nasce vazio nesta task (T04): nenhum detector hoje existente satisfaz `FuncaoDeteccao` sem
- * adaptação — `detectarValorPendente`/`detectarPagamentoRecebido`/`detectarConciliacao`
- * (`src/dominio/deteccoes.ts`) recebem array(s) de lançamentos mas não o `ContextoDeteccao`
- * definido aqui; `detectarInvestimento` (`src/dominio/investimento.ts`) e
- * `detectarTransferenciaInterna` (`src/dominio/transferencia.ts`) operam sobre um único
- * `Lancamento`, não sobre um array. O contrato está definido e testado nesta task; a migração
- * real de cada detector para popular esta lista é escopo de T06/T07/T07-bis.
+ * T06 migra os 3 detectores existentes com escopo bem definido — ver ADR `fundacao-operacoes` e
+ * o iteração-log de T06 para a justificativa de cada escolha de escopo (todos `'global'`, nunca
+ * `'por-fonte'`, para preservar paridade com os índices calculados sobre o array total pelo
+ * call-site legado). `detectarInvestimento` (`src/dominio/investimento.ts`) e
+ * `detectarTransferenciaInterna` (`src/dominio/transferencia.ts`) ainda não estão aqui — migração
+ * é escopo de T07/T07-bis.
  */
-export const detectores: Detector[] = []
+export const detectores: Detector[] = [
+  {
+    origem: 'valor-pendente',
+    escopo: 'global',
+    detectar: (lancamentos) => detectarValorPendente(lancamentos),
+  },
+  {
+    origem: 'pagamento-recebido',
+    escopo: 'global',
+    detectar: (lancamentos) => detectarPagamentoRecebido(lancamentos),
+  },
+  {
+    origem: 'conciliacao',
+    escopo: 'global',
+    detectar: detectarConciliacaoRegistry,
+  },
+]
 
 /**
  * Orquestrador do registry (ver ADR `fundacao-operacoes`, Decisão 3): percorre `detectoresLista`
@@ -76,13 +155,19 @@ export const detectores: Detector[] = []
  * Zero lançamentos e um detector `'por-fonte'` produz zero chamadas (zero fontes = zero fatias).
  *
  * Os `Aviso[]` de todas as chamadas são concatenados, preservando a ordem de execução.
+ *
+ * `mesRef` (T06, ver ADR `fundacao-operacoes`): repassado ao contexto sem alteração — usado hoje
+ * apenas pelo detector de conciliação (`detectarConciliacaoRegistry`) para classificar fontes via
+ * `classificarFonte`. Parâmetro opcional e aditivo; chamadas existentes (T05) continuam válidas
+ * sem informá-lo.
  */
 export function orquestrarDeteccao(
   lancamentos: Lancamento[],
   detectoresLista: Detector[],
   nomeUsuario?: string,
+  mesRef?: string,
 ): Aviso[] {
-  const contexto: ContextoDeteccao = { todosLancamentos: lancamentos, nomeUsuario }
+  const contexto: ContextoDeteccao = { todosLancamentos: lancamentos, nomeUsuario, mesRef }
   const avisos: Aviso[] = []
 
   for (const detector of detectoresLista) {
