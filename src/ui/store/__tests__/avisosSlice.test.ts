@@ -74,7 +74,7 @@ function criarStoreDeTeste(lancamentos: Lancamento[] = []) {
 
   const acoes = criarAvisosSlice(set, get)
 
-  return { get, acoes }
+  return { get, set, acoes }
 }
 
 describe('avisosSlice', () => {
@@ -267,6 +267,115 @@ describe('avisosSlice', () => {
       acoes.aplicar('a1')
 
       expect(get().lancamentos).toEqual([l0, l2])
+    })
+  })
+
+  describe('âncora por id em `removidos` (Task T13, ADR fundacao-operacoes)', () => {
+    it('grava `ancoraId: null` quando o lançamento removido era o primeiro da lista', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const l1 = lancamento({ transcricao: 'Item 1' })
+      const { get, acoes } = criarStoreDeTeste([l0, l1])
+      acoes.adicionarAvisos([proposta({ id: 'a1', alvo: ['0'] })])
+
+      acoes.aplicar('a1')
+
+      expect(get().avisosAcionaveis.removidos['a1']).toEqual([{ ancoraId: null, lancamento: l0 }])
+    })
+
+    it('grava `ancoraId` igual ao id do lançamento imediatamente anterior quando não é o primeiro', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const l1 = lancamento({ transcricao: 'Item 1' })
+      const l2 = lancamento({ transcricao: 'Item 2' })
+      const { get, acoes } = criarStoreDeTeste([l0, l1, l2])
+      acoes.adicionarAvisos([proposta({ id: 'a1', alvo: ['1'] })])
+
+      acoes.aplicar('a1')
+
+      expect(get().avisosAcionaveis.removidos['a1']).toEqual([
+        { ancoraId: l0.id, lancamento: l1 },
+      ])
+    })
+
+    it('aplicar→desfazer removendo múltiplos lançamentos adjacentes de uma vez preserva a ordem relativa entre eles (cadeia de âncoras)', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const l1 = lancamento({ transcricao: 'Item 1' })
+      const l2 = lancamento({ transcricao: 'Item 2' })
+      const l3 = lancamento({ transcricao: 'Item 3' })
+      const { get, acoes } = criarStoreDeTeste([l0, l1, l2, l3])
+      acoes.adicionarAvisos([
+        proposta({
+          id: 'a1',
+          alvo: [],
+          mutacaoProposta: { verbo: 'remover', alvo: [l1.id, l2.id] },
+        }),
+      ])
+
+      acoes.aplicar('a1')
+      expect(get().lancamentos).toEqual([l0, l3])
+
+      acoes.desfazer('a1')
+
+      expect(get().lancamentos).toEqual([l0, l1, l2, l3])
+    })
+
+    it('aplicar→desfazer preserva a ordem correta mesmo quando `lancamentos` foi reordenado entre a remoção e o desfazer', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const l1 = lancamento({ transcricao: 'Item 1' })
+      const l2 = lancamento({ transcricao: 'Item 2' })
+      const { get, set, acoes } = criarStoreDeTeste([l0, l1, l2])
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', alvo: [], mutacaoProposta: { verbo: 'remover', alvo: [l1.id] } }),
+      ])
+
+      acoes.aplicar('a1')
+      expect(get().lancamentos).toEqual([l0, l2])
+
+      // Reordena a lista (ex.: drag-and-drop na grid) antes de desfazer — a âncora deve
+      // continuar apontando para l0 por id, não pela posição atual (que agora é 1).
+      set({ lancamentos: [l2, l0] })
+
+      acoes.desfazer('a1')
+
+      expect(get().lancamentos.map((l) => l.transcricao)).toEqual(['Item 2', 'Item 0', 'Item 1'])
+    })
+
+    it('desfazer restaura corretamente quando dois lançamentos removidos compartilham o mesmo id (fixtures degeneradas) — casa pela última ocorrência', () => {
+      const l0 = lancamento({ transcricao: 'Item 0', id: 500 })
+      const l1 = lancamento({ transcricao: 'Item 1', id: 500 })
+      const l2 = lancamento({ transcricao: 'Item 2', id: 500 })
+      const { get, acoes } = criarStoreDeTeste([l0, l1, l2])
+      // Ponte legada (índice posicional) — mesmo padrão da fixture sem `id` real usada em
+      // `inspecao.integracao.test.tsx` (Task T03, "Debugging gate"), aqui reproduzido com `id`
+      // duplicado em vez de `undefined` para provar o mesmo caso dentro da Área tocada desta task.
+      acoes.adicionarAvisos([proposta({ id: 'a1', alvo: ['2'] })])
+
+      acoes.aplicar('a1')
+      expect(get().lancamentos).toEqual([l0, l1])
+
+      acoes.desfazer('a1')
+
+      expect(get().lancamentos).toEqual([l0, l1, l2])
+    })
+
+    it('desfazer não perde dados quando o lançamento-âncora foi excluído por fora do ciclo aplicar/desfazer — insere o remanescente ao final', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const l1 = lancamento({ transcricao: 'Item 1' })
+      const l2 = lancamento({ transcricao: 'Item 2' })
+      const { get, set, acoes } = criarStoreDeTeste([l0, l1, l2])
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', alvo: [], mutacaoProposta: { verbo: 'remover', alvo: [l1.id] } }),
+      ])
+
+      acoes.aplicar('a1')
+      expect(get().lancamentos).toEqual([l0, l2])
+
+      // l0 (âncora de l1) é excluído por fora do ciclo aplicar/desfazer (ex.: exclusão manual
+      // de linha na grid, via appStore.excluirLinha — fora do escopo desta task).
+      set({ lancamentos: [l2] })
+
+      acoes.desfazer('a1')
+
+      expect(get().lancamentos).toEqual([l2, l1])
     })
   })
 

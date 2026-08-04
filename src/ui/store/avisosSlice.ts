@@ -5,11 +5,17 @@
 import type { Aviso, Lancamento } from '../../types'
 
 /**
- * Registro de um lançamento removido por `aplicar`, guardando sua posição
- * original em `lancamentos` para que `desfazer` consiga reinseri-lo no lugar.
+ * Registro de um lançamento removido por `aplicar`, guardando uma âncora por
+ * `id` — o `id` do lançamento que o precedia em `lancamentos` no momento da
+ * remoção, ou `null` quando o removido era o primeiro — para que `desfazer`
+ * consiga reinseri-lo na posição relativa correta (Task T13, ADR
+ * `fundacao-operacoes`). Substitui o antigo `indice` posicional: um índice
+ * numérico fica obsoleto assim que a lista muda de tamanho ou é reordenada
+ * (ex.: drag-and-drop na grid) entre a remoção e o desfazer; a âncora por id
+ * sobrevive a ambos porque aponta para uma identidade, não para uma posição.
  */
 export interface LancamentoRemovido {
-  indice: number
+  ancoraId: number | null
   lancamento: Lancamento
 }
 
@@ -149,6 +155,69 @@ function resolverAlvoParaRemocao(aviso: Aviso, lancamentos: Lancamento[]): Lanca
 }
 
 /**
+ * Reinsere os lançamentos removidos de volta em `base`, na posição relativa
+ * original, usando a âncora por `id` de cada `LancamentoRemovido` (Task T13).
+ *
+ * Cada removido é reinserido logo após o lançamento cujo `id` é sua âncora
+ * (`ancoraId`), ou no início quando `ancoraId` é `null`. Como uma remoção em
+ * lote pode conter lançamentos adjacentes entre si (a âncora de um é outro
+ * removido, não um lançamento que sobrou em `base`), o processamento é
+ * iterativo: a cada volta, insere quem já tem âncora disponível em
+ * `resultado`, o que libera a âncora do próximo da cadeia na volta seguinte.
+ *
+ * Busca a âncora pela ÚLTIMA ocorrência de `id` em `resultado` (não a
+ * primeira). Para dados reais (`Lancamento.id` único, garantido por T01)
+ * isso não faz diferença — há no máximo uma ocorrência. É o que torna o
+ * comportamento correto também sob fixtures de teste degeneradas de outros
+ * módulos fora desta task que constroem `Lancamento` sem atribuir `id`
+ * (ficando `undefined` em runtime, ver iteração-log, Task T03, "Debugging
+ * gate"): ao reinserir do fim da cadeia para o começo, a última ocorrência de
+ * um `id` duplicado/indefinido em `resultado` é sempre o lançamento mais à
+ * direita ainda presente — exatamente onde a inserção original ocorreria — o
+ * que preserva a ordem correta sem exigir que os `id`s sejam distintos.
+ */
+function reinserirRemovidos(
+  base: Lancamento[],
+  removidosDoAviso: LancamentoRemovido[],
+): Lancamento[] {
+  let resultado = base
+  const pendentes = [...removidosDoAviso]
+
+  while (pendentes.length > 0) {
+    const indiceProcessavel = pendentes.findIndex(
+      (removido) =>
+        removido.ancoraId === null || resultado.some((l) => l.id === removido.ancoraId),
+    )
+
+    if (indiceProcessavel === -1) {
+      // Âncoras ausentes de `resultado` (ex.: o lançamento-âncora foi excluído
+      // por fora deste ciclo aplicar/desfazer) — insere os remanescentes ao
+      // final, preservando a ordem relativa entre si em vez de perder dados.
+      resultado = [...resultado, ...pendentes.map((r) => r.lancamento)]
+      break
+    }
+
+    const [removido] = pendentes.splice(indiceProcessavel, 1)
+    if (removido.ancoraId === null) {
+      resultado = [removido.lancamento, ...resultado]
+      continue
+    }
+
+    const posicaoAncora = resultado.reduce(
+      (ultimaOcorrencia, l, i) => (l.id === removido.ancoraId ? i : ultimaOcorrencia),
+      -1,
+    )
+    resultado = [
+      ...resultado.slice(0, posicaoAncora + 1),
+      removido.lancamento,
+      ...resultado.slice(posicaoAncora + 1),
+    ]
+  }
+
+  return resultado
+}
+
+/**
  * Cria as ações do slice de avisos acionáveis, ligadas a um `set`/`get` de
  * um store Zustand que contenha ao menos `lancamentos` e `avisosAcionaveis`
  * (`StoreComAvisos`). Genérico sobre o tipo do store completo para evitar
@@ -180,7 +249,9 @@ export function criarAvisosSlice<TStore extends StoreComAvisos>(
       const removidosDoAviso: LancamentoRemovido[] = []
       const lancamentosRestantes = state.lancamentos.filter((lancamento, indice) => {
         if (alvos.has(lancamento)) {
-          removidosDoAviso.push({ indice, lancamento })
+          const anterior = indice > 0 ? state.lancamentos[indice - 1] : undefined
+          const ancoraId = anterior !== undefined ? anterior.id : null
+          removidosDoAviso.push({ ancoraId, lancamento })
           return false
         }
         return true
@@ -206,12 +277,7 @@ export function criarAvisosSlice<TStore extends StoreComAvisos>(
 
       if (aviso.estado === 'aplicado') {
         const removidosDoAviso = removidos[id] ?? []
-        const lancamentosRestaurados = [...state.lancamentos]
-        for (const { indice, lancamento } of [...removidosDoAviso].sort(
-          (a, b) => a.indice - b.indice,
-        )) {
-          lancamentosRestaurados.splice(indice, 0, lancamento)
-        }
+        const lancamentosRestaurados = reinserirRemovidos(state.lancamentos, removidosDoAviso)
 
         const { [id]: _removidoDoAviso, ...removidosSemAviso } = removidos
 
