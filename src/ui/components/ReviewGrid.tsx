@@ -18,12 +18,15 @@ import {
   type NumberCell,
   type FillPatternEventArgs,
   type DataEditorRef,
+  type Highlight,
+  type GridKeyEventArgs,
 } from '@glideapps/glide-data-grid'
 import '@glideapps/glide-data-grid/dist/index.css'
-import { useAppStore } from '../store/appStore'
+import { useAppStore, type CampoEditavel } from '../store/appStore'
 import { validarLinha } from '../../dominio/validacao'
 import type { Lancamento, Aviso } from '../../types'
 import { GhostEditorCore } from './GhostEditor'
+import { montarColagem } from './colagemGrid'
 
 // ---------------------------------------------------------------------------
 // Índices de colunas
@@ -719,6 +722,12 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
     current: undefined,
   })
 
+  // Realce "copiado" (marching ants estilo Sheets): contorno tracejado no range
+  // copiado com Ctrl/Cmd+C; some ao colar ou apertar Esc.
+  const [highlightRegions, setHighlightRegions] = useState<readonly Highlight[] | undefined>(
+    undefined,
+  )
+
   // Reposiciona a seleção para `destino` após o overlay do editor fechar.
   // setTimeout(0): deixa o Glide aplicar o movement [0, 0] do commit antes
   // de sobrescrever a seleção com o destino do zigue-zague.
@@ -979,6 +988,60 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   )
 
   // -----------------------------------------------------------------
+  // onPaste: colar (Ctrl/Cmd+V) preenche TODAS as células selecionadas, não só a
+  // âncora (estilo Sheets/Excel). Um bloco copiado é replicado (tiled) na seleção.
+  // Retorna `false`: assumimos a aplicação manualmente via editarCelula (recomendação
+  // do Glide para colagem customizada). `montarColagem` é a lógica pura testada.
+  // -----------------------------------------------------------------
+
+  const onPaste = useCallback(
+    (target: Item, values: readonly (readonly string[])[]): boolean => {
+      const edicoes = montarColagem(
+        target,
+        values,
+        gridSelection.current?.range,
+        mapaExibidoReal,
+        COL_IDS,
+        COLUNAS_SOMENTE_LEITURA,
+      )
+      for (const { indiceReal, colId, valor } of edicoes) {
+        editarCelula(indiceReal, colId as CampoEditavel, valor)
+      }
+      // Colou: encerra o realce de "copiado" (como no Sheets).
+      setHighlightRegions(undefined)
+      if (edicoes.length > 0) agendarRecalculoLarguras(lancamentosVisiveis)
+      return false
+    },
+    [gridSelection, mapaExibidoReal, editarCelula, agendarRecalculoLarguras, lancamentosVisiveis],
+  )
+
+  // -----------------------------------------------------------------
+  // onKeyDown: feedback visual de "copiado". Ctrl/Cmd+C desenha o contorno
+  // tracejado no range selecionado; Esc limpa. Não faz preventDefault — o Glide
+  // segue tratando copy/escape normalmente; aqui só ligamos/desligamos o realce.
+  // -----------------------------------------------------------------
+
+  const onKeyDown = useCallback(
+    (e: GridKeyEventArgs) => {
+      const tecla = e.key.toLowerCase()
+      if ((e.ctrlKey || e.metaKey) && tecla === 'c') {
+        const r = gridSelection.current?.range
+        if (r) {
+          // Alpha baixo: o Glide SEMPRE mescla region.color no fundo da célula
+          // (blend), então cor opaca cobriria o texto. Tint translúcido + contorno
+          // tracejado = feedback "copiado" estilo Sheets sem prejudicar a leitura.
+          setHighlightRegions([
+            { color: '#5e7c6340', range: { x: r.x, y: r.y, width: r.width, height: r.height }, style: 'dashed' },
+          ])
+        }
+      } else if (tecla === 'escape') {
+        setHighlightRegions(undefined)
+      }
+    },
+    [gridSelection],
+  )
+
+  // -----------------------------------------------------------------
   // onColumnResize: estado local de larguras (D16 do ADR grid-ux-filtros)
   // Atualiza apenas a coluna alterada manualmente.
   // -----------------------------------------------------------------
@@ -1052,11 +1115,13 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
           theme={temaGrid}
           headerHeight={38}
           rowHeight={40}
-          /* Copiar (Ctrl/Cmd+C) usa getCellsForSelection; colar (Ctrl/Cmd+V) via onPaste.
-             Preencher uma sequência: copie uma célula, selecione um range e cole — o
-             valor é replicado nas células editáveis do range. */
+          /* Copiar (Ctrl/Cmd+C) usa getCellsForSelection; colar (Ctrl/Cmd+V) via onPaste
+             customizado, que preenche TODAS as células selecionadas (estilo Sheets). */
           getCellsForSelection={true}
-          onPaste={true}
+          onPaste={onPaste}
+          /* Realce "copiado" (tracejado) e detecção de Ctrl/Cmd+C / Esc para ligá-lo. */
+          highlightRegions={highlightRegions}
+          onKeyDown={onKeyDown}
           /* Fill handle conectado: onFillPattern replica valor nas colunas editáveis (D14/D15). */
           fillHandle={true}
           onFillPattern={onFillPattern}
@@ -1076,6 +1141,8 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
             selectColumn: true,
             copy: true,
             paste: true,
+            /* F2 abre a edição da célula, além do default (Espaço/Enter/Shift+Enter). */
+            activateCell: ' |Enter|shift+Enter|F2',
           }}
         />
       </div>
