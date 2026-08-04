@@ -202,6 +202,15 @@ export function GhostEditorCore({
         minHeight: '2.2em',
         display: 'flex',
         alignItems: 'center',
+        // O backdrop (fundo branco + anel verde do tema `.cel-input`) vive AQUI, no wrapper,
+        // e não no input: o ghost-text é desenhado ATRÁS do input (zIndex 0), então o input
+        // precisa ser transparente para não cobri-lo. Antes da re-tematização (commit 28ed470)
+        // o input era `background: transparent`; a classe `.cel-input` reintroduziu um fundo
+        // opaco que escondia a sugestão. Mover o fundo para o wrapper preserva o tema E a
+        // visibilidade do ghost.
+        background: 'var(--branco)',
+        boxShadow: 'inset 0 0 0 2px var(--verde)',
+        borderRadius: '4px',
       }}
     >
       {/*
@@ -224,6 +233,11 @@ export function GhostEditorCore({
           width: '100%',
           height: '100%',
           zIndex: 1,
+          // Transparente de propósito: o ghost-text é desenhado ATRÁS deste input
+          // (zIndex 0) e só aparece se o input não o cobrir. O fundo branco e o anel
+          // verde do tema ficam no wrapper. Sem isso, a predição fica invisível.
+          background: 'transparent',
+          boxShadow: 'none',
         }}
       />
 

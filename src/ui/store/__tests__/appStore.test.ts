@@ -178,6 +178,18 @@ describe('editarCelula', () => {
     expect(useAppStore.getState().lancamentos[0].natureza).toBe('AL')
   })
 
+  it('TLNAT-1: editarCelula corrige sigla com espaço acidental usando naturezasValidas ("A L" → "AL")', () => {
+    useAppStore.setState({ naturezasValidas: ['AL', 'RR'] })
+    useAppStore.getState().editarCelula(0, 'natureza', 'A L')
+    expect(useAppStore.getState().lancamentos[0].natureza).toBe('AL')
+  })
+
+  it('TLNAT-2: preencherIntervalo também corrige a sigla com caractere acidental', () => {
+    useAppStore.setState({ naturezasValidas: ['AL', 'RR'] })
+    useAppStore.getState().preencherIntervalo(0, 0, 'natureza', 'a l ')
+    expect(useAppStore.getState().lancamentos[0].natureza).toBe('AL')
+  })
+
   it('TL28-2: caixa alta NÃO se aplica às demais colunas de texto', () => {
     useAppStore.getState().editarCelula(0, 'descricao', 'aluguel do mês')
     useAppStore.getState().editarCelula(0, 'iniciais', 'jf')

@@ -287,5 +287,21 @@ export function gerarXlsx(
     forcarAbaExtratoAtiva(injetarFullCalcOnLoad(workbookXml)),
   )
 
+  // 5. Seleção ÚNICA: só a aba Extrato (sheet1) pode ficar com tabSelected.
+  //    Se o Modelo foi salvo com abas AGRUPADAS (ex.: sheet3/Naturezas com
+  //    tabSelected="1"), o gerado sairia com duas abas selecionadas = grupo, e o
+  //    Excel BLOQUEIA editar/excluir linhas em modo grupo. sheet1 já recebeu
+  //    tabSelected acima; aqui limpamos qualquer outra aba selecionada. A reescrita
+  //    é condicional (só quando há o que limpar) para não alterar bytes de abas já
+  //    limpas — preserva o contrato de "partes intactas" (SHA256).
+  for (const nome of Object.keys(parts)) {
+    if (nome === 'xl/worksheets/sheet1.xml') continue
+    if (!/^xl\/worksheets\/sheet\d+\.xml$/.test(nome)) continue
+    const xml = decoder.decode(parts[nome])
+    if (xml.includes('tabSelected')) {
+      parts[nome] = encoder.encode(definirTabSelected(xml, false))
+    }
+  }
+
   return zipSync(parts)
 }
