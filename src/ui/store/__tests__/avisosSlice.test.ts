@@ -410,6 +410,132 @@ describe('avisosSlice', () => {
     })
   })
 
+  describe('reconciliarObsoletos (Task T08, ADR fundacao-operacoes Decisão 7)', () => {
+    it('transiciona para obsoleto um aviso pendente cujo alvo por id não existe mais em lancamentos', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const { get, acoes } = criarStoreDeTeste([l0])
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', alvo: [], mutacaoProposta: { verbo: 'remover', alvo: [l0.id] } }),
+      ])
+
+      // Simula exclusão manual da linha na grid (fora do avisosSlice — appStore.ts, T08 não toca).
+      acoes.reconciliarObsoletos([])
+
+      expect(get().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('obsoleto')
+    })
+
+    it('transiciona para obsoleto quando só parte dos alvos multi-id sumiu — nunca aplicável pela metade', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const l1 = lancamento({ transcricao: 'Item 1' })
+      const { get, acoes } = criarStoreDeTeste([l0, l1])
+      acoes.adicionarAvisos([
+        proposta({
+          id: 'a1',
+          alvo: [],
+          mutacaoProposta: { verbo: 'remover', alvo: [l0.id, l1.id] },
+        }),
+      ])
+
+      // l1 continua existindo — só l0 foi excluído manualmente.
+      acoes.reconciliarObsoletos([l1])
+
+      expect(get().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('obsoleto')
+    })
+
+    it('permanece pendente quando todos os alvos por id ainda existem em lancamentos', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const { get, acoes } = criarStoreDeTeste([l0])
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', alvo: [], mutacaoProposta: { verbo: 'remover', alvo: [l0.id] } }),
+      ])
+
+      acoes.reconciliarObsoletos([l0])
+
+      expect(get().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('pendente')
+    })
+
+    it('não afeta aviso já aplicado, mesmo que o alvo original não exista mais em lancamentos', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const { get, acoes } = criarStoreDeTeste([l0])
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', alvo: [], mutacaoProposta: { verbo: 'remover', alvo: [l0.id] } }),
+      ])
+      acoes.aplicar('a1')
+
+      acoes.reconciliarObsoletos([])
+
+      expect(get().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('aplicado')
+    })
+
+    it('não afeta aviso dispensado, mesmo que o alvo original não exista mais em lancamentos', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const { get, acoes } = criarStoreDeTeste([l0])
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', alvo: [], mutacaoProposta: { verbo: 'remover', alvo: [l0.id] } }),
+      ])
+      acoes.dispensar('a1')
+
+      acoes.reconciliarObsoletos([])
+
+      expect(get().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('dispensado')
+    })
+
+    it('não afeta aviso pendente sem mutacaoProposta (legado/informativo)', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const { get, acoes } = criarStoreDeTeste([l0])
+      acoes.adicionarAvisos([proposta({ id: 'a1', alvo: ['0'] })])
+
+      acoes.reconciliarObsoletos([])
+
+      expect(get().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('pendente')
+    })
+
+    it('é idempotente — chamar reconciliarObsoletos duas vezes não altera nada além da primeira transição', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const { get, acoes } = criarStoreDeTeste([l0])
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', alvo: [], mutacaoProposta: { verbo: 'remover', alvo: [l0.id] } }),
+      ])
+
+      acoes.reconciliarObsoletos([])
+      acoes.reconciliarObsoletos([])
+
+      expect(get().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('obsoleto')
+    })
+
+    it('exclui avisos obsoletos de selecionarContagemPendentes', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const l1 = lancamento({ transcricao: 'Item 1' })
+      const { get, acoes } = criarStoreDeTeste([l0, l1])
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', alvo: [], mutacaoProposta: { verbo: 'remover', alvo: [l0.id] } }),
+        proposta({ id: 'a2', alvo: [], mutacaoProposta: { verbo: 'remover', alvo: [l1.id] } }),
+      ])
+      expect(selecionarContagemPendentes(get())).toBe(2)
+
+      // l0 excluído manualmente — a1 fica obsoleto, a2 continua pendente.
+      acoes.reconciliarObsoletos([l1])
+
+      expect(selecionarContagemPendentes(get())).toBe(1)
+    })
+
+    it('aplicar sobre um aviso obsoleto é no-op — sem remoção de lancamentos, sem mudança de estado', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const l1 = lancamento({ transcricao: 'Item 1' })
+      const { get, acoes } = criarStoreDeTeste([l0, l1])
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', alvo: [], mutacaoProposta: { verbo: 'remover', alvo: [l0.id] } }),
+      ])
+      acoes.reconciliarObsoletos([l1])
+      expect(get().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('obsoleto')
+
+      acoes.aplicar('a1')
+
+      expect(get().lancamentos).toEqual([l0, l1])
+      expect(get().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('obsoleto')
+    })
+  })
+
   describe('zero-retenção (D0 do ADR)', () => {
     it('nenhuma ação do slice chama localStorage', () => {
       const setItemSpy = vi.spyOn(Storage.prototype, 'setItem')

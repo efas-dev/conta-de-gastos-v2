@@ -68,6 +68,18 @@ export interface AcoesAvisosSlice {
   entrarInspecao: (id: string) => void
   /** Sai do modo inspeção, independentemente de qual aviso estava ativo. */
   sairInspecao: () => void
+  /**
+   * Reconcilia avisos `'pendente'` cujos alvos (por `Lancamento.id`, via
+   * `mutacaoProposta.alvo`) deixaram de existir em `lancamentosAtuais`, transicionando-os
+   * para `'obsoleto'` (ver ADR `fundacao-operacoes`, Decisão 7). Basta que UM dos ids-alvo
+   * esteja ausente para o aviso inteiro virar obsoleto — nunca aplicável pela metade.
+   * Só afeta avisos `'pendente'` com `mutacaoProposta` (caminho definitivo, T03); avisos
+   * já `'aplicado'`/`'dispensado'` e avisos legados sem `mutacaoProposta` não são tocados.
+   * Idempotente. O gatilho real (chamar isto após uma exclusão manual de linha na grid)
+   * é responsabilidade de quem manipula `lancamentos` (ex.: `excluirLinha` no
+   * `appStore.ts`) — fora do escopo desta ação, que só materializa a transição.
+   */
+  reconciliarObsoletos: (lancamentosAtuais: Lancamento[]) => void
 }
 
 /** Estado mínimo do store completo do qual o slice de avisos depende. */
@@ -243,6 +255,25 @@ export function criarAvisosSlice<TStore extends StoreComAvisos>(
       set((state) => ({
         avisosAcionaveis: { ...state.avisosAcionaveis, avisoEmInspecao: null },
       }) as Partial<TStore>)
+    },
+
+    reconciliarObsoletos: (lancamentosAtuais) => {
+      const state = get()
+      const { avisos } = state.avisosAcionaveis
+      const idsAtuais = new Set(lancamentosAtuais.map((l) => l.id))
+
+      set({
+        avisosAcionaveis: {
+          ...state.avisosAcionaveis,
+          avisos: avisos.map((a) => {
+            if (a.estado !== 'pendente' || !a.mutacaoProposta) {
+              return a
+            }
+            const algumAlvoAusente = a.mutacaoProposta.alvo.some((id) => !idsAtuais.has(id))
+            return algumAlvoAusente ? { ...a, estado: 'obsoleto' as const } : a
+          }),
+        },
+      } as Partial<TStore>)
     },
   }
 }

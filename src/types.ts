@@ -159,8 +159,15 @@ export interface Aviso {
    * (ex.: `detectarValorPendente`) ou quando o aviso não representa um casamento.
    */
   resumo?: string
-  /** Estado do ciclo de vida do aviso */
-  estado: 'pendente' | 'aplicado' | 'dispensado'
+  /**
+   * Estado do ciclo de vida do aviso. `'obsoleto'` é terminal: alcançado quando o(s)
+   * alvo(s) por id de um aviso `'pendente'` deixam de existir em `lancamentos` (ex.:
+   * exclusão manual de linha na grid) — nunca aplicado pela metade (ver ADR
+   * `fundacao-operacoes`, Decisão 7). Fica fora de `selecionarContagemPendentes` e
+   * nunca é aplicável, pelo mesmo guard usado para `'aplicado'`/`'dispensado'`
+   * (`avisosSlice.aplicar` só age sobre `estado === 'pendente'`).
+   */
+  estado: 'pendente' | 'aplicado' | 'dispensado' | 'obsoleto'
   /**
    * Mutação declarativa proposta por este aviso, interpretada genericamente pelo
    * `avisosSlice` em `aplicar`/`desfazer` (ver ADR `fundacao-operacoes`, Decisão 1).
