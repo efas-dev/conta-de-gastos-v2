@@ -3,7 +3,7 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
-import { unzipSync } from 'fflate'
+import { unzipSync, zipSync } from 'fflate'
 import { gerarXlsx } from '../gerador.js'
 import type { Lancamento, DicEntry } from '../../../types.js'
 
@@ -134,6 +134,40 @@ describe('gerarXlsx', () => {
     // sheet1 (Extrato) ganha a seleção; sheet2 (Dicionario) perde a que o Modelo carregava
     expect(decodePart(parts, 'xl/worksheets/sheet1.xml')).toMatch(/<sheetView[^>]*tabSelected="1"/)
     expect(decodePart(parts, 'xl/worksheets/sheet2.xml')).not.toContain('tabSelected')
+  })
+
+  // Regressão (2026-08-04): o .xlsx exportado saía com abas AGRUPADAS (sheet1 +
+  // sheet3 selecionadas) porque o Modelo tinha tabSelected="1" na sheet3 e o writer
+  // só tratava sheet1/sheet2. Em modo grupo o Excel bloqueia editar/excluir linhas.
+  // Guard: SÓ a Extrato (sheet1) pode ficar selecionada no gerado.
+  it('TL-GRUPO-1: seleção única — nenhuma aba além da Extrato fica selecionada no gerado', () => {
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06')
+    const parts = unzipSync(resultado)
+    const selecionadas = Object.keys(parts)
+      .filter((k) => /^xl\/worksheets\/sheet\d+\.xml$/.test(k))
+      .filter((k) => decodePart(parts, k).includes('tabSelected'))
+    expect(selecionadas).toEqual(['xl/worksheets/sheet1.xml'])
+  })
+
+  // Endurecimento: mesmo que o Modelo venha salvo AGRUPADO (sheet3 com
+  // tabSelected="1"), o gerado deve sair com seleção única. Trava a causa raiz.
+  it('TL-GRUPO-2: Modelo salvo agrupado (sheet3 selecionada) gera export desagrupado', () => {
+    // Sintetiza um Modelo agrupado: injeta tabSelected="1" na sheetView da sheet3.
+    const grupoParts = { ...modeloParts }
+    const sheet3 = new TextDecoder().decode(modeloParts['xl/worksheets/sheet3.xml'])
+    const sheet3Agrupada = sheet3.replace(
+      /<sheetView\b(?![^>]*tabSelected)/,
+      '<sheetView tabSelected="1"',
+    )
+    expect(sheet3Agrupada).toContain('tabSelected="1"') // garante que a síntese funcionou
+    grupoParts['xl/worksheets/sheet3.xml'] = new TextEncoder().encode(sheet3Agrupada)
+    const modeloAgrupado = zipSync(grupoParts)
+
+    const resultado = gerarXlsx(modeloAgrupado, 'ES', [], [], '2026-06')
+    const parts = unzipSync(resultado)
+
+    expect(decodePart(parts, 'xl/worksheets/sheet1.xml')).toMatch(/tabSelected="1"/)
+    expect(decodePart(parts, 'xl/worksheets/sheet3.xml')).not.toContain('tabSelected')
   })
 
   // Test List item 6: aba Dicionario com entradas corretas
@@ -358,5 +392,19 @@ describe('gerarSheetDataDicionario via gerarXlsx — cabeçalho e colunas Vezes/
     const sheet2 = new TextDecoder().decode(parts['xl/worksheets/sheet2.xml'])
 
     expect(sheet2).toContain('<sheetData/>')
+  })
+})
+
+// Guard de drift do Modelo (2026-08-04): o app exporta injetando em
+// public/Modelo.xlsx, mas os testes rodam contra a fixture. Se os dois divergirem,
+// os testes passam mas o app quebra (foi o que aconteceu no bug das abas agrupadas:
+// public/ estava salvo agrupado e a fixture não). Este teste trava que o Modelo
+// usado no export seja byte-idêntico ao Modelo validado pelos testes.
+describe('sincronia public/Modelo.xlsx ↔ fixture de testes', () => {
+  it('public/Modelo.xlsx é byte-idêntico à fixture usada nos testes do gerador', () => {
+    const publicPath = resolve(__dirname, '../../../../public/Modelo.xlsx')
+    const publicBytes = new Uint8Array(readFileSync(publicPath))
+    const fixtureBytes = new Uint8Array(readFileSync(FIXTURE_PATH))
+    expect(hashSha256(publicBytes)).toBe(hashSha256(fixtureBytes))
   })
 })
