@@ -31,6 +31,7 @@ import { PainelLateral, type AbaPainelLateral } from './ui/components/PainelLate
 import { BannerInspecao } from './ui/components/BannerInspecao'
 import { ExportModal } from './ui/components/ExportModal'
 import { CartaoDicionario } from './ui/components/CartaoDicionario'
+import { PopupReplicacao } from './ui/components/PopupReplicacao'
 import { CartaoBancosSuportados } from './ui/components/CartaoBancosSuportados'
 
 /**
@@ -1045,6 +1046,10 @@ export function App() {
 
             {painel && <PainelLateral aba={painel} setAba={setPainel} naturezas={naturezasDescritas} />}
           </div>
+
+          {/* Popup de sugestão de replicar classificação (item 36) — flutua no
+              rodapé quando há linhas idênticas sem classificar; some ao aplicar/dispensar. */}
+          <PopupReplicacao />
 
           {/* Modal de split — abre quando onSplitDetectado dispara */}
           {splitIndice !== null && splitLancamento && (

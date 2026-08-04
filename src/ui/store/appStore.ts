@@ -8,6 +8,7 @@ import { enablePatches, produceWithPatches, applyPatches, current, type Patch } 
 import type { Lancamento, DicEntry, NaturezaRica } from '../../types'
 import { ratearSplit, type AlvoSplit } from '../../dominio/split'
 import { corrigirNatureza } from '../../dominio/natureza'
+import { detectarReplicacao, type SugestaoReplicacao } from '../../dominio/replicacao'
 import {
   criarAvisosSlice,
   estadoInicialAvisos,
@@ -104,6 +105,14 @@ export interface EstadoApp {
    * (D6 do ADR — flag sujo).
    */
   sujo: boolean
+
+  /**
+   * Sugestão de replicar a classificação recém-dada para linhas de transcrição
+   * idêntica ainda sem Natureza (item 36). `null` quando não há sugestão ativa.
+   * Passa incólume pelas mutações (nunca é mexida dentro de um recipe); limpa em
+   * undo/redo, aplicar/dispensar e `setLancamentos`. Hint de UI — fora do histórico.
+   */
+  sugestaoReplicacao: SugestaoReplicacao | null
 
   // -------------------------------------------------------------------------
   // Slice de filtro/ordenação — D7, D9 do ADR grid-ux-filtros
@@ -218,6 +227,17 @@ export interface AcoesApp extends AcoesAvisosSlice {
    * Sem efeito se o `futuro` estiver vazio.
    */
   redo: () => void
+
+  /**
+   * Aplica a sugestão de replicação corrente: preenche Natureza+Descrição nas
+   * linhas-alvo (transcrição idêntica sem classificação) numa única entrada de
+   * histórico (Ctrl+Z desfaz tudo), e limpa a sugestão. Sem efeito se não há
+   * sugestão ativa (item 36).
+   */
+  aplicarReplicacao: () => void
+
+  /** Dispensa a sugestão de replicação corrente, sem alterar lançamentos (item 36). */
+  dispensarReplicacao: () => void
 
   /** Substitui a lista de lançamentos (sem rastreamento de undo). */
   setLancamentos: (lancamentos: Lancamento[]) => void
@@ -380,6 +400,7 @@ const estadoInicial: EstadoApp = {
   futuro: [],
   csvArquivo: null,
   sujo: false,
+  sugestaoReplicacao: null,
   filtroFontes: [],
   filtroNaturezas: [],
   filtroSoIncompletos: false,
@@ -407,6 +428,7 @@ function extrairEstado(store: AppStore): EstadoApp {
     futuro: store.futuro,
     csvArquivo: store.csvArquivo,
     sujo: store.sujo,
+    sugestaoReplicacao: store.sugestaoReplicacao,
     filtroFontes: store.filtroFontes,
     filtroNaturezas: store.filtroNaturezas,
     filtroSoIncompletos: store.filtroSoIncompletos,
@@ -543,6 +565,12 @@ export const useAppStore = create<AppStore>()((set, get) => {
           l[campo] = valor as string
         }
       })
+      // Item 36: ao classificar (Natureza/Descrição), sugere replicar para as
+      // linhas de transcrição idêntica ainda sem Natureza. `indice` é o índice
+      // real; a sugestão fica fora do histórico (hint de UI).
+      if (campo === 'natureza' || campo === 'descricao') {
+        set({ sugestaoReplicacao: detectarReplicacao(get().lancamentos, indice) })
+      }
     },
 
     excluirLinha: (indice) => {
@@ -604,6 +632,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         ...estadoRestaurado,
         historico: historico.slice(0, historico.length - 1),
         futuro: [...futuro, entrada],
+        sugestaoReplicacao: null,
         ...visao,
       })
     },
@@ -638,9 +667,27 @@ export const useAppStore = create<AppStore>()((set, get) => {
         ...estadoRefeito,
         historico: [...historico, entrada],
         futuro: futuro.slice(0, futuro.length - 1),
+        sugestaoReplicacao: null,
         ...visao,
       })
     },
+
+    aplicarReplicacao: () => {
+      const sug = get().sugestaoReplicacao
+      if (!sug) return
+      // Preenche todos os alvos numa única entrada de histórico → um Ctrl+Z desfaz tudo.
+      mutarComHistorico((draft) => {
+        for (const i of sug.alvos) {
+          const l = draft.lancamentos[i]
+          if (!l) continue
+          l.natureza = sug.natureza
+          l.descricao = sug.descricao
+        }
+      })
+      set({ sugestaoReplicacao: null })
+    },
+
+    dispensarReplicacao: () => set({ sugestaoReplicacao: null }),
 
     // -------------------------------------------------------------------
     // Setters simples — sem rastreamento de undo
@@ -657,7 +704,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         s.ordenacaoColuna,
         s.ordenacaoDirecao,
       )
-      set({ lancamentos, ...(lancamentos.length > 0 ? { sujo: true } : {}), ...visao })
+      set({ lancamentos, ...(lancamentos.length > 0 ? { sujo: true } : {}), sugestaoReplicacao: null, ...visao })
     },
     setIniciais: (iniciais) => set({ iniciais }),
     setNomeUsuario: (nomeUsuario) => set({ nomeUsuario }),
