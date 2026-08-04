@@ -242,22 +242,23 @@ export const TEMA_INVESTIMENTO = criarTemaLinha('--linha-investimento')
 
 /**
  * Linha "sai" durante inspeção de proposta de conciliação (D4/D5 do ADR
- * `inspecao-proposta-conciliacao`). Lê `--insp-sai` (T1) — vermelho saturado,
- * deliberadamente distinto de `TEMA_ERRO` (pêssego pálido) para não ser
- * confundido com o realce de atenção. Precedência sobre erro/transferência/
- * investimento enquanto a inspeção está ativa (D4). Validação de contraste
- * no app real fica registrada como checklist manual na Task T5 (D6 do ADR).
+ * `inspecao-proposta-conciliacao`). Lê `--insp-sai-bg` (rosa pálido) como FUNDO
+ * da célula — legível para o texto escuro e para a coluna Valor (que tem cor
+ * própria). A cor saturada `--insp-sai` (#c94f46) é reservada para acentos/bordas;
+ * usá-la como fundo deixava o texto vermelho-sobre-vermelho, ilegível (fix de
+ * contraste 2026-08-04). Distinta de `TEMA_ERRO` (pêssego). Precedência sobre
+ * erro/transferência/investimento enquanto a inspeção está ativa (D4).
  */
-export const TEMA_INSPECAO_SAI = criarTemaLinha('--insp-sai')
+export const TEMA_INSPECAO_SAI = criarTemaLinha('--insp-sai-bg')
 
 /**
  * Linha "fica" durante inspeção de proposta de conciliação (D4/D5 do ADR
- * `inspecao-proposta-conciliacao`). Lê `--insp-fica` (T1) — verde-menta,
- * deliberadamente distinto de `TEMA_INVESTIMENTO` (verde pálido/amarelado)
- * para evitar colisão visual entre os dois papéis. Validação de contraste no
- * app real fica registrada como checklist manual na Task T5 (D6 do ADR).
+ * `inspecao-proposta-conciliacao`). Lê `--insp-fica-bg` (menta pálido) como FUNDO
+ * — legível, ao contrário do `--insp-fica` (#3e9c78) saturado, que deixava o
+ * texto verde-sobre-verde ilegível (fix de contraste 2026-08-04). Distinta de
+ * `TEMA_INVESTIMENTO` (verde/amarelado) para não colidir os dois papéis.
  */
-export const TEMA_INSPECAO_FICA = criarTemaLinha('--insp-fica')
+export const TEMA_INSPECAO_FICA = criarTemaLinha('--insp-fica-bg')
 
 /**
  * Monta o tema base da grid Glide lendo as variáveis CSS de `:root` (T1).
