@@ -1,0 +1,385 @@
+// ADR: see spec/fundacao-operacoes.adr.md
+
+import { useEffect, useRef, useState } from 'react'
+import { useAppStore } from '../store/appStore'
+import { selecionarContagemPendentes } from '../store/avisosSlice'
+import { computarNomeArquivo } from '../PipelineState'
+import { handleGerar as handleGerarPipeline, criarAvisoInformativo } from '../handlersPipeline'
+import { validarLinha } from '../../dominio/validacao'
+import { classificarFonte } from '../../dominio/mes'
+import { ReviewGrid } from './ReviewGrid'
+import { FiltroBar } from './FiltroBar'
+import { SplitModal } from './SplitModal'
+import { ToolbarRevisao } from './ToolbarRevisao'
+import { PainelLateral, type AbaPainelLateral } from './PainelLateral'
+import { BannerInspecao } from './BannerInspecao'
+import { ExportModal } from './ExportModal'
+import { SeletorMesReferencia } from './SeletorMesReferencia'
+import { IconeDesfazer, IconeRefazer, IconeExportar } from './Icones'
+
+interface TelaRevisaoProps {
+  /** Mês de referência escolhido — estado compartilhado com `TelaImportacao` (D9 do ADR mes-referencia-ui). */
+  mesEscolhido: string
+  /** Flag de edição manual do mês — compartilhada com `TelaImportacao` (D7 do ADR). */
+  usuarioEditouMes: boolean
+  /** Atualiza `mesEscolhido` e marca `usuarioEditouMes=true` — mesmo handler usado por `TelaImportacao`. */
+  onMudarMes: (novoMes: string) => void
+  /** Bytes do Modelo.xlsx, carregados em `TelaImportacao` no "Produzir" e reusados no "Gerar". */
+  modeloBytes: Uint8Array | null
+  /** Âncora invisível usada para disparar o download sem abrir nova aba (vive em `App.tsx`, fora dos dois `return` condicionais). */
+  anchorRef: React.RefObject<HTMLAnchorElement | null>
+  /** Aba ativa do `PainelLateral` — compartilhada com `TelaImportacao` (persiste entre as duas telas). */
+  painel: AbaPainelLateral
+  setPainel: React.Dispatch<React.SetStateAction<AbaPainelLateral>>
+}
+
+/**
+ * Etapa 2 — Revisão (visível quando há lançamentos no store) + Etapa 3 —
+ * Geração (`ExportModal`).
+ *
+ * Task T12-bis (spec `fundacao-operacoes`): extraído de `App.tsx` — comportamento
+ * preservado; estado/efeitos que eram locais a `App.tsx` mas só se aplicavam
+ * enquanto esta tela estava montada (atalhos de desfazer/refazer, aviso de
+ * fatura, aviso de fechamento com mutações pendentes, redimensionamento da
+ * grid, `splitIndice`, `exportFase`) passaram a viver aqui — o guard
+ * `if (!emRevisao) return` do efeito de teclado em `App.tsx` já tornava isso
+ * um no-op fora desta tela; mover para cá é equivalente porque o componente só
+ * monta quando `emRevisao` é verdadeiro.
+ */
+export function TelaRevisao({
+  mesEscolhido,
+  usuarioEditouMes,
+  onMudarMes,
+  modeloBytes,
+  anchorRef,
+  painel,
+  setPainel,
+}: TelaRevisaoProps) {
+  const lancamentos = useAppStore((s) => s.lancamentos)
+  const iniciais = useAppStore((s) => s.iniciais)
+  const dicEntries = useAppStore((s) => s.dicEntries)
+  const naturezasValidas = useAppStore((s) => s.naturezasValidas)
+  const naturezasRicas = useAppStore((s) => s.naturezasRicas)
+  const avisosAcionaveis = useAppStore((s) => s.avisosAcionaveis)
+  const contagemAvisosPendentes = useAppStore(selecionarContagemPendentes)
+  const sujo = useAppStore((s) => s.sujo)
+
+  const adicionarAvisosAcionaveis = useAppStore((s) => s.adicionarAvisos)
+  const aplicarAviso = useAppStore((s) => s.aplicar)
+  const dispensarAviso = useAppStore((s) => s.dispensar)
+  const sairInspecao = useAppStore((s) => s.sairInspecao)
+  const undo = useAppStore((s) => s.undo)
+  const redo = useAppStore((s) => s.redo)
+  const marcarLimpo = useAppStore((s) => s.marcarLimpo)
+
+  /** Índice do lançamento que abriu o SplitModal (null = modal fechado). */
+  const [splitIndice, setSplitIndice] = useState<number | null>(null)
+
+  /** Fase do `ExportModal` — `null` = fechado. */
+  const [exportFase, setExportFase] = useState<'confirmar' | 'feito' | null>(null)
+
+  /** Container da grid — observado para recalcular a largura do Glide. */
+  const gridWrapRef = useRef<HTMLDivElement>(null)
+
+  const podaGerar = lancamentos.length > 0 && modeloBytes !== null
+  const splitLancamento = splitIndice !== null ? lancamentos[splitIndice] : null
+
+  // D5 do ADR colinha-naturezas: lista filtrada — somente naturezas com descrição preenchida.
+  const naturezasDescritas = naturezasRicas.filter((n) => n.descricao !== '')
+
+  const avisoEmInspecao =
+    avisosAcionaveis.avisos.find((a) => a.id === avisosAcionaveis.avisoEmInspecao) ?? null
+
+  const lancamentosPendentes = lancamentos.filter((l) => validarLinha(l, naturezasValidas)).length
+
+  const nomeArquivoExport = computarNomeArquivo(lancamentos, iniciais)
+
+  function togglePainel(aba: Exclude<AbaPainelLateral, null>) {
+    setPainel((atual) => (atual === aba ? null : aba))
+  }
+
+  // ---------------------------------------------------------------------------
+  // Atalhos de teclado (estilo Google Sheets) — desfazer/refazer
+  // ---------------------------------------------------------------------------
+
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      const mod = e.ctrlKey || e.metaKey
+      if (!mod) return
+      // Não sequestrar o desfazer nativo quando o foco está em campo de texto
+      // (input do formulário ou overlay de edição da grid).
+      const alvo = e.target as HTMLElement | null
+      const tag = alvo?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || alvo?.isContentEditable) return
+      const key = e.key.toLowerCase()
+      if (key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        undo()
+      } else if ((key === 'z' && e.shiftKey) || key === 'y') {
+        e.preventDefault()
+        redo()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [undo, redo])
+
+  // Intercepta fechamento/recarga quando há mutações não exportadas (zero-retenção:
+  // não persiste nada, só aciona o prompt nativo do navegador via preventDefault).
+  useEffect(() => {
+    if (!sujo) return
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault()
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [sujo])
+
+  // Aviso não bloqueante de fatura — D4 do ADR mes-referencia-ui.
+  // Recalcula quando os lançamentos carregados ou o mês de referência mudam.
+  // Antes de inserir, remove avisos anteriores da mesma categoria (idempotente).
+  useEffect(() => {
+    // Prefixo interno para identificar a categoria do aviso — não visível ao usuário.
+    const PREFIXO_FATURA = '[fatura-aviso]'
+
+    // Coleta as fontes distintas presentes nos lançamentos
+    const fontes = Array.from(new Set(lancamentos.map((l) => l.fonte)))
+
+    const fontesFatura = fontes.filter(
+      (fonte) => classificarFonte(fonte, lancamentos, mesEscolhido) === 'fatura',
+    )
+
+    // Remove avisos anteriores desta categoria antes de inserir (sem duplicatas)
+    useAppStore.setState((state) => ({
+      avisos: state.avisos.filter((a) => !a.startsWith(PREFIXO_FATURA)),
+    }))
+
+    if (fontesFatura.length === 0) return
+
+    const listagem = fontesFatura.join(', ')
+    const mensagem =
+      `${PREFIXO_FATURA}Atenção: ${listagem} parece${fontesFatura.length > 1 ? 'm' : ''} ser` +
+      ` fatura — cont${fontesFatura.length > 1 ? 'êm' : 'ém'} transações anteriores ao mês de referência (${mesEscolhido}).` +
+      ` Verifique se o mês de referência está correto antes de exportar.`
+
+    useAppStore.setState((state) => ({
+      avisos: [...state.avisos, mensagem],
+    }))
+
+    // Canal único (T9, D18): mesma mensagem, migrada para o slice como informativo
+    // dispensável, id fixo `'fatura-aviso'` — se um aviso com esse id já existe
+    // (pendente ou já dispensado pelo usuário), NÃO recria: a dispensa precisa
+    // persistir na sessão mesmo com o efeito rodando de novo a cada re-render/mudança
+    // de mesEscolhido (mecanismo decidido localmente, ver iteração-log de T9).
+    const jaExisteAvisoDeFatura = useAppStore
+      .getState()
+      .avisosAcionaveis.avisos.some((a) => a.id === 'fatura-aviso')
+    if (!jaExisteAvisoDeFatura) {
+      const mensagemSemPrefixo = mensagem.slice(PREFIXO_FATURA.length)
+      adicionarAvisosAcionaveis([
+        criarAvisoInformativo('fatura-aviso', 'fatura-aviso', mensagemSemPrefixo),
+      ])
+    }
+  }, [lancamentos, mesEscolhido, adicionarAvisosAcionaveis])
+
+  // Recalcula a largura da grid Glide ao abrir/fechar o PainelLateral:
+  // o container da grid vive num flex que muda de largura quando `painel`
+  // alterna entre `null` e uma aba — o `DataEditor` do glide-data-grid
+  // (`width="100%"`, `ReviewGrid.tsx`) observa o próprio container via
+  // ResizeObserver interno e redesenha o canvas sozinho a cada mudança de
+  // tamanho; este efeito só existe para deixar o gatilho explícito (não há API
+  // pública de "remeasure" externo em `DataEditorRef`, ver iteração-log).
+  useEffect(() => {
+    const el = gridWrapRef.current
+    if (!el) return
+    // Força um reflow síncrono do container após a mudança de `painel` — garante
+    // que o layout já refletiu a nova largura antes do próximo paint, mesmo em
+    // navegadores que atrasariam o ResizeObserver por um frame.
+    void el.offsetWidth
+  }, [painel])
+
+  /**
+   * Etapa 3 — Aprendizado do dicionário + geração do .xlsx.
+   *
+   * Delega para `handlersPipeline.ts` (Task T11). Disparado pelo botão
+   * "Baixar .xlsx" do `ExportModal` (fase confirmar).
+   */
+  function handleGerar() {
+    handleGerarPipeline({ modeloBytes, lancamentos, iniciais, dicEntries, mesEscolhido, anchorRef, marcarLimpo })
+  }
+
+  /** Confirma a exportação a partir do `ExportModal` (fase confirmar → "Baixar .xlsx"). */
+  function handleConfirmarExport() {
+    handleGerar()
+    setExportFase('feito')
+  }
+
+  return (
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {/* Header único (faixa só): status de progresso à esquerda + ações à
+          direita, numa única `.toolbar.compacta` — fiel ao protótipo
+          (`prototipo/cdg-revisao.jsx:163-191`), que distribui os dois grupos
+          via `justify-content:space-between`. As ações (undo/redo, mês de
+          referência, abrir Avisos/Naturezas, Exportar) entram pelo slot
+          `children` de `ToolbarRevisao`, não numa segunda faixa empilhada. */}
+      <ToolbarRevisao>
+        <button
+          type="button"
+          className="btn sec icone"
+          disabled={lancamentos.length === 0}
+          onClick={undo}
+          title="Desfazer (Ctrl+Z)"
+        >
+          <IconeDesfazer />
+        </button>
+        <button
+          type="button"
+          className="btn sec icone"
+          onClick={redo}
+          title="Refazer (Ctrl+Shift+Z)"
+        >
+          <IconeRefazer />
+        </button>
+        <span className="grupo-mes" title="Mês que dá nome ao arquivo exportado e separa fatura de extrato">
+          <span className="grupo-mes-rotulo">Mês ref.</span>
+          <SeletorMesReferencia
+            mesEscolhido={mesEscolhido}
+            usuarioEditou={usuarioEditouMes}
+            onChange={onMudarMes}
+          />
+        </span>
+        {avisosAcionaveis.avisos.length > 0 && (
+          <button
+            type="button"
+            className={'btn sec' + (painel === 'avisos' ? ' ativo' : '')}
+            style={{ position: 'relative' }}
+            onClick={() => togglePainel('avisos')}
+          >
+            Avisos
+            {contagemAvisosPendentes > 0 && (
+              <span className="badge">{contagemAvisosPendentes}</span>
+            )}
+          </button>
+        )}
+        {naturezasDescritas.length > 0 && (
+          <button
+            type="button"
+            className={'btn sec' + (painel === 'naturezas' ? ' ativo' : '')}
+            onClick={() => togglePainel('naturezas')}
+          >
+            Naturezas
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn pri"
+          onClick={() => setExportFase('confirmar')}
+          disabled={!podaGerar}
+          style={{ position: 'relative' }}
+        >
+          <IconeExportar />
+          Exportar .xlsx
+          {lancamentosPendentes > 0 && <span className="badge peach">{lancamentosPendentes}</span>}
+        </button>
+      </ToolbarRevisao>
+
+      {/* Filtros (esquerda) + legenda de cores e lembrete de zero-retenção
+          (direita) numa faixa só — fiel ao protótipo, que não tem uma
+          linha-rótulo separada. A contagem "N lançamentos" saiu por ser
+          redundante (a toolbar mostra "X de Y classificados" e o FiltroBar
+          "X de Y visíveis"); o aviso de efemeridade fica discreto ao lado
+          da legenda e o chip "não exportado" da toolbar reforça o estado. */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 22,
+          padding: '8px 28px 10px',
+          flexWrap: 'wrap',
+        }}
+      >
+        <FiltroBar />
+        <span
+          style={{
+            marginLeft: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
+            flexShrink: 0,
+            // Mesma fonte dos chips de filtro (.chip = 12px), na mesma linha,
+            // alinhada à direita — pedido do usuário.
+            fontSize: 12,
+            fontWeight: 600,
+            color: 'var(--texto-3)',
+          }}
+        >
+          <Swatch cor="var(--linha-atencao)" borda="var(--linha-atencao-borda)" rotulo="Precisa de atenção" />
+          <Swatch cor="var(--linha-transferencia)" borda="var(--linha-transferencia-borda)" rotulo="Transferência própria" />
+          <Swatch cor="var(--linha-investimento)" borda="var(--linha-investimento-borda)" rotulo="Investimento" />
+          <span
+            style={{
+              paddingLeft: 14,
+              borderLeft: '1px solid var(--borda-2)',
+              color: 'var(--muted)',
+              whiteSpace: 'nowrap',
+            }}
+            title="Os dados vivem apenas nesta aba — exporte antes de fechar ou recarregar."
+          >
+            Só nesta aba · exporte antes de fechar
+          </span>
+        </span>
+      </div>
+
+      {/* Corpo: grid + painel lateral lado a lado (Task T11 — item 4 das
+          frases de intenção: painel lateral empurra a grid em vez de
+          sobrepor como overlay position:fixed). */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          <BannerInspecao
+            aviso={avisoEmInspecao}
+            onAprovar={aplicarAviso}
+            onDispensar={dispensarAviso}
+            onFechar={sairInspecao}
+          />
+          <div ref={gridWrapRef} style={{ flex: 1, minHeight: 0 }}>
+            <ReviewGrid onSplitDetectado={(indice) => setSplitIndice(indice)} />
+          </div>
+        </div>
+
+        {painel && <PainelLateral aba={painel} setAba={setPainel} naturezas={naturezasDescritas} />}
+      </div>
+
+      {/* Modal de split — abre quando onSplitDetectado dispara */}
+      {splitIndice !== null && splitLancamento && (
+        <SplitModal
+          lancamento={splitLancamento}
+          indice={splitIndice}
+          onClose={() => setSplitIndice(null)}
+        />
+      )}
+
+      {/* Modal de exportação — Task T11: botão "Exportar .xlsx" abre a fase
+          `confirmar`; "Baixar .xlsx" chama a geração real (`handleGerar`,
+          núcleo intocado) e avança para a fase `feito`. */}
+      {exportFase && (
+        <ExportModal
+          fase={exportFase}
+          nome={nomeArquivoExport}
+          pendentes={lancamentosPendentes}
+          onConfirmar={handleConfirmarExport}
+          onFechar={() => setExportFase(null)}
+          onContinuar={() => setExportFase(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+function Swatch({ cor, borda, rotulo }: { cor: string; borda: string; rotulo: string }) {
+  return (
+    <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+      <span style={{ width: 11, height: 11, borderRadius: 3, background: cor, border: `1px solid ${borda}` }} />
+      {rotulo}
+    </span>
+  )
+}
