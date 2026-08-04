@@ -3,6 +3,7 @@
 
 import type { Lancamento, ResultadoParse } from '../types'
 import { normalizarParaBusca } from '../dominio/normalizacao'
+import { atribuirIds } from './idSerial'
 
 const CABECALHO_ESPERADO = 'date,title,amount'
 
@@ -80,7 +81,7 @@ function parsearValorFatura(valorStr: string): number {
  */
 function parsear(conteudo: string): ResultadoParse {
   const linhas = conteudo.split('\n')
-  const lancamentos: Lancamento[] = []
+  const lancamentos: Omit<Lancamento, 'id'>[] = []
   const excluidosPendentes: Lancamento[] = []
   let linhasIgnoradas = 0
 
@@ -112,7 +113,7 @@ function parsear(conteudo: string): ResultadoParse {
       origemEspecial = 'valor-pendente'
     }
 
-    const lancamento: Lancamento = {
+    const lancamento: Omit<Lancamento, 'id'> = {
       fonte: 'fatura_nubank_cc',
       data: dataStr,
       transcricao: titulo,
@@ -126,7 +127,7 @@ function parsear(conteudo: string): ResultadoParse {
     lancamentos.push(lancamento)
   }
 
-  return { lancamentos, linhasIgnoradas, excluidosPendentes }
+  return { lancamentos: atribuirIds(lancamentos), linhasIgnoradas, excluidosPendentes }
 }
 
 export const faturaNumbank = { aceita, parsear }

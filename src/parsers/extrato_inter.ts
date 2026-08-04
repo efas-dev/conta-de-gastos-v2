@@ -1,4 +1,5 @@
 import type { Lancamento, ResultadoParse } from '../types'
+import { atribuirIds } from './idSerial'
 
 /**
  * Header da tabela de dados do extrato Inter — discriminador do formato.
@@ -56,7 +57,7 @@ function parsearValor(valorStr: string): number {
  *   e contadas em linhasIgnoradas.
  */
 function parsear(conteudo: string): ResultadoParse {
-  const lancamentos: Lancamento[] = []
+  const lancamentos: Omit<Lancamento, 'id'>[] = []
   let linhasIgnoradas = 0
 
   const linhas = conteudo.replace(/\r/g, '').split('\n')
@@ -90,7 +91,7 @@ function parsear(conteudo: string): ResultadoParse {
     })
   }
 
-  return { lancamentos, linhasIgnoradas, excluidosPendentes: [] }
+  return { lancamentos: atribuirIds(lancamentos), linhasIgnoradas, excluidosPendentes: [] }
 }
 
 export const extratoInter = { aceita, parsear }

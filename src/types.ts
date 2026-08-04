@@ -9,6 +9,13 @@
  * Produzido pelos parsers e consumido pelo domínio, pelo gerador .xlsx e pela UI.
  */
 export interface Lancamento {
+  /**
+   * Id serial de nascimento: contador incremental por sessão, atribuído no momento
+   * do parse (via `src/parsers/idSerial.ts`), nunca recalculado depois. Buracos na
+   * numeração visível após remoção são comportamento correto, não um bug — o id é
+   * número de nascimento, não posição visual (ver ADR `fundacao-operacoes`, Decisão 2).
+   */
+  id: number
   /** Nome do banco/fonte de origem (ex.: "Nubank") */
   fonte: string
   /** Data do lançamento em formato ISO 8601 (YYYY-MM-DD) */

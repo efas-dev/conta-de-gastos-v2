@@ -9,10 +9,11 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { extratoInter } from '../extrato_inter'
 import { extratoItau } from '../extrato_itau'
 import { detectar } from '../index'
+import { reiniciarContadorIds } from '../idSerial'
 
 const FIXTURES = join(__dirname, 'fixtures')
 
@@ -78,5 +79,16 @@ describe('extratoInter.parsear', () => {
 describe('detectar — registro do parser Inter', () => {
   it('TL-INT-10: detectar() roteia o extrato Inter para o extratoInter', () => {
     expect(detectar(lerFixture('extrato_inter_normal.csv'))).toBe(extratoInter)
+  })
+})
+
+describe('extratoInter.parsear() — id serial de nascimento', () => {
+  beforeEach(() => {
+    reiniciarContadorIds()
+  })
+
+  it('TL-INT-11: atribui id sequencial e único a cada lançamento retornado', () => {
+    const { lancamentos } = extratoInter.parsear(lerFixture('extrato_inter_normal.csv'))
+    expect(lancamentos.map(l => l.id)).toEqual(lancamentos.map((_, i) => i + 1))
   })
 })

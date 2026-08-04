@@ -1,5 +1,6 @@
 import type { Lancamento, ResultadoParse } from '../types'
 import { parsearLinhaCsv } from './csv'
+import { atribuirIds } from './idSerial'
 
 /**
  * Header exato do extrato do Banco do Brasil (CSV com campos entre aspas).
@@ -48,7 +49,7 @@ function aceita(conteudo: string): boolean {
  * - O N° documento é ignorado; sem deduplicação.
  */
 function parsear(conteudo: string): ResultadoParse {
-  const lancamentos: Lancamento[] = []
+  const lancamentos: Omit<Lancamento, 'id'>[] = []
   let linhasIgnoradas = 0
 
   const linhas = conteudo.replace(/\r/g, '').split('\n')
@@ -105,7 +106,7 @@ function parsear(conteudo: string): ResultadoParse {
     })
   }
 
-  return { lancamentos, linhasIgnoradas, excluidosPendentes: [] }
+  return { lancamentos: atribuirIds(lancamentos), linhasIgnoradas, excluidosPendentes: [] }
 }
 
 export const extratoBb = { aceita, parsear }

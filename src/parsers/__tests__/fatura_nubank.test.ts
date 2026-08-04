@@ -2,8 +2,9 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { faturaNumbank } from '../fatura_nubank'
+import { reiniciarContadorIds } from '../idSerial'
 
 const FIXTURES = join(__dirname, 'fixtures')
 
@@ -229,5 +230,17 @@ describe('faturaNumbank.parsear() — linha malformada', () => {
     expect(lancamentos).toHaveLength(1)
     expect(lancamentos[0].transcricao).toBe('Lançamento Válido')
     expect(lancamentos[0].valor).toBe(-45)
+  })
+})
+
+describe('faturaNumbank.parsear() — id serial de nascimento', () => {
+  beforeEach(() => {
+    reiniciarContadorIds()
+  })
+
+  it('TL-T4-14: atribui id sequencial e único a cada lançamento, incluindo linhas com origemEspecial', () => {
+    const { lancamentos } = faturaNumbank.parsear(csvAvisosPendentes)
+    expect(lancamentos.map(l => l.id)).toEqual(lancamentos.map((_, i) => i + 1))
+    expect(lancamentos.some(l => l.origemEspecial !== undefined)).toBe(true)
   })
 })

@@ -2,9 +2,10 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { extratoNubank, ErroArquivoNaoReconhecido } from '../extrato_nubank'
 import { detectar } from '../index'
+import { reiniciarContadorIds } from '../idSerial'
 
 const FIXTURES = join(__dirname, 'fixtures')
 
@@ -160,5 +161,30 @@ describe('detectar()', () => {
 
   it('TL-16: lança ErroArquivoNaoReconhecido quando nenhum parser reconhece o conteúdo', () => {
     expect(() => detectar('conteúdo desconhecido')).toThrow(ErroArquivoNaoReconhecido)
+  })
+})
+
+// --- TL-18: id serial de nascimento ---
+
+describe('extratoNubank.parsear() — id serial de nascimento', () => {
+  beforeEach(() => {
+    reiniciarContadorIds()
+  })
+
+  it('TL-18: atribui id sequencial e único a cada lançamento retornado', () => {
+    const { lancamentos } = extratoNubank.parsear(csvPonto)
+    expect(lancamentos.map(l => l.id)).toEqual([1, 2, 3])
+  })
+
+  it('TL-19: ids são contíguos aos lançamentos finais — linhas descartadas por dedup não consomem id', () => {
+    const csv = [
+      'Data,Valor,Identificador,Descrição',
+      '01/03/2026,-150.00,DUP001,Pagamento A',
+      '01/03/2026,-150.00,DUP001,Pagamento A',
+      '03/03/2026,-50.00,UNI001,Pagamento único',
+    ].join('\n')
+    const { lancamentos } = extratoNubank.parsear(csv)
+    expect(lancamentos).toHaveLength(2)
+    expect(lancamentos.map(l => l.id)).toEqual([1, 2])
   })
 })
