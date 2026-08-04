@@ -63,3 +63,48 @@ export interface Detector {
  * real de cada detector para popular esta lista é escopo de T06/T07/T07-bis.
  */
 export const detectores: Detector[] = []
+
+/**
+ * Orquestrador do registry (ver ADR `fundacao-operacoes`, Decisão 3): percorre `detectoresLista`
+ * e, para cada detector, decide a fatia de `lancamentos` que lhe cabe conforme `escopo` —
+ * `'global'` roda uma única vez sobre o array total; `'por-fonte'` roda uma vez por valor
+ * distinto de `Lancamento.fonte`, recebendo apenas a fatia daquela fonte (mesmo critério de
+ * particionamento já usado por `classificarFonte`, `src/dominio/mes.ts`). Em ambos os casos,
+ * `contexto.todosLancamentos` é sempre o array total, nunca a fatia da chamada — necessário para
+ * detectores como conciliação, que precisam olhar além da própria fatia.
+ *
+ * Zero lançamentos e um detector `'por-fonte'` produz zero chamadas (zero fontes = zero fatias).
+ *
+ * Os `Aviso[]` de todas as chamadas são concatenados, preservando a ordem de execução.
+ */
+export function orquestrarDeteccao(
+  lancamentos: Lancamento[],
+  detectoresLista: Detector[],
+  nomeUsuario?: string,
+): Aviso[] {
+  const contexto: ContextoDeteccao = { todosLancamentos: lancamentos, nomeUsuario }
+  const avisos: Aviso[] = []
+
+  for (const detector of detectoresLista) {
+    if (detector.escopo === 'global') {
+      avisos.push(...detector.detectar(lancamentos, contexto))
+      continue
+    }
+
+    // escopo 'por-fonte': agrupa por Lancamento.fonte, preservando a ordem de primeira aparição.
+    const fatias = new Map<string, Lancamento[]>()
+    for (const lancamento of lancamentos) {
+      const fatia = fatias.get(lancamento.fonte)
+      if (fatia) {
+        fatia.push(lancamento)
+      } else {
+        fatias.set(lancamento.fonte, [lancamento])
+      }
+    }
+    for (const fatia of fatias.values()) {
+      avisos.push(...detector.detectar(fatia, contexto))
+    }
+  }
+
+  return avisos
+}
