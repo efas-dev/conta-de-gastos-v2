@@ -14,6 +14,7 @@ import { ToolbarRevisao } from './ToolbarRevisao'
 import { PainelLateral, type AbaPainelLateral } from './PainelLateral'
 import { BannerInspecao } from './BannerInspecao'
 import { ExportModal } from './ExportModal'
+import { PopupReplicacao } from './PopupReplicacao'
 import { SeletorMesReferencia } from './SeletorMesReferencia'
 import { IconeDesfazer, IconeRefazer, IconeExportar } from './Icones'
 
@@ -348,6 +349,10 @@ export function TelaRevisao({
 
         {painel && <PainelLateral aba={painel} setAba={setPainel} naturezas={naturezasDescritas} />}
       </div>
+
+      {/* Popup de sugestão de replicar classificação (item 36) — flutua no
+          rodapé quando há linhas idênticas sem classificar; some ao aplicar/dispensar. */}
+      <PopupReplicacao />
 
       {/* Modal de split — abre quando onSplitDetectado dispara */}
       {splitIndice !== null && splitLancamento && (

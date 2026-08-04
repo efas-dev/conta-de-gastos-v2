@@ -60,6 +60,7 @@ function resetarStore(): void {
     futuro: [],
     csvArquivo: null,
     sujo: false,
+    sugestaoReplicacao: null,
     filtroFontes: [],
     filtroNaturezas: [],
     filtroSoIncompletos: false,
@@ -1048,5 +1049,62 @@ describe('aplicar/desfazer propagam para a visão derivada (lancamentosVisiveis)
     useAppStore.getState().desfazer('vp-2')
     expect(useAppStore.getState().lancamentos).toHaveLength(2)
     expect(useAppStore.getState().lancamentosVisiveis).toHaveLength(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Item 36 — sugestão de replicar classificação para transcrições idênticas
+// ---------------------------------------------------------------------------
+
+describe('sugestão de replicação (item 36)', () => {
+  beforeEach(resetarStore)
+
+  function semearTres(): void {
+    // natureza/descrição vazias — o factory `lancamento()` as preenche por padrão.
+    useAppStore.setState({
+      lancamentos: [
+        lancamento({ transcricao: 'RAIA DROGASIL SA', natureza: '', descricao: '' }),
+        lancamento({ transcricao: 'RAIA DROGASIL SA', natureza: '', descricao: '' }),
+        lancamento({ transcricao: 'MERCADO', natureza: '', descricao: '' }),
+      ],
+    })
+  }
+
+  it('TLREP-INT-1: classificar uma linha gera sugestão com os alvos idênticos', () => {
+    semearTres()
+    useAppStore.getState().editarCelula(0, 'natureza', 'SA')
+    useAppStore.getState().editarCelula(0, 'descricao', 'Farmácia')
+    const s = useAppStore.getState().sugestaoReplicacao
+    expect(s).not.toBeNull()
+    expect(s!.alvos).toEqual([1]) // a linha 2 (MERCADO) é diferente
+    expect(s!.natureza).toBe('SA')
+    expect(s!.descricao).toBe('Farmácia')
+  })
+
+  it('TLREP-INT-2: aplicarReplicacao preenche os alvos e um Ctrl+Z desfaz tudo', () => {
+    semearTres()
+    useAppStore.getState().editarCelula(0, 'natureza', 'SA')
+    useAppStore.getState().editarCelula(0, 'descricao', 'Farmácia')
+    useAppStore.getState().aplicarReplicacao()
+
+    const l1 = useAppStore.getState().lancamentos[1]
+    expect(l1.natureza).toBe('SA')
+    expect(l1.descricao).toBe('Farmácia')
+    expect(useAppStore.getState().sugestaoReplicacao).toBeNull()
+
+    // Um único undo reverte o preenchimento em massa
+    useAppStore.getState().undo()
+    const l1apos = useAppStore.getState().lancamentos[1]
+    expect(l1apos.natureza).toBe('')
+    expect(l1apos.descricao).toBe('')
+  })
+
+  it('TLREP-INT-3: dispensarReplicacao limpa a sugestão sem tocar nas linhas', () => {
+    semearTres()
+    useAppStore.getState().editarCelula(0, 'natureza', 'SA')
+    expect(useAppStore.getState().sugestaoReplicacao).not.toBeNull()
+    useAppStore.getState().dispensarReplicacao()
+    expect(useAppStore.getState().sugestaoReplicacao).toBeNull()
+    expect(useAppStore.getState().lancamentos[1].natureza).toBe('')
   })
 })

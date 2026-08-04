@@ -715,8 +715,8 @@ describe('temas de linha leem variáveis CSS de :root (Task T2)', () => {
     '--linha-atencao',
     '--linha-transferencia',
     '--linha-investimento',
-    '--insp-sai',
-    '--insp-fica',
+    '--insp-sai-bg',
+    '--insp-fica-bg',
   ]
 
   afterEach(() => {
@@ -738,13 +738,15 @@ describe('temas de linha leem variáveis CSS de :root (Task T2)', () => {
     expect(TEMA_INVESTIMENTO.bgCell).toBe('#cccccc')
   })
 
-  it('TL-20: TEMA_INSPECAO_SAI.bgCell reflete --insp-sai quando definida', () => {
-    document.documentElement.style.setProperty('--insp-sai', '#dddddd')
+  // Fix de contraste (2026-08-04): o fundo da linha usa a variante PÁLIDA -bg
+  // (legível), não a saturada `--insp-sai`/`--insp-fica` (reservada a acentos).
+  it('TL-20: TEMA_INSPECAO_SAI.bgCell reflete --insp-sai-bg (fundo pálido legível)', () => {
+    document.documentElement.style.setProperty('--insp-sai-bg', '#dddddd')
     expect(TEMA_INSPECAO_SAI.bgCell).toBe('#dddddd')
   })
 
-  it('TL-21: TEMA_INSPECAO_FICA.bgCell reflete --insp-fica quando definida', () => {
-    document.documentElement.style.setProperty('--insp-fica', '#eeeeee')
+  it('TL-21: TEMA_INSPECAO_FICA.bgCell reflete --insp-fica-bg (fundo pálido legível)', () => {
+    document.documentElement.style.setProperty('--insp-fica-bg', '#eeeeee')
     expect(TEMA_INSPECAO_FICA.bgCell).toBe('#eeeeee')
   })
 

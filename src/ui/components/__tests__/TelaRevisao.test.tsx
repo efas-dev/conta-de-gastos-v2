@@ -5,6 +5,7 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import React from 'react'
 import { TelaRevisao } from '../TelaRevisao'
 import type { Aviso, Lancamento } from '../../../types'
+import type { SugestaoReplicacao } from '../../../dominio/replicacao'
 
 // ---------------------------------------------------------------------------
 // Task T12-bis (spec fundacao-operacoes) — extração comportamento-preservante
@@ -23,6 +24,8 @@ interface EstadoMock {
   naturezasRicas: unknown[]
   avisosAcionaveis: { avisos: Aviso[]; removidos: Record<string, unknown>; avisoEmInspecao: string | null }
   sujo: boolean
+  /** Sugestão de replicação (item 36) — re-integrada na nova composição via `PopupReplicacao`. */
+  sugestaoReplicacao: SugestaoReplicacao | null
 }
 
 let estado: EstadoMock
@@ -37,6 +40,8 @@ const {
   marcarLimpo,
   mockSetState,
   mockHandleGerarPipeline,
+  aplicarReplicacao,
+  dispensarReplicacao,
 } = vi.hoisted(() => ({
   adicionarAvisos: vi.fn(),
   aplicar: vi.fn(),
@@ -47,6 +52,8 @@ const {
   marcarLimpo: vi.fn(),
   mockSetState: vi.fn(),
   mockHandleGerarPipeline: vi.fn(),
+  aplicarReplicacao: vi.fn(),
+  dispensarReplicacao: vi.fn(),
 }))
 
 function acoes() {
@@ -58,6 +65,8 @@ function acoes() {
     undo,
     redo,
     marcarLimpo,
+    aplicarReplicacao,
+    dispensarReplicacao,
   }
 }
 
@@ -176,6 +185,7 @@ beforeEach(() => {
     naturezasRicas: [],
     avisosAcionaveis: { avisos: [], removidos: {}, avisoEmInspecao: null },
     sujo: false,
+    sugestaoReplicacao: null,
   }
   vi.clearAllMocks()
 })
@@ -299,5 +309,63 @@ describe('TelaRevisao', () => {
     window.dispatchEvent(evento)
 
     expect(preventDefaultSpy).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Re-integração do PopupReplicacao (item 36, dev) na nova composição —
+// Task T18-bis (spec fundacao-operacoes): o popup vivia solto em App.tsx
+// (monolito) e a extração para TelaRevisao precisa preservar a feature.
+// ---------------------------------------------------------------------------
+
+describe('PopupReplicacao na composição de TelaRevisao (item 36)', () => {
+  it('não aparece quando não há sugestão de replicação ativa', () => {
+    render(<TelaRevisao {...props()} />)
+
+    expect(screen.queryByRole('dialog', { name: 'Sugestão de replicar classificação' })).not.toBeInTheDocument()
+  })
+
+  it('aparece com a sugestão quando sugestaoReplicacao está ativa no store', () => {
+    estado.sugestaoReplicacao = {
+      chave: 'pix recebido joao',
+      exemplo: 'PIX RECEBIDO JOÃO',
+      natureza: 'RE',
+      descricao: 'Reembolso',
+      alvos: [1, 2],
+    }
+    render(<TelaRevisao {...props()} />)
+
+    expect(screen.getByRole('dialog', { name: 'Sugestão de replicar classificação' })).toBeInTheDocument()
+    expect(screen.getByText('Aplicar a 2')).toBeInTheDocument()
+  })
+
+  it('"Aplicar" chama aplicarReplicacao() do store', () => {
+    estado.sugestaoReplicacao = {
+      chave: 'pix recebido joao',
+      exemplo: 'PIX RECEBIDO JOÃO',
+      natureza: 'RE',
+      descricao: '',
+      alvos: [1],
+    }
+    render(<TelaRevisao {...props()} />)
+
+    fireEvent.click(screen.getByText('Aplicar a 1'))
+
+    expect(aplicarReplicacao).toHaveBeenCalledTimes(1)
+  })
+
+  it('"Dispensar" chama dispensarReplicacao() do store', () => {
+    estado.sugestaoReplicacao = {
+      chave: 'pix recebido joao',
+      exemplo: 'PIX RECEBIDO JOÃO',
+      natureza: 'RE',
+      descricao: '',
+      alvos: [1],
+    }
+    render(<TelaRevisao {...props()} />)
+
+    fireEvent.click(screen.getByText('Dispensar'))
+
+    expect(dispensarReplicacao).toHaveBeenCalledTimes(1)
   })
 })
