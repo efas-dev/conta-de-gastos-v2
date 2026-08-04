@@ -266,6 +266,78 @@ describe('excluirLinha', () => {
 })
 
 // ---------------------------------------------------------------------------
+// 13-bis. excluirLinha aciona reconciliarObsoletos (Task T12, ADR
+// fundacao-operacoes, emenda de escopo 2026-08-04): o gatilho real da
+// transição 'pendente' → 'obsoleto' (T08 só materializou a ação) mora aqui.
+// ---------------------------------------------------------------------------
+
+describe('excluirLinha aciona reconciliarObsoletos (Task T12)', () => {
+  beforeEach(() => {
+    resetarStore()
+  })
+
+  it('transiciona para obsoleto um aviso pendente cujo único alvo por id é removido via excluirLinha', () => {
+    const l0 = lancamento({ transcricao: 'A', id: 1 })
+    const l1 = lancamento({ transcricao: 'B', id: 2 })
+    useAppStore.getState().setLancamentos([l0, l1])
+    useAppStore.setState((s) => ({
+      avisosAcionaveis: {
+        ...s.avisosAcionaveis,
+        avisos: [
+          {
+            id: 'a1',
+            tipo: 'proposta',
+            origem: 'conciliacao',
+            mensagem: 'Proposta de teste',
+            alvo: [],
+            permanece: [],
+            estado: 'pendente',
+            mutacaoProposta: { verbo: 'remover', alvo: [l0.id] },
+          },
+        ],
+      },
+    }))
+
+    // l0 está na posição 0 — excluirLinha(0) remove exatamente o alvo de a1.
+    useAppStore.getState().excluirLinha(0)
+
+    expect(
+      useAppStore.getState().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado,
+    ).toBe('obsoleto')
+  })
+
+  it('mantém pendente um aviso cujo alvo por id continua presente após excluirLinha remover outra linha', () => {
+    const l0 = lancamento({ transcricao: 'A', id: 1 })
+    const l1 = lancamento({ transcricao: 'B', id: 2 })
+    useAppStore.getState().setLancamentos([l0, l1])
+    useAppStore.setState((s) => ({
+      avisosAcionaveis: {
+        ...s.avisosAcionaveis,
+        avisos: [
+          {
+            id: 'a1',
+            tipo: 'proposta',
+            origem: 'conciliacao',
+            mensagem: 'Proposta de teste',
+            alvo: [],
+            permanece: [],
+            estado: 'pendente',
+            mutacaoProposta: { verbo: 'remover', alvo: [l0.id] },
+          },
+        ],
+      },
+    }))
+
+    // l1 (posição 1) é removida — l0 (o alvo real de a1) continua presente.
+    useAppStore.getState().excluirLinha(1)
+
+    expect(
+      useAppStore.getState().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado,
+    ).toBe('pendente')
+  })
+})
+
+// ---------------------------------------------------------------------------
 // 14–17. moverLinha
 // ---------------------------------------------------------------------------
 

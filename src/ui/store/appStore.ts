@@ -549,6 +549,12 @@ export const useAppStore = create<AppStore>()((set, get) => {
       mutarComHistorico((draft) => {
         draft.lancamentos.splice(indice, 1)
       })
+      // Emenda de escopo da Task T12 (ADR fundacao-operacoes, Decisão 7): gatilho
+      // real de `reconciliarObsoletos` (ação materializada pela T08 no
+      // avisosSlice) — avisos pendentes cujo alvo por id sumiu de `lancamentos`
+      // transicionam para 'obsoleto'. `mutarComHistorico` já aplicou a remoção
+      // via `set`, então `get().lancamentos` reflete o estado pós-exclusão.
+      get().reconciliarObsoletos(get().lancamentos)
     },
 
     moverLinha: (indice, direcao) => {
