@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest'
 import type { Detector, ContextoDeteccao } from '../registry'
 import { detectores, orquestrarDeteccao } from '../registry'
 import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from '../deteccoes'
+import { detectarInvestimentoAvisos } from '../investimento'
 import { classificarFonte } from '../mes'
 import type { Aviso, Lancamento } from '../../types'
 
@@ -99,9 +100,9 @@ describe('registry — lista de detectores', () => {
     expect(Array.isArray(detectores)).toBe(true)
   })
 
-  it('T06 migra 3 detectores (valor-pendente, pagamento-recebido, conciliação); investimento e transferência interna ainda faltam (T07/T07-bis)', () => {
-    expect(detectores).toHaveLength(3)
-    expect(detectores.map((d) => d.origem)).not.toContain('investimento')
+  it('T06/T07 migram 4 detectores (valor-pendente, pagamento-recebido, conciliação, investimento); transferência interna ainda falta (T07-bis)', () => {
+    expect(detectores).toHaveLength(4)
+    expect(detectores.map((d) => d.origem)).toContain('investimento')
     expect(detectores.map((d) => d.origem)).not.toContain('transferencia-interna')
   })
 })
@@ -301,11 +302,12 @@ describe('orquestrarDeteccao — detectores mistos e agregação', () => {
 // ---------------------------------------------------------------------------
 
 describe('detectores — T06 (migração dos 3 detectores legados)', () => {
-  it('contém exatamente 3 entradas: valor-pendente, pagamento-recebido, conciliacao', () => {
+  it('contém, nesta ordem, valor-pendente, pagamento-recebido, conciliacao (investimento vem depois — T07)', () => {
     expect(detectores.map((d) => d.origem)).toEqual([
       'valor-pendente',
       'pagamento-recebido',
       'conciliacao',
+      'investimento',
     ])
   })
 
@@ -462,5 +464,51 @@ describe('detectores — T06 (migração dos 3 detectores legados)', () => {
     const avisosNovo = orquestrarDeteccao(todosLancamentos, detectores, undefined, mesRef)
 
     expect(avisosNovo).toEqual(avisosLegado)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// T07 — migração de investimento (proposta de remoção completa via mutacaoProposta)
+// ---------------------------------------------------------------------------
+
+describe('detectores — T07 (investimento)', () => {
+  it('investimento tem escopo "global"', () => {
+    const investimento = detectores.find((d) => d.origem === 'investimento')
+    expect(investimento?.escopo).toBe('global')
+  })
+
+  it('orquestrarDeteccao com o registry real produz o mesmo aviso de investimento que a chamada direta a detectarInvestimentoAvisos (paridade wrapper/orquestrador)', () => {
+    const comum = lancamento({ id: 1, fonte: 'Nubank', transcricao: 'Compra qualquer' })
+    const aplicacao = lancamento({
+      id: 2,
+      fonte: 'Nubank',
+      transcricao: 'APLICACAO RDB AUTOMATICO',
+      valor: -500,
+    })
+    const todosLancamentos = [comum, aplicacao]
+
+    const avisosDireto = detectarInvestimentoAvisos(todosLancamentos)
+    const avisosOrquestrados = orquestrarDeteccao(todosLancamentos, detectores).filter(
+      (a) => a.origem === 'investimento',
+    )
+
+    expect(avisosOrquestrados).toEqual(avisosDireto)
+  })
+
+  it('PARIDADE: aviso de investimento aponta o mesmo id do lançamento independentemente de qual fonte aparece primeiro no array total', () => {
+    const extrato = lancamento({ id: 1, fonte: 'Itaú', transcricao: 'Débito extrato' })
+    const faturaComum = lancamento({ id: 2, fonte: 'Nubank', transcricao: 'Compra qualquer' })
+    const faturaResgate = lancamento({
+      id: 3,
+      fonte: 'Nubank',
+      transcricao: 'RESGATE RDB AUTOMATICO',
+      valor: 300,
+    })
+    const todosLancamentos = [extrato, faturaComum, faturaResgate]
+
+    const avisos = orquestrarDeteccao(todosLancamentos, detectores)
+    const avisoInvestimento = avisos.find((a) => a.origem === 'investimento')
+
+    expect(avisoInvestimento?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [3] })
   })
 })

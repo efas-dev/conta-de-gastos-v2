@@ -2,6 +2,7 @@
 
 import type { Aviso, Lancamento } from '../types'
 import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from './deteccoes'
+import { detectarInvestimentoAvisos } from './investimento'
 import { classificarFonte } from './mes'
 
 /**
@@ -118,12 +119,22 @@ function detectarConciliacaoRegistry(lancamentos: Lancamento[], contexto: Contex
 /**
  * Registro de detectores disponíveis, análogo ao array `parsers` de `src/parsers/index.ts`.
  *
- * T06 migra os 3 detectores existentes com escopo bem definido — ver ADR `fundacao-operacoes` e
- * o iteração-log de T06 para a justificativa de cada escolha de escopo (todos `'global'`, nunca
- * `'por-fonte'`, para preservar paridade com os índices calculados sobre o array total pelo
- * call-site legado). `detectarInvestimento` (`src/dominio/investimento.ts`) e
- * `detectarTransferenciaInterna` (`src/dominio/transferencia.ts`) ainda não estão aqui — migração
- * é escopo de T07/T07-bis.
+ * T06 migrou os 3 detectores de índice posicional (`valor-pendente`, `pagamento-recebido`,
+ * `conciliacao`) com escopo `'global'` — ver iteração-log de T06 para a justificativa (preservar
+ * paridade com os índices calculados sobre o array total pelo call-site legado).
+ *
+ * T07 acrescenta `investimento` (`detectarInvestimentoAvisos`, `src/dominio/investimento.ts`).
+ * Escopo `'global'` (decisão desta task, ver iteração-log): diferente dos 3 detectores de T06,
+ * `investimento` não calcula `alvo` como índice posicional — usa `Lancamento.id`
+ * (`mutacaoProposta.alvo: number[]`), então um fatiamento `'por-fonte'` produziria o mesmo
+ * conjunto de avisos corretamente (id não depende de posição no array recebido). `'global'` foi
+ * escolhido mesmo assim para preservar a ORDEM de emissão idêntica à do call-site legado (um
+ * único `.map()` sobre `todosLancamentos`, sem reagrupar por fonte) e para manter o mesmo padrão
+ * dos demais detectores desta lista — não por necessidade de correção do alvo, apenas por
+ * simplicidade e paridade de ordem.
+ *
+ * `detectarTransferenciaInterna` (`src/dominio/transferencia.ts`) ainda não está aqui — migração
+ * é escopo de T07-bis.
  */
 export const detectores: Detector[] = [
   {
@@ -140,6 +151,11 @@ export const detectores: Detector[] = [
     origem: 'conciliacao',
     escopo: 'global',
     detectar: detectarConciliacaoRegistry,
+  },
+  {
+    origem: 'investimento',
+    escopo: 'global',
+    detectar: (lancamentos) => detectarInvestimentoAvisos(lancamentos),
   },
 ]
 
