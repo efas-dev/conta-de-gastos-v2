@@ -1,5 +1,6 @@
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
+// ADR: see spec/fundacao-operacoes.adr.md
 
 import type { Aviso, Lancamento } from '../../types'
 
@@ -80,6 +81,16 @@ export interface AcoesAvisosSlice {
    * `appStore.ts`) — fora do escopo desta ação, que só materializa a transição.
    */
   reconciliarObsoletos: (lancamentosAtuais: Lancamento[]) => void
+  /**
+   * Zera `avisos`, `removidos` e `avisoEmInspecao` por inteiro (Decisão 8 do ADR
+   * `fundacao-operacoes`, T09): cada chamada de "produzir" limpa o estado de avisos do zero,
+   * incluindo decisões já tomadas (`'aplicado'`/`'dispensado'`) — previsibilidade sobre
+   * memória, decisão humana explícita que contrariou a recomendação do agente na captura.
+   * `removidos` some junto porque um registro de remoção só faz sentido enquanto o aviso
+   * que o originou ainda existir para ser desfeito; `avisoEmInspecao` volta a `null` para
+   * não deixar uma inspeção pendurada num aviso que não existe mais. Idempotente.
+   */
+  limparAvisos: () => void
 }
 
 /** Estado mínimo do store completo do qual o slice de avisos depende. */
@@ -273,6 +284,12 @@ export function criarAvisosSlice<TStore extends StoreComAvisos>(
             return algumAlvoAusente ? { ...a, estado: 'obsoleto' as const } : a
           }),
         },
+      } as Partial<TStore>)
+    },
+
+    limparAvisos: () => {
+      set({
+        avisosAcionaveis: estadoInicialAvisos,
       } as Partial<TStore>)
     },
   }

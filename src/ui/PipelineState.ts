@@ -2,6 +2,7 @@
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
+// ADR: see spec/fundacao-operacoes.adr.md
 
 import type { Lancamento, DicEntry, Aviso } from '../types'
 import { detectar } from '../parsers/index'
@@ -9,6 +10,7 @@ import { enriquecerLancamento } from '../dominio/dicionario'
 import { detectarInvestimento } from '../dominio/investimento'
 import { detectarTransferenciaInterna } from '../dominio/transferencia'
 import { detectarConciliacao } from '../dominio/deteccoes'
+import { detectores, orquestrarDeteccao } from '../dominio/registry'
 import { aprenderDicionario } from '../dominio/aprendizado'
 import { lerDicionario } from '../excel/reader/leitor'
 import { gerarXlsx } from '../excel/writer/gerador'
@@ -225,6 +227,51 @@ export function produzirLancamentos(
   adicionarAvisos([...avisosConciliacao, ...avisosInformativosMigrados])
 
   return { lancamentos: lancamentosComFlags, dicEntries, avisos }
+}
+
+// ---------------------------------------------------------------------------
+// Política de "produzir" — limpar avisos e re-rodar o registry do zero (T09)
+// ---------------------------------------------------------------------------
+
+/**
+ * Materializa a política de "produzir" declarada na Decisão 8 do ADR `fundacao-operacoes`
+ * (Task T09): zera a lista de avisos por inteiro — incluindo decisões já tomadas
+ * (`'aplicado'`/`'dispensado'`) — e re-roda TODOS os detectores registrados no registry
+ * (`src/dominio/registry.ts`, T05/T06/T07/T07-bis) do zero sobre o array total de
+ * lançamentos já concatenado. Nenhuma decisão anterior sobrevive a uma nova chamada —
+ * previsibilidade sobre memória, decisão humana explícita da captura (o custo — o usuário
+ * pode precisar re-dispensar propostas já dispensadas — foi registrado e aceito no ADR).
+ *
+ * `limparAvisos` é chamado SEMPRE antes de `adicionarAvisos` — nunca depois — para que a
+ * lista nunca contenha, ainda que momentaneamente, avisos de duas rodadas de detecção
+ * distintas.
+ *
+ * Wiring real (chamar esta função a partir do fluxo de "Produzir" do usuário, substituindo
+ * as chamadas legadas diretas a `detectarValorPendente`/`detectarPagamentoRecebido`/
+ * `detectarConciliacao` hoje em `App.tsx::handleProduzir`) é DIFERIDO para T10/T11 — ver
+ * iteração-log da Task T09: `App.tsx` está fora das Áreas tocadas desta task; T11 já prevê
+ * extrair `handleProduzir` para um módulo próprio que deixa de importar detectores
+ * diretamente, ponto natural para este wiring.
+ *
+ * @param todosLancamentos Array total de lançamentos (já concatenado de todos os arquivos
+ *   do lote), nunca a sublista de um único arquivo.
+ * @param nomeUsuario      Nome do usuário (opcional) — habilita heurísticas nominais (ex.:
+ *   Pix nominal em transferência interna).
+ * @param mesRef           Mês de referência no formato YYYY-MM (opcional) — necessário para
+ *   o detector de conciliação classificar fonte de fatura/extrato (ver `registry.ts`); sem
+ *   ele, conciliação não produz aviso (degradação silenciosa já documentada em T06).
+ * @param limparAvisos     Ação do avisosSlice que zera `avisos`/`removidos`/`avisoEmInspecao`.
+ * @param adicionarAvisos  Ação do avisosSlice que despacha os avisos recém-detectados.
+ */
+export function reproduzirAvisos(
+  todosLancamentos: Lancamento[],
+  nomeUsuario: string | undefined,
+  mesRef: string | undefined,
+  limparAvisos: () => void,
+  adicionarAvisos: (avisos: Aviso[]) => void,
+): void {
+  limparAvisos()
+  adicionarAvisos(orquestrarDeteccao(todosLancamentos, detectores, nomeUsuario, mesRef))
 }
 
 // ---------------------------------------------------------------------------
