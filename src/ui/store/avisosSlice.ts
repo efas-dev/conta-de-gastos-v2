@@ -41,10 +41,13 @@ export interface AcoesAvisosSlice {
   /** Adiciona avisos ao fim da lista existente (append, nunca substitui). */
   adicionarAvisos: (novos: Aviso[]) => void
   /**
-   * Aplica uma proposta pendente: remove de `lancamentos` os itens cujo
-   * índice posicional está em `aviso.alvo` e marca o aviso como `'aplicado'`.
-   * Sem efeito em avisos informativos, avisos inexistentes ou avisos que já
-   * não estão `'pendente'` (idempotente).
+   * Aplica uma proposta pendente: interpreta `aviso.mutacaoProposta` de forma
+   * genérica (Decisão 1 do ADR `fundacao-operacoes`) e remove de `lancamentos`
+   * os itens cujo `id` está no alvo da mutação, marcando o aviso como
+   * `'aplicado'`. Avisos legados sem `mutacaoProposta` ainda são suportados
+   * via ponte de compatibilidade (ver `resolverAlvoParaRemocao`). Sem efeito em avisos
+   * informativos, avisos inexistentes ou avisos que já não estão `'pendente'`
+   * (idempotente).
    */
   aplicar: (id: string) => void
   /**
@@ -92,6 +95,37 @@ export function selecionarContagemPendentes(state: StoreComAvisos): number {
 }
 
 /**
+ * Resolve os `Lancamento`s-alvo de `aviso` para remoção, de forma genérica —
+ * sem `switch` por `origem`/detector (Decisão 1 do ADR `fundacao-operacoes`).
+ *
+ * Caminho definitivo: quando `aviso.mutacaoProposta` está presente, o
+ * casamento é estritamente por `Lancamento.id` — `mutacaoProposta.alvo` já
+ * carrega ids reais (`Mutacao`, `src/types.ts`).
+ *
+ * Ponte de compatibilidade transitória: avisos legados — produzidos pelos
+ * detectores que ainda não migraram para o registry (T06/T07/T07-bis) — não
+ * populam `mutacaoProposta` e carregam `alvo` como índice posicional textual.
+ * Esses detectores nunca tiveram acesso a um id real no momento da detecção,
+ * então a ponte resolve diretamente à referência do `Lancamento` que ocupa
+ * aquela posição em `lancamentos` no momento da aplicação — sem depender de
+ * `Lancamento.id` estar definido (alguns fixtures de teste anteriores a esta
+ * task constroem `Lancamento` fora dos parsers e não atribuem `id`; ver
+ * iteração-log, Task T03, "Debugging gate"). A remoção em `aplicar` casa por
+ * referência de objeto contra o resultado desta função — nunca por índice.
+ * Esta ponte é temporária: some quando os detectores restantes migrarem.
+ */
+function resolverAlvoParaRemocao(aviso: Aviso, lancamentos: Lancamento[]): Lancamento[] {
+  if (aviso.mutacaoProposta) {
+    const idsAlvo = new Set(aviso.mutacaoProposta.alvo)
+    return lancamentos.filter((lancamento) => idsAlvo.has(lancamento.id))
+  }
+
+  return aviso.alvo
+    .map((indicePosicional) => lancamentos[Number(indicePosicional)])
+    .filter((lancamento): lancamento is Lancamento => lancamento !== undefined)
+}
+
+/**
  * Cria as ações do slice de avisos acionáveis, ligadas a um `set`/`get` de
  * um store Zustand que contenha ao menos `lancamentos` e `avisosAcionaveis`
  * (`StoreComAvisos`). Genérico sobre o tipo do store completo para evitar
@@ -119,10 +153,10 @@ export function criarAvisosSlice<TStore extends StoreComAvisos>(
         return
       }
 
-      const alvoSet = new Set(aviso.alvo)
+      const alvos = new Set(resolverAlvoParaRemocao(aviso, state.lancamentos))
       const removidosDoAviso: LancamentoRemovido[] = []
       const lancamentosRestantes = state.lancamentos.filter((lancamento, indice) => {
-        if (alvoSet.has(String(indice))) {
+        if (alvos.has(lancamento)) {
           removidosDoAviso.push({ indice, lancamento })
           return false
         }

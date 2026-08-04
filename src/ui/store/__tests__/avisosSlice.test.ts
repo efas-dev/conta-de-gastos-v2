@@ -13,8 +13,11 @@ import type { Aviso, Lancamento } from '../../../types'
 // Fixtures
 // ---------------------------------------------------------------------------
 
+let proximoIdLancamento = 1
+
 function lancamento(parcial: Partial<Lancamento> = {}): Lancamento {
   return {
+    id: proximoIdLancamento++,
     fonte: 'Nubank',
     data: '2025-03-15',
     transcricao: 'Mercado',
@@ -186,6 +189,84 @@ describe('avisosSlice', () => {
 
       expect(get().lancamentos).toEqual([l1])
       expect(get().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('aplicado')
+    })
+  })
+
+  describe('mutação genérica (mutacaoProposta) — Task T03 (ADR fundacao-operacoes, Decisão 1)', () => {
+    it('aplicar casa o alvo por lancamento.id via mutacaoProposta, não pela posição no array', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const l1 = lancamento({ transcricao: 'Item 1' })
+      // Array reordenado (l1 na posição 0) e `alvo` legado deliberadamente vazio —
+      // se a implementação ainda casasse por índice, nada seria removido.
+      const { get, acoes } = criarStoreDeTeste([l1, l0])
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', alvo: [], mutacaoProposta: { verbo: 'remover', alvo: [l0.id] } }),
+      ])
+
+      acoes.aplicar('a1')
+
+      expect(get().lancamentos).toEqual([l1])
+      expect(get().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('aplicado')
+    })
+
+    it('aplicar com mutacaoProposta ignora o `alvo` legado quando ambos estão presentes', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const l1 = lancamento({ transcricao: 'Item 1' })
+      const { get, acoes } = criarStoreDeTeste([l0, l1])
+      // `alvo` legado aponta para o índice 0 (l0); `mutacaoProposta` aponta para l1 por id.
+      acoes.adicionarAvisos([
+        proposta({
+          id: 'a1',
+          alvo: ['0'],
+          mutacaoProposta: { verbo: 'remover', alvo: [l1.id] },
+        }),
+      ])
+
+      acoes.aplicar('a1')
+
+      expect(get().lancamentos).toEqual([l0])
+    })
+
+    it('desfazer reverte uma mutacaoProposta aplicada, reinserindo na posição original', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const l1 = lancamento({ transcricao: 'Item 1' })
+      const { get, acoes } = criarStoreDeTeste([l1, l0])
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', alvo: [], mutacaoProposta: { verbo: 'remover', alvo: [l0.id] } }),
+      ])
+
+      acoes.aplicar('a1')
+      expect(get().lancamentos).toEqual([l1])
+
+      acoes.desfazer('a1')
+
+      expect(get().lancamentos).toEqual([l1, l0])
+      expect(get().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('pendente')
+    })
+
+    it('aplicar com mutacaoProposta cujo alvo não existe mais em lancamentos não remove nada nem quebra', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const { get, acoes } = criarStoreDeTeste([l0])
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', alvo: [], mutacaoProposta: { verbo: 'remover', alvo: [9999] } }),
+      ])
+
+      acoes.aplicar('a1')
+
+      expect(get().lancamentos).toEqual([l0])
+      expect(get().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('aplicado')
+    })
+
+    it('aplicar sobre aviso legado (sem mutacaoProposta) segue funcionando via ponte de compatibilidade, traduzindo o índice de `alvo` para o id do lançamento no momento da aplicação', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const l1 = lancamento({ transcricao: 'Item 1' })
+      const l2 = lancamento({ transcricao: 'Item 2' })
+      const { get, acoes } = criarStoreDeTeste([l0, l1, l2])
+      acoes.adicionarAvisos([proposta({ id: 'a1', alvo: ['1'] })])
+
+      acoes.aplicar('a1')
+
+      expect(get().lancamentos).toEqual([l0, l2])
     })
   })
 

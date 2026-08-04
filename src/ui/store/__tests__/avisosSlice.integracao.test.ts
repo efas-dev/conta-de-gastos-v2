@@ -9,8 +9,11 @@ import type { Aviso, Lancamento } from '../../../types'
 // Fixtures
 // ---------------------------------------------------------------------------
 
+let proximoIdLancamento = 1
+
 function lancamento(parcial: Partial<Lancamento> = {}): Lancamento {
   return {
+    id: proximoIdLancamento++,
     fonte: 'Nubank',
     data: '2025-03-15',
     transcricao: 'Mercado',
