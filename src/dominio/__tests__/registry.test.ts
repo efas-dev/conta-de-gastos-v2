@@ -5,6 +5,7 @@ import type { Detector, ContextoDeteccao } from '../registry'
 import { detectores, orquestrarDeteccao } from '../registry'
 import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from '../deteccoes'
 import { detectarInvestimentoAvisos } from '../investimento'
+import { detectarTransferenciaInternaAvisos } from '../transferencia'
 import { classificarFonte } from '../mes'
 import type { Aviso, Lancamento } from '../../types'
 
@@ -100,10 +101,10 @@ describe('registry — lista de detectores', () => {
     expect(Array.isArray(detectores)).toBe(true)
   })
 
-  it('T06/T07 migram 4 detectores (valor-pendente, pagamento-recebido, conciliação, investimento); transferência interna ainda falta (T07-bis)', () => {
-    expect(detectores).toHaveLength(4)
+  it('T06/T07/T07-bis migram 5 detectores (valor-pendente, pagamento-recebido, conciliação, investimento, transferência interna)', () => {
+    expect(detectores).toHaveLength(5)
     expect(detectores.map((d) => d.origem)).toContain('investimento')
-    expect(detectores.map((d) => d.origem)).not.toContain('transferencia-interna')
+    expect(detectores.map((d) => d.origem)).toContain('transferencia-interna')
   })
 })
 
@@ -302,12 +303,13 @@ describe('orquestrarDeteccao — detectores mistos e agregação', () => {
 // ---------------------------------------------------------------------------
 
 describe('detectores — T06 (migração dos 3 detectores legados)', () => {
-  it('contém, nesta ordem, valor-pendente, pagamento-recebido, conciliacao (investimento vem depois — T07)', () => {
+  it('contém, nesta ordem, valor-pendente, pagamento-recebido, conciliacao, investimento, transferencia-interna (T07/T07-bis)', () => {
     expect(detectores.map((d) => d.origem)).toEqual([
       'valor-pendente',
       'pagamento-recebido',
       'conciliacao',
       'investimento',
+      'transferencia-interna',
     ])
   })
 
@@ -461,7 +463,14 @@ describe('detectores — T06 (migração dos 3 detectores legados)', () => {
       }
     }
 
-    const avisosNovo = orquestrarDeteccao(todosLancamentos, detectores, undefined, mesRef)
+    // Filtra às 3 origens desta paridade — o fixture usa "Pagamento de fatura" (extratoPagamento),
+    // que a partir de T07-bis também casa com `detectarTransferenciaInterna` (padrão genérico
+    // `PADROES_INTERNOS`); o aviso extra de `transferencia-interna` é esperado e correto, mas não
+    // faz parte do call-site legado de T06 reproduzido manualmente acima.
+    const origensDestaParidade = ['valor-pendente', 'pagamento-recebido', 'conciliacao']
+    const avisosNovo = orquestrarDeteccao(todosLancamentos, detectores, undefined, mesRef).filter(
+      (a) => origensDestaParidade.includes(a.origem),
+    )
 
     expect(avisosNovo).toEqual(avisosLegado)
   })
@@ -510,5 +519,71 @@ describe('detectores — T07 (investimento)', () => {
     const avisoInvestimento = avisos.find((a) => a.origem === 'investimento')
 
     expect(avisoInvestimento?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [3] })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// T07-bis — migração de transferência interna (proposta de remoção completa via mutacaoProposta)
+// ---------------------------------------------------------------------------
+
+describe('detectores — T07-bis (transferência interna)', () => {
+  it('transferencia-interna tem escopo "global"', () => {
+    const transferenciaInterna = detectores.find((d) => d.origem === 'transferencia-interna')
+    expect(transferenciaInterna?.escopo).toBe('global')
+  })
+
+  it('orquestrarDeteccao com o registry real produz o mesmo aviso de transferência interna que a chamada direta a detectarTransferenciaInternaAvisos (paridade wrapper/orquestrador)', () => {
+    const comum = lancamento({ id: 1, fonte: 'Nubank', transcricao: 'Compra qualquer' })
+    const transferencia = lancamento({
+      id: 2,
+      fonte: 'Nubank',
+      transcricao: 'ITAU BLACK pagamento fatura',
+      valor: -500,
+    })
+    const todosLancamentos = [comum, transferencia]
+
+    const avisosDireto = detectarTransferenciaInternaAvisos(todosLancamentos)
+    const avisosOrquestrados = orquestrarDeteccao(todosLancamentos, detectores).filter(
+      (a) => a.origem === 'transferencia-interna',
+    )
+
+    expect(avisosOrquestrados).toEqual(avisosDireto)
+  })
+
+  it('orquestrarDeteccao repassa nomeUsuario ao detector de transferência interna via contexto (Pix nominal)', () => {
+    const pixNominal = lancamento({
+      id: 1,
+      fonte: 'Nubank',
+      transcricao: 'Transferência enviada pelo Pix - Eduardo Santos',
+      valor: -200,
+    })
+
+    const avisosSemNome = orquestrarDeteccao([pixNominal], detectores).filter(
+      (a) => a.origem === 'transferencia-interna',
+    )
+    const avisosComNome = orquestrarDeteccao([pixNominal], detectores, 'Eduardo Santos').filter(
+      (a) => a.origem === 'transferencia-interna',
+    )
+
+    expect(avisosSemNome).toEqual([])
+    expect(avisosComNome).toHaveLength(1)
+    expect(avisosComNome[0]?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [1] })
+  })
+
+  it('PARIDADE: aviso de transferência interna aponta o mesmo id do lançamento independentemente de qual fonte aparece primeiro no array total', () => {
+    const extrato = lancamento({ id: 1, fonte: 'Itaú', transcricao: 'Débito extrato' })
+    const faturaComum = lancamento({ id: 2, fonte: 'Nubank', transcricao: 'Compra qualquer' })
+    const faturaTransferencia = lancamento({
+      id: 3,
+      fonte: 'Nubank',
+      transcricao: 'Pagamento de fatura Nubank',
+      valor: -300,
+    })
+    const todosLancamentos = [extrato, faturaComum, faturaTransferencia]
+
+    const avisos = orquestrarDeteccao(todosLancamentos, detectores)
+    const avisoTransferencia = avisos.find((a) => a.origem === 'transferencia-interna')
+
+    expect(avisoTransferencia?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [3] })
   })
 })

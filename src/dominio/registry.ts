@@ -3,6 +3,7 @@
 import type { Aviso, Lancamento } from '../types'
 import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from './deteccoes'
 import { detectarInvestimentoAvisos } from './investimento'
+import { detectarTransferenciaInternaAvisos } from './transferencia'
 import { classificarFonte } from './mes'
 
 /**
@@ -133,8 +134,13 @@ function detectarConciliacaoRegistry(lancamentos: Lancamento[], contexto: Contex
  * dos demais detectores desta lista — não por necessidade de correção do alvo, apenas por
  * simplicidade e paridade de ordem.
  *
- * `detectarTransferenciaInterna` (`src/dominio/transferencia.ts`) ainda não está aqui — migração
- * é escopo de T07-bis.
+ * T07-bis acrescenta `transferencia-interna` (`detectarTransferenciaInternaAvisos`,
+ * `src/dominio/transferencia.ts`). Mesma decisão de escopo `'global'` e mesmos motivos de T07
+ * (paridade de ordem de emissão com o call-site legado + consistência com os demais detectores
+ * desta lista) — `mutacaoProposta.alvo` também é id-based aqui, então `'por-fonte'` produziria o
+ * mesmo conjunto de ids corretamente, mas `'global'` preserva a ordem de um único `.map()` sobre
+ * `todosLancamentos`. `nomeUsuario` é repassado do `contexto` (já propagado pelo orquestrador,
+ * T05), sem exigir nenhuma mudança na assinatura de `FuncaoDeteccao`.
  */
 export const detectores: Detector[] = [
   {
@@ -156,6 +162,12 @@ export const detectores: Detector[] = [
     origem: 'investimento',
     escopo: 'global',
     detectar: (lancamentos) => detectarInvestimentoAvisos(lancamentos),
+  },
+  {
+    origem: 'transferencia-interna',
+    escopo: 'global',
+    detectar: (lancamentos, contexto) =>
+      detectarTransferenciaInternaAvisos(lancamentos, contexto.nomeUsuario),
   },
 ]
 
