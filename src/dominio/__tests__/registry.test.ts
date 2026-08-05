@@ -101,10 +101,11 @@ describe('registry — lista de detectores', () => {
     expect(Array.isArray(detectores)).toBe(true)
   })
 
-  it('T06/T07/T07-bis migram 5 detectores (valor-pendente, pagamento-recebido, conciliação, investimento, transferência interna)', () => {
-    expect(detectores).toHaveLength(5)
+  it('T06/T07/T07-bis/T4(vr-despesas) migram/acrescentam 6 detectores (valor-pendente, pagamento-recebido, conciliação, investimento, transferência interna, vr)', () => {
+    expect(detectores).toHaveLength(6)
     expect(detectores.map((d) => d.origem)).toContain('investimento')
     expect(detectores.map((d) => d.origem)).toContain('transferencia-interna')
+    expect(detectores.map((d) => d.origem)).toContain('vr')
   })
 })
 
@@ -303,14 +304,23 @@ describe('orquestrarDeteccao — detectores mistos e agregação', () => {
 // ---------------------------------------------------------------------------
 
 describe('detectores — T06 (migração dos 3 detectores legados)', () => {
-  it('contém, nesta ordem, valor-pendente, pagamento-recebido, conciliacao, investimento, transferencia-interna (T07/T07-bis)', () => {
+  it('contém, nesta ordem, valor-pendente, pagamento-recebido, conciliacao, investimento, transferencia-interna, vr (T07/T07-bis, T4 vr-despesas)', () => {
     expect(detectores.map((d) => d.origem)).toEqual([
       'valor-pendente',
       'pagamento-recebido',
       'conciliacao',
       'investimento',
       'transferencia-interna',
+      'vr',
     ])
+  })
+
+  it('vr fica posicionado imediatamente após transferencia-interna — penúltimo do array atual (TL-53)', () => {
+    const origens = detectores.map((d) => d.origem)
+    const indiceTransferencia = origens.indexOf('transferencia-interna')
+    const indiceVR = origens.indexOf('vr')
+    expect(indiceVR).toBe(indiceTransferencia + 1)
+    expect(indiceVR).toBe(origens.length - 1)
   })
 
   it('valor-pendente e pagamento-recebido têm escopo "global" (não "por-fonte")', () => {
@@ -688,5 +698,45 @@ describe('detectores — T07-bis (transferência interna)', () => {
     const avisoTransferencia = avisos.find((a) => a.origem === 'transferencia-interna')
 
     expect(avisoTransferencia?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [3] })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 4 (spec vr-despesas) — detector 'vr' via orquestrarDeteccao
+//
+// TL-54 isolado (ver iteração-log, achado da iteração 4 REJEITADO): a agregação de
+// orquestrarDeteccao é exercida aqui com um array LOCAL MÍNIMO contendo só a entrada 'vr'
+// (extraída de `detectores`, o registry real, apenas para obter o `Detector` já registrado por
+// TL-53/T4 — nenhuma chamada abaixo passa `detectores` inteiro, os 6 detectores reais, à
+// orquestração). Isso mantém a boundary sob teste restrita a `detectarVR`+`orquestrarDeteccao`,
+// sem depender do comportamento combinado dos outros 5 detectores — unit genuíno, não
+// integração. A cobertura do registry real com os 6 detectores operando juntos (incluindo 'vr')
+// já existe em TL-55 (ordem/posição, sem chamar orquestrarDeteccao) acima, e será revisitada em
+// integração/e2e por T8/T9.
+// ---------------------------------------------------------------------------
+
+describe('detectores — vr (Task 4, spec vr-despesas)', () => {
+  const detectorVR = detectores.find((d) => d.origem === 'vr')!
+  const arrayLocalMinimo: Detector[] = [detectorVR]
+
+  it('orquestrarDeteccao, com array local mínimo contendo só o detector vr, inclui exatamente 1 aviso origem "vr" para lancamentos: [] (TL-54)', () => {
+    const avisos = orquestrarDeteccao([], arrayLocalMinimo)
+    const avisosVR = avisos.filter((a) => a.origem === 'vr')
+    expect(avisosVR).toHaveLength(1)
+  })
+
+  it('orquestrarDeteccao, mesmo array local mínimo, com lancamentos não vazios, também inclui exatamente 1 aviso origem "vr" (TL-54)', () => {
+    const avisos = orquestrarDeteccao(
+      [lancamento({ id: 1 }), lancamento({ id: 2, fonte: 'Itaú' })],
+      arrayLocalMinimo,
+    )
+    const avisosVR = avisos.filter((a) => a.origem === 'vr')
+    expect(avisosVR).toHaveLength(1)
+    expect(avisosVR[0]).toMatchObject({
+      origem: 'vr',
+      tipo: 'proposta',
+      estado: 'pendente',
+    })
+    expect(avisosVR[0].mutacaoProposta).toBeUndefined()
   })
 })

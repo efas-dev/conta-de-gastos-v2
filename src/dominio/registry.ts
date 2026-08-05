@@ -5,6 +5,7 @@ import type { Aviso, Lancamento } from '../types'
 import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from './deteccoes'
 import { detectarInvestimentoAvisos } from './investimento'
 import { detectarTransferenciaInternaAvisos } from './transferencia'
+import { detectarVR } from './vr'
 import { classificarFontePorPrefixo } from './mes'
 
 /**
@@ -150,6 +151,13 @@ function detectarConciliacaoRegistry(lancamentos: Lancamento[], contexto: Contex
  * mesmo conjunto de ids corretamente, mas `'global'` preserva a ordem de um único `.map()` sobre
  * `todosLancamentos`. `nomeUsuario` é repassado do `contexto` (já propagado pelo orquestrador,
  * T05), sem exigir nenhuma mudança na assinatura de `FuncaoDeteccao`.
+ *
+ * Task 4 (spec `vr-despesas`) acrescenta `vr` (`detectarVR`, `src/dominio/vr.ts`) como PENÚLTIMO
+ * elemento — posição deliberada (ADR `vr-despesas`, Decisão 5): a próxima spec (rendimentos, item
+ * 30 do `TODO.md`) registrará seu detector como o último do array, preservando `vr` na penúltima
+ * posição. Escopo `'global'` pelos mesmos motivos de paridade/simplicidade dos detectores
+ * anteriores, ainda que aqui não haja `alvo` id-based algum (o detector sempre emite 1 aviso fixo,
+ * sem `mutacaoProposta` — ver JSDoc de `detectarVR`).
  */
 export const detectores: Detector[] = [
   {
@@ -177,6 +185,11 @@ export const detectores: Detector[] = [
     escopo: 'global',
     detectar: (lancamentos, contexto) =>
       detectarTransferenciaInternaAvisos(lancamentos, contexto.nomeUsuario),
+  },
+  {
+    origem: 'vr',
+    escopo: 'global',
+    detectar: (lancamentos, contexto) => detectarVR(lancamentos, contexto),
   },
 ]
 

@@ -92,11 +92,14 @@ describe('reproduzirAvisos (T09, ADR Decisão 8 — política de "produzir")', (
     const primeiro = lancamento({ transcricao: 'APLICACAO RDB', valor: -1000 })
     const { get, acoes, atualizarLancamentos } = criarStoreDeTeste([primeiro])
 
-    // 1ª rodada de "produzir": detecta o aviso de investimento.
+    // 1ª rodada de "produzir": detecta o aviso de investimento + o aviso 'vr' (sempre presente,
+    // ver Task 4 da spec `vr-despesas` — `detectarVR` emite incondicionalmente, independente do
+    // conteúdo de `lancamentos`).
     reproduzirAvisos([primeiro], undefined, undefined, acoes.limparAvisos, acoes.adicionarAvisos)
     const avisosRodada1 = get().avisosAcionaveis.avisos
-    expect(avisosRodada1).toHaveLength(1)
-    const idRodada1 = avisosRodada1[0].id
+    expect(avisosRodada1).toHaveLength(2)
+    const avisoInvestimentoRodada1 = avisosRodada1.find((a) => a.origem === 'investimento')
+    const idRodada1 = avisoInvestimentoRodada1!.id
 
     // Usuário dispensa a proposta.
     acoes.dispensar(idRodada1)
@@ -116,9 +119,10 @@ describe('reproduzirAvisos (T09, ADR Decisão 8 — política de "produzir")', (
     // Nenhum aviso 'dispensado' remanescente em nenhum lugar da lista.
     expect(avisosRodada2.every((a) => a.estado === 'pendente')).toBe(true)
     expect(avisosRodada2.find((a) => a.id === idRodada1)?.estado).toBe('pendente')
-    // A nova detecção roda do zero sobre os DOIS lançamentos — 2 propostas de investimento.
-    expect(avisosRodada2).toHaveLength(2)
-    expect(avisosRodada2.map((a) => a.origem)).toEqual(['investimento', 'investimento'])
+    // A nova detecção roda do zero sobre os DOIS lançamentos — 2 propostas de investimento +
+    // 1 aviso 'vr' (sempre presente, Task 4 spec vr-despesas).
+    expect(avisosRodada2).toHaveLength(3)
+    expect(avisosRodada2.map((a) => a.origem)).toEqual(['investimento', 'investimento', 'vr'])
     // removidos/avisoEmInspecao também resetados pela limpeza.
     expect(get().avisosAcionaveis.removidos).toEqual({})
     expect(get().avisosAcionaveis.avisoEmInspecao).toBeNull()

@@ -204,11 +204,14 @@ describe('E2E — Task T17: jornada completa ponta a ponta', () => {
       const propostas = useAppStore
         .getState()
         .avisosAcionaveis.avisos.filter((a) => a.tipo === 'proposta')
-      expect(propostas).toHaveLength(3)
+      // 4ª proposta: 'vr' (Task 4, spec vr-despesas) — detector sempre presente, independente
+      // do conteúdo dos lançamentos importados.
+      expect(propostas).toHaveLength(4)
       expect(propostas.map((a) => a.origem).sort()).toEqual([
         'conciliacao',
         'investimento',
         'valor-pendente',
+        'vr',
       ])
       expect(propostas.every((a) => a.estado === 'pendente')).toBe(true)
     })
@@ -286,12 +289,13 @@ describe('E2E — Task T17: jornada completa ponta a ponta', () => {
       useAppStore.getState().lancamentos.some((l) => /APLICACAO CDB/i.test(l.transcricao)),
     ).toBe(false)
 
-    // Fora dos pendentes: só a conciliação (voltou a pendente no passo 3)
-    // segue pendente — valor-pendente foi dispensado, investimento é obsoleto.
-    expect(selecionarContagemPendentes(useAppStore.getState())).toBe(1)
+    // Fora dos pendentes: conciliação (voltou a pendente no passo 3) + 'vr' (sempre presente,
+    // Task 4 spec vr-despesas) seguem pendentes — valor-pendente foi dispensado, investimento é
+    // obsoleto.
+    expect(selecionarContagemPendentes(useAppStore.getState())).toBe(2)
 
     await waitFor(() => {
-      expect(screen.getByLabelText('1 proposta pendente')).toBeInTheDocument()
+      expect(screen.getByLabelText('2 propostas pendentes')).toBeInTheDocument()
     })
 
     // O card do aviso obsoleto continua listado (não desaparece), mas sem
@@ -352,7 +356,8 @@ describe('E2E — Task T17: jornada completa ponta a ponta', () => {
     const propostasReproduzidas = useAppStore
       .getState()
       .avisosAcionaveis.avisos.filter((a) => a.tipo === 'proposta')
-    expect(propostasReproduzidas).toHaveLength(3)
+    // +1 'vr' pelo mesmo motivo do passo 1 (detector sempre presente, Task 4 spec vr-despesas).
+    expect(propostasReproduzidas).toHaveLength(4)
     // D8: nenhuma decisão da rodada anterior sobrevive — tudo volta a
     // 'pendente', incluindo o que era 'obsoleto' e o que era 'dispensado'.
     expect(propostasReproduzidas.every((a) => a.estado === 'pendente')).toBe(true)
