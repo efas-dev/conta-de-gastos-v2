@@ -110,7 +110,8 @@ vi.mock('../../../parsers/index', () => ({
 }))
 
 vi.mock('../FonteRotulo', () => ({
-  FonteRotulo: () => React.createElement('span', { 'data-testid': 'fonte-rotulo' }),
+  FonteRotulo: ({ fonte, tipo }: { fonte: string; tipo: string }) =>
+    React.createElement('span', { 'data-testid': 'fonte-rotulo', 'data-fonte': fonte, 'data-tipo': tipo }),
 }))
 vi.mock('../Cabecalho', () => ({
   Cabecalho: ({ etapa }: { etapa: number }) =>
@@ -295,5 +296,50 @@ describe('TelaImportacao', () => {
     expect(mockHandleProduzirPipeline).toHaveBeenCalledTimes(1)
     const deps = mockHandleProduzirPipeline.mock.calls[0][0] as { limparAvisos: unknown }
     expect(deps.limparAvisos).toBe(limparAvisos)
+  })
+
+  // Task 7 (spec conciliacao-robusta, D1 do ADR): FonteRotulo passa a refletir a
+  // classificação autoritativa por prefixo (classificarFontePorPrefixo), não mais a
+  // heurística por data (classificarFonte) — o rótulo fica correto independente de
+  // mesEscolhido.
+  it('rótulo de fonte "fatura_*" mostra "fatura" mesmo com mesEscolhido desalinhado (Task 7)', async () => {
+    estado.iniciais = 'ES'
+    mockParsear.mockReturnValue({
+      lancamentos: [
+        { id: '1', data: '2024-03-10', fonte: 'fatura_nubank_cc' } as Lancamento,
+      ],
+    })
+    // mesEscolhido igual ao mês da própria fatura (não anterior) — sob a heurística antiga
+    // (classificarFonte) essa fonte seria classificada 'extrato' por falta de data anterior.
+    const { container } = render(<TelaImportacao {...props({ mesEscolhido: '2024-03' })} />)
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [csvFile('fatura.csv')] } })
+    })
+
+    await waitFor(() => expect(screen.getByTestId('fonte-rotulo')).toBeInTheDocument())
+    expect(screen.getByTestId('fonte-rotulo')).toHaveAttribute('data-tipo', 'fatura')
+  })
+
+  it('rótulo de fonte "extrato_*" mostra "extrato" independente de mesEscolhido (Task 7)', async () => {
+    estado.iniciais = 'ES'
+    mockParsear.mockReturnValue({
+      lancamentos: [
+        { id: '1', data: '2024-01-05', fonte: 'extrato_itau' } as Lancamento,
+      ],
+    })
+    // mesEscolhido posterior a qualquer data da fonte — heurística antiga também classificaria
+    // 'extrato' aqui, então o cenário relevante da Task 7 é o da fatura acima; este confirma
+    // que a fonte extrato_* não regride com a troca de classificador.
+    const { container } = render(<TelaImportacao {...props({ mesEscolhido: '2024-03' })} />)
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [csvFile('extrato.csv')] } })
+    })
+
+    await waitFor(() => expect(screen.getByTestId('fonte-rotulo')).toBeInTheDocument())
+    expect(screen.getByTestId('fonte-rotulo')).toHaveAttribute('data-tipo', 'extrato')
   })
 })

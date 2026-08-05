@@ -9,7 +9,7 @@ import {
   handleProduzir as handleProduzirPipeline,
 } from '../handlersPipeline'
 import { lerDicionario, ehDicionario, lerIniciais } from '../../excel/reader/leitor'
-import { detectarMesSugerido, classificarFonte } from '../../dominio/mes'
+import { detectarMesSugerido, classificarFontePorPrefixo } from '../../dominio/mes'
 import { detectar } from '../../parsers/index'
 import type { Lancamento } from '../../types'
 import { FonteRotulo } from './FonteRotulo'
@@ -404,7 +404,7 @@ export function TelaImportacao({
                               <FonteRotulo
                                 key={fonte}
                                 fonte={fonte}
-                                tipo={classificarFonte(fonte, lansArquivo, mesEscolhido)}
+                                tipo={classificarFontePorPrefixo(fonte)}
                               />
                             ))}
                           </span>
