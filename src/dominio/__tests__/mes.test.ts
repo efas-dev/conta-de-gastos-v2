@@ -1,7 +1,7 @@
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { defaultMes, detectarMesSugerido, classificarFonte } from '../mes'
+import { defaultMes, detectarMesSugerido, classificarFonte, classificarFontePorPrefixo } from '../mes'
 import type { Lancamento } from '../../types'
 
 function lancamento(overrides: Partial<Lancamento> = {}): Lancamento {
@@ -121,6 +121,34 @@ describe('classificarFonte', () => {
       lancamento({ fonte: 'Itau',   data: '2026-04-01' }),    // Itau anterior — não conta para Nubank
     ]
     expect(classificarFonte('Nubank', lancamentos, '2026-06')).toBe('extrato')
+  })
+})
+
+describe('classificarFontePorPrefixo', () => {
+  it('TL-13: prefixo "fatura_nubank_cc" → "fatura"', () => {
+    expect(classificarFontePorPrefixo('fatura_nubank_cc')).toBe('fatura')
+  })
+
+  it('TL-14: prefixo "extrato_nubank" → "extrato"', () => {
+    expect(classificarFontePorPrefixo('extrato_nubank')).toBe('extrato')
+  })
+
+  it('TL-15: prefixo "extrato_inter" → "extrato"', () => {
+    expect(classificarFontePorPrefixo('extrato_inter')).toBe('extrato')
+  })
+
+  it('TL-16: prefixo "extrato_bb" → "extrato"', () => {
+    expect(classificarFontePorPrefixo('extrato_bb')).toBe('extrato')
+  })
+
+  it('TL-17: prefixo "extrato_itau" → "extrato"', () => {
+    expect(classificarFontePorPrefixo('extrato_itau')).toBe('extrato')
+  })
+
+  it('TL-18: prefixo desconhecido lança Error explícito em vez de default silencioso', () => {
+    expect(() => classificarFontePorPrefixo('xyz_desconhecido')).toThrow(
+      /prefixo.*desconhecido|fatura_|extrato_/i,
+    )
   })
 })
 

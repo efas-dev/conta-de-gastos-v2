@@ -82,3 +82,22 @@ export function classificarFonte(
 
   return 'extrato'
 }
+
+/**
+ * Fonte AUTORITATIVA de classificação fatura/extrato (D1, ADR conciliacao-robusta).
+ * Decide UNICAMENTE pelo prefixo do campo `fonte` declarado pelo parser no momento do parse
+ * (`fatura_*` → 'fatura', `extrato_*` → 'extrato') — nunca depende de `lancamentos` nem de `mesRef`,
+ * ao contrário de `classificarFonte` (heurística por data, rebaixada a cross-check informativo).
+ *
+ * Um `fonte` que não seguir a convenção `fatura_*`/`extrato_*` é um parser não-conformante: falha
+ * ruidosamente (lança `Error`) em vez de assumir um default silencioso, para que o problema apareça
+ * no momento do parse e não vire uma classificação errada mascarada.
+ */
+export function classificarFontePorPrefixo(fonte: string): 'fatura' | 'extrato' {
+  if (fonte.startsWith('fatura_')) return 'fatura'
+  if (fonte.startsWith('extrato_')) return 'extrato'
+
+  throw new Error(
+    `classificarFontePorPrefixo: prefixo de fonte desconhecido "${fonte}" — esperado "fatura_*" ou "extrato_*"`,
+  )
+}
