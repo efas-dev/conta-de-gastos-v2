@@ -178,4 +178,14 @@ export interface Aviso {
    * registry).
    */
   mutacaoProposta?: Mutacao
+  /**
+   * Lista de candidatos de conciliação para exibição (ver ADR `conciliacao-robusta`,
+   * Decisões 2 e 3): candidatos próximos do total da fatura (D2) quando nenhum bate
+   * exato, ou candidatos ambíguos (D3) quando 2+ batem exato. Cada item carrega o id
+   * do lançamento candidato (`alvo`) e um `resumo` textual (valor/data) para exibição
+   * — nunca aplicado automaticamente, apenas listado para seleção manual do usuário.
+   * Populado por `detectarConciliacao` (T3/T4). `undefined` = aviso sem candidatos
+   * (ex.: proposta com casamento exato único, ou avisos de outras origens).
+   */
+  candidatos?: { alvo: string; resumo: string }[]
 }

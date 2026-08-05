@@ -355,3 +355,38 @@ describe('Mutacao', () => {
     expect(aviso.mutacaoProposta).toBeUndefined()
   })
 })
+
+// TL-35 a TL-36: Aviso.candidatos (spec conciliacao-robusta, Task 5 / Decisão 2-3 do ADR)
+describe('Aviso.candidatos', () => {
+  it('aceita uma lista de candidatos com alvo e resumo por item (TL-35)', () => {
+    const aviso: Aviso = {
+      id: 'aviso-8',
+      tipo: 'informativo',
+      origem: 'conciliacao',
+      mensagem: 'Fatura não conciliada exatamente: candidatos próximos encontrados',
+      alvo: [],
+      permanece: [],
+      estado: 'pendente',
+      candidatos: [
+        { alvo: 'lanc-10', resumo: 'R$ 150,00 em 2024-01-10' },
+        { alvo: 'lanc-11', resumo: 'R$ 149,50 em 2024-01-12' },
+      ],
+    }
+    expect(aviso.candidatos).toHaveLength(2)
+    expect(aviso.candidatos?.[0]).toEqual({ alvo: 'lanc-10', resumo: 'R$ 150,00 em 2024-01-10' })
+  })
+
+  it('é opcional — Aviso sem candidatos continua válido (TL-36)', () => {
+    const aviso: Aviso = {
+      id: 'aviso-9',
+      tipo: 'proposta',
+      origem: 'conciliacao',
+      mensagem: 'teste',
+      alvo: [],
+      permanece: [],
+      estado: 'pendente',
+      mutacaoProposta: { verbo: 'remover', alvo: [1] },
+    }
+    expect(aviso.candidatos).toBeUndefined()
+  })
+})
