@@ -158,6 +158,32 @@ function subsetComposicaoIndices(
   return alcancaveis.get(alvoCentavos) ?? null
 }
 
+/**
+ * Monta o Aviso informativo (sem `mutacaoProposta`) que lista candidatos do extrato para
+ * seleção manual do usuário — usado tanto pela ambiguidade exata (D3, 2+ candidatos por
+ * total ou por subconjunto) quanto pelos candidatos próximos (D2). Listar ≠ casar: nenhum
+ * desses caminhos aplica remoção automática.
+ */
+function avisoInformativoComCandidatos(
+  id: string,
+  mensagem: string,
+  candidatosLancamentos: Lancamento[],
+): Aviso {
+  return {
+    id,
+    tipo: 'informativo',
+    origem: 'conciliacao',
+    mensagem,
+    alvo: [],
+    permanece: [],
+    estado: 'pendente',
+    candidatos: candidatosLancamentos.map((lancamento) => ({
+      alvo: String(lancamento.id),
+      resumo: formatarResumoCandidato(lancamento),
+    })),
+  }
+}
+
 /** Monta o Aviso de proposta de conciliação apontando para o lançamento do extrato. */
 function propostaConciliacao(
   lancamento: Lancamento,
@@ -189,7 +215,9 @@ function propostaConciliacao(
  *    exato ao centavo entre um subconjunto da fatura e um lançamento do extrato (cenário
  *    de pagamento parcial).
  * 3. Em ambas as etapas, 2+ candidatos dentro do critério é ambiguidade — par único
- *    conservador (R2): nenhuma proposta é gerada.
+ *    conservador (R2): nenhuma proposta é gerada; em vez disso (ADR `conciliacao-robusta`
+ *    Decisão 3), emite 1 aviso informativo com `Aviso.candidatos` listando todos os
+ *    candidatos ambíguos (valor/data/id) para seleção manual — nunca remoção automática.
  * 4. Nenhum casamento em nenhuma etapa: se existir ≥1 lançamento do extrato dentro da
  *    faixa de proximidade do total da fatura (`FAIXA_PROXIMIDADE_PERCENTUAL`, ADR
  *    `conciliacao-robusta` Decisão 2), emite 1 aviso informativo com `Aviso.candidatos`
@@ -230,7 +258,13 @@ export function detectarConciliacao(
     return [propostaConciliacao(lancamento, index, permanece, resumo)]
   }
   if (candidatosTotal.length >= 2) {
-    return []
+    return [
+      avisoInformativoComCandidatos(
+        'conciliacao-ambiguidade-total',
+        `Aviso: ${candidatosTotal.length} candidatos do extrato batem exatamente com o somatório da fatura — selecione manualmente qual remover.`,
+        candidatosTotal.map(({ lancamento }) => lancamento),
+      ),
+    ]
   }
 
   const candidatosSubset = lancamentosExtrato
@@ -258,7 +292,13 @@ export function detectarConciliacao(
     return [propostaConciliacao(lancamento, index, permanece, resumo)]
   }
   if (candidatosSubset.length >= 2) {
-    return []
+    return [
+      avisoInformativoComCandidatos(
+        'conciliacao-ambiguidade-subconjunto',
+        `Aviso: ${candidatosSubset.length} candidatos do extrato batem exatamente com algum subconjunto da fatura — selecione manualmente qual remover.`,
+        candidatosSubset.map(({ lancamento }) => lancamento),
+      ),
+    ]
   }
 
   const limiteProximidadeCentavos = somaFaturaCentavos * FAIXA_PROXIMIDADE_PERCENTUAL
@@ -275,19 +315,11 @@ export function detectarConciliacao(
 
   if (candidatosProximos.length > 0) {
     return [
-      {
-        id: 'conciliacao-candidatos-proximos',
-        tipo: 'informativo',
-        origem: 'conciliacao',
-        mensagem: `Aviso: fatura não conciliada exatamente — ${candidatosProximos.length} candidato(s) próximo(s) encontrado(s) no extrato para seleção manual.`,
-        alvo: [],
-        permanece: [],
-        estado: 'pendente',
-        candidatos: candidatosProximos.map(({ lancamento }) => ({
-          alvo: String(lancamento.id),
-          resumo: formatarResumoCandidato(lancamento),
-        })),
-      },
+      avisoInformativoComCandidatos(
+        'conciliacao-candidatos-proximos',
+        `Aviso: fatura não conciliada exatamente — ${candidatosProximos.length} candidato(s) próximo(s) encontrado(s) no extrato para seleção manual.`,
+        candidatosProximos.map(({ lancamento }) => lancamento),
+      ),
     ]
   }
 

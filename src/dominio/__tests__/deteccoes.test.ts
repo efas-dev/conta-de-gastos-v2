@@ -172,13 +172,42 @@ describe('detectarConciliacao', () => {
     expect(avisos[0].alvo).toEqual(['0'])
   })
 
-  it('ambiguidade: 2+ candidatos dentro da tolerância → nenhuma proposta (TL-7)', () => {
+  it('ambiguidade por TOTAL: 2+ candidatos exatos dentro da tolerância vira informativo listando todos, sem mutacaoProposta (TL-7/TL-17)', () => {
     const fatura = [lancamento({ transcricao: 'Item A', valor: -200 })]
     const extrato = [
-      lancamento({ transcricao: 'Pagamento de fatura', valor: -200.01 }),
-      lancamento({ transcricao: 'Pagamento de fatura (duplicado)', valor: -199.99 }),
+      lancamento({ transcricao: 'Pagamento de fatura', valor: -200.01, data: '2026-06-05', id: 30 }),
+      lancamento({ transcricao: 'Pagamento de fatura (duplicado)', valor: -199.99, data: '2026-06-06', id: 31 }),
     ]
-    expect(detectarConciliacao(fatura, extrato)).toEqual([])
+    const avisos = detectarConciliacao(fatura, extrato)
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].tipo).toBe('informativo')
+    expect(avisos[0].mutacaoProposta).toBeUndefined()
+    expect(avisos[0].candidatos).toEqual([
+      { alvo: '30', resumo: expect.stringContaining('200,01') },
+      { alvo: '31', resumo: expect.stringContaining('199,99') },
+    ])
+  })
+
+  it('ambiguidade por SUBCONJUNTO: 2+ candidatos batem exatamente por subset-sum (soma total não bate) vira informativo listando todos, sem mutacaoProposta (TL-18)', () => {
+    const fatura = [
+      lancamento({ transcricao: 'Item A', valor: -100 }),
+      lancamento({ transcricao: 'Item B', valor: -30 }),
+      lancamento({ transcricao: 'Item C', valor: -70 }),
+    ]
+    // soma total = -200; nenhum candidato do extrato bate nisso.
+    // duas linhas do extrato, cada uma batendo exatamente com o subconjunto [Item A] (-100).
+    const extrato = [
+      lancamento({ transcricao: 'Pagamento X', valor: -100, data: '2026-06-07', id: 40 }),
+      lancamento({ transcricao: 'Pagamento Y', valor: -100, data: '2026-06-08', id: 41 }),
+    ]
+    const avisos = detectarConciliacao(fatura, extrato)
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].tipo).toBe('informativo')
+    expect(avisos[0].mutacaoProposta).toBeUndefined()
+    expect(avisos[0].candidatos).toEqual([
+      { alvo: '40', resumo: expect.stringContaining('100,00') },
+      { alvo: '41', resumo: expect.stringContaining('100,00') },
+    ])
   })
 
   it('sem casamento algum gera aviso informativo "fatura não conciliada" (TL-8)', () => {
