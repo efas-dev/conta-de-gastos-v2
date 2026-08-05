@@ -316,3 +316,76 @@ describe('CentralDeAvisos — modo inspeção (TL-10, TL-11)', () => {
     expect(within(itemB).getByLabelText('Resumo da regra')).toHaveTextContent('resumo de B')
   })
 })
+
+describe('CentralDeAvisos — aviso VR abre FormVR em vez do toggle de inspeção (TL-80 a TL-85, Task 7)', () => {
+  function propostaVR(parcial: Partial<Aviso> = {}): Aviso {
+    return proposta({
+      id: 'vr',
+      origem: 'vr',
+      mensagem: 'Registre as despesas pagas com VR neste mês.',
+      alvo: [],
+      permanece: [],
+      ...parcial,
+    })
+  }
+
+  it('TL-80: antes de qualquer clique, form-vr não está no DOM', () => {
+    avisosMock = [propostaVR()]
+    render(<CentralDeAvisos />)
+
+    expect(screen.queryByTestId('form-vr')).toBeNull()
+  })
+
+  it('TL-81: clicar no card do aviso VR faz o FormVR aparecer', () => {
+    avisosMock = [propostaVR()]
+    render(<CentralDeAvisos />)
+
+    fireEvent.click(screen.getByText('Registre as despesas pagas com VR neste mês.'))
+
+    expect(screen.getByTestId('form-vr')).toBeInTheDocument()
+  })
+
+  it('TL-82: clicar no card do aviso VR não chama entrarInspecao nem sairInspecao', () => {
+    avisosMock = [propostaVR()]
+    render(<CentralDeAvisos />)
+
+    fireEvent.click(screen.getByText('Registre as despesas pagas com VR neste mês.'))
+
+    expect(mockEntrarInspecao).not.toHaveBeenCalled()
+    expect(mockSairInspecao).not.toHaveBeenCalled()
+  })
+
+  it('TL-83: clicar em outro aviso continua chamando entrarInspecao, e form-vr não aparece (regressão)', () => {
+    avisosMock = [propostaVR(), proposta({ id: 'prop-1', origem: 'conciliacao' })]
+    render(<CentralDeAvisos />)
+
+    fireEvent.click(screen.getByText('Fatura conciliável com pagamento do extrato.'))
+
+    expect(mockEntrarInspecao).toHaveBeenCalledWith('prop-1')
+    expect(screen.queryByTestId('form-vr')).toBeNull()
+  })
+
+  it('TL-84: clicar de novo no card do aviso VR (form já aberto) fecha o form', () => {
+    avisosMock = [propostaVR()]
+    render(<CentralDeAvisos />)
+
+    const mensagem = screen.getByText('Registre as despesas pagas com VR neste mês.')
+    fireEvent.click(mensagem)
+    expect(screen.getByTestId('form-vr')).toBeInTheDocument()
+
+    fireEvent.click(mensagem)
+    expect(screen.queryByTestId('form-vr')).toBeNull()
+  })
+
+  it('TL-85: com o form VR aberto, clicar em outro aviso não fecha nem abre form-vr', () => {
+    avisosMock = [propostaVR(), proposta({ id: 'prop-1', origem: 'conciliacao' })]
+    render(<CentralDeAvisos />)
+
+    fireEvent.click(screen.getByText('Registre as despesas pagas com VR neste mês.'))
+    expect(screen.getByTestId('form-vr')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Fatura conciliável com pagamento do extrato.'))
+
+    expect(screen.getByTestId('form-vr')).toBeInTheDocument()
+  })
+})

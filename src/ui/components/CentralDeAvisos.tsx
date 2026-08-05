@@ -2,8 +2,11 @@
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
 
+import { useState } from 'react'
 import { useAppStore } from '../store/appStore'
 import type { Aviso } from '../../types'
+import { defaultMes } from '../../dominio/mes'
+import { FormVR } from './FormVR'
 
 /**
  * Conteúdo da aba "Avisos" do `PainelLateral` — Task T5.
@@ -40,6 +43,12 @@ export function CentralDeAvisos() {
   const entrarInspecao = useAppStore((s) => s.entrarInspecao)
   const sairInspecao = useAppStore((s) => s.sairInspecao)
 
+  // Estado local do painel — `formVRAberto` (Task 7): abre/fecha o `FormVR` no clique do card do
+  // aviso `origem==='vr'`. Deliberadamente NÃO vai para o store (invariante "etapa da jornada é
+  // derivada", `Docs/ARCHITECTURE.md`) — é puramente visual, sem significado fora desta sessão de
+  // painel.
+  const [formVRAberto, setFormVRAberto] = useState(false)
+
   if (avisos.length === 0) return null
 
   // Informativos dispensados saem da lista (T9, D18) — sem "Desfazer" para este tipo,
@@ -63,6 +72,8 @@ export function CentralDeAvisos() {
                 emInspecao={avisoEmInspecao === aviso.id}
                 entrarInspecao={entrarInspecao}
                 sairInspecao={sairInspecao}
+                formVRAberto={formVRAberto}
+                alternarFormVR={() => setFormVRAberto((atual) => !atual)}
               />
             ))}
           </ul>
@@ -105,6 +116,14 @@ interface CartaoPropostaProps extends AcoesPropostaProps {
   emInspecao: boolean
   entrarInspecao: (id: string) => void
   sairInspecao: () => void
+  /**
+   * `true` quando o `FormVR` está aberto neste painel — só tem efeito visual/de renderização para
+   * o aviso `origem==='vr'` (Task 7, ADR `vr-despesas`). Estado local de `CentralDeAvisos`, não do
+   * store (invariante "etapa da jornada é derivada").
+   */
+  formVRAberto: boolean
+  /** Alterna `formVRAberto` — chamado no clique do card quando `aviso.origem === 'vr'`. */
+  alternarFormVR: () => void
 }
 
 /**
@@ -112,6 +131,11 @@ interface CartaoPropostaProps extends AcoesPropostaProps {
  * inspeção (D5): clicar no corpo do card alterna `entrarInspecao`/`sairInspecao`; os botões de
  * ação usam `stopPropagation` para não disparar o toggle acidentalmente. Em inspeção, mostra os
  * papéis "sai"/"fica" (D2: `alvo`/`permanece`) e o `resumo` da regra quando presente.
+ *
+ * Exceção: o aviso `origem==='vr'` (Task 7, ADR `vr-despesas`) não participa do toggle de
+ * inspeção — clicar no corpo do card abre/fecha o `FormVR` (D5 do ADR: "clicar no aviso abre um
+ * formulário"), usando o `mesRef` derivado de `defaultMes()` (não há mês selecionado disponível
+ * nesta camada — ver achado de Plan da iteração 8 no log da spec).
  */
 function CartaoProposta({
   aviso,
@@ -121,11 +145,20 @@ function CartaoProposta({
   emInspecao,
   entrarInspecao,
   sairInspecao,
+  formVRAberto,
+  alternarFormVR,
 }: CartaoPropostaProps) {
+  const ehVR = aviso.origem === 'vr'
+  const formVRVisivel = ehVR && formVRAberto
+
   return (
     <li
-      onClick={() => (emInspecao ? sairInspecao() : entrarInspecao(aviso.id))}
-      className={'card-aviso' + (emInspecao ? ' inspecionando' : '') + (aviso.estado !== 'pendente' ? ' resolvido' : '')}
+      onClick={() => (ehVR ? alternarFormVR() : emInspecao ? sairInspecao() : entrarInspecao(aviso.id))}
+      className={
+        'card-aviso' +
+        (emInspecao || formVRVisivel ? ' inspecionando' : '') +
+        (aviso.estado !== 'pendente' ? ' resolvido' : '')
+      }
       style={{ cursor: 'pointer' }}
     >
       <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
@@ -133,7 +166,7 @@ function CartaoProposta({
         <div style={{ flex: 1, fontSize: 13, lineHeight: 1.5 }}>{aviso.mensagem}</div>
       </div>
 
-      {emInspecao && (
+      {emInspecao && !ehVR && (
         <div className="legenda-insp" aria-label="Papéis da proposta">
           <span aria-label="Papel: sai">
             Sai{aviso.alvo.length > 0 ? ` — ${aviso.alvo.length} lançamento(s)` : ''}
@@ -142,6 +175,12 @@ function CartaoProposta({
             <span aria-label="Papel: fica">Fica — {aviso.permanece.length} lançamento(s)</span>
           )}
           {aviso.resumo && <p aria-label="Resumo da regra" style={{ margin: 0 }}>{aviso.resumo}</p>}
+        </div>
+      )}
+
+      {formVRVisivel && (
+        <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 10 }}>
+          <FormVR mesRef={defaultMes()} />
         </div>
       )}
 
