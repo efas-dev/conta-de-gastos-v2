@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { Lancamento } from '../../types'
-import { calcularSaldoCalculado } from '../rendimentos'
+import { calcularSaldoCalculado, parsearSomaInline } from '../rendimentos'
 
 function lancamento(valor: number): Lancamento {
   return {
@@ -47,5 +47,49 @@ describe('calcularSaldoCalculado', () => {
     const lancamentos = [lancamento(200), lancamento(50)]
 
     expect(calcularSaldoCalculado(-100, lancamentos)).toBe(150)
+  })
+})
+
+describe('parsearSomaInline', () => {
+  it('T6-PSI-01: soma dois termos inteiros separados por "+"', () => {
+    expect(parsearSomaInline('100+50')).toEqual({ valor: 150, valido: true })
+  })
+
+  it('T6-PSI-02: soma três ou mais termos', () => {
+    expect(parsearSomaInline('1000+500+200')).toEqual({ valor: 1700, valido: true })
+  })
+
+  it('T6-PSI-03: tolera espaços em branco em torno de cada termo e do "+"', () => {
+    expect(parsearSomaInline(' 1000 + 500 ')).toEqual({ valor: 1500, valido: true })
+  })
+
+  it('T6-PSI-04: reconhece vírgula como separador decimal em cada termo (convenção BR)', () => {
+    expect(parsearSomaInline('100,50+50')).toEqual({ valor: 150.5, valido: true })
+  })
+
+  it('T6-PSI-05: um único valor sem "+" é uma soma válida de 1 termo', () => {
+    expect(parsearSomaInline('1500')).toEqual({ valor: 1500, valido: true })
+  })
+
+  it('T6-PSI-06: termo vazio por "+" sobrando no fim retorna valido:false sem lançar', () => {
+    expect(() => parsearSomaInline('100+')).not.toThrow()
+    expect(parsearSomaInline('100+')).toEqual({ valor: null, valido: false })
+  })
+
+  it('T6-PSI-07: termo não-numérico em qualquer posição retorna valido:false sem lançar', () => {
+    expect(parsearSomaInline('abc')).toEqual({ valor: null, valido: false })
+    expect(parsearSomaInline('100+abc')).toEqual({ valor: null, valido: false })
+  })
+
+  it('T6-PSI-08: string vazia retorna valido:false', () => {
+    expect(parsearSomaInline('')).toEqual({ valor: null, valido: false })
+  })
+
+  it('T6-PSI-09: string só com espaços em branco retorna valido:false', () => {
+    expect(parsearSomaInline('   ')).toEqual({ valor: null, valido: false })
+  })
+
+  it('T6-PSI-10: precisão em centavos evita drift de ponto flutuante', () => {
+    expect(parsearSomaInline('0,1+0,2')).toEqual({ valor: 0.3, valido: true })
   })
 })

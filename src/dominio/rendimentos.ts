@@ -24,3 +24,34 @@ export function calcularSaldoCalculado(saldoAnterior: number, lancamentos: Lanca
 
   return (paraCentavos(saldoAnterior) + somaCentavos) / 100
 }
+
+/** Cada termo aceita apenas dígitos com vírgula decimal opcional (convenção BR), sem ponto/sinal. */
+const REGEX_TERMO_SOMA_INLINE = /^\d+(,\d+)?$/
+
+/**
+ * Interpreta o texto do campo "aplicações" do form de rendimentos (ver ADR `rendimentos`, Decisão 4):
+ * o usuário digita valores separados por `+` (ex.: `"1000+500+200"`), representando N aplicações
+ * (caixinhas, porquinhos, cofrinhos), e a função devolve a soma.
+ *
+ * Função pura, sem I/O, que NUNCA lança exceção — entradas malformadas (termo vazio, não-numérico, ou
+ * string vazia/só espaços) retornam `valido: false`. O flag `valido` é o sinal que a UI (Task 10) usa
+ * para o feedback visual por cor (estilo Excel) que a Decisão 4 pede.
+ *
+ * Um único valor sem `+` é uma soma válida de 1 termo. Vírgula é aceita como separador decimal por
+ * termo; ponto e separador de milhar não são aceitos. Soma em centavos inteiros antes de converter de
+ * volta para reais, mesmo cuidado de `calcularSaldoCalculado`/`vr.ts`/`deteccoes.ts`.
+ */
+export function parsearSomaInline(texto: string): { valor: number | null; valido: boolean } {
+  const termos = texto.split('+').map((termo) => termo.trim())
+
+  if (termos.some((termo) => termo === '' || !REGEX_TERMO_SOMA_INLINE.test(termo))) {
+    return { valor: null, valido: false }
+  }
+
+  const somaCentavos = termos.reduce(
+    (acc, termo) => acc + Math.round(Number(termo.replace(',', '.')) * 100),
+    0,
+  )
+
+  return { valor: somaCentavos / 100, valido: true }
+}
