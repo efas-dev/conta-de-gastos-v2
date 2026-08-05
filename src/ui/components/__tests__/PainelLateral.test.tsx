@@ -17,6 +17,9 @@ let avisosMock: Aviso[] = []
 vi.mock('../../store/appStore', () => ({
   useAppStore: (selector: (state: Record<string, unknown>) => unknown) =>
     selector({
+      lancamentos: [],
+      filtroNaturezas: [],
+      setFiltroNaturezas: () => {},
       avisosAcionaveis: { avisos: avisosMock, removidos: {}, avisoEmInspecao: null },
       aplicar: mockAplicar,
       desfazer: mockDesfazer,

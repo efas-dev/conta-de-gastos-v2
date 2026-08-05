@@ -11,6 +11,33 @@ import { rankFontes, rankNaturezas, contarIncompletos } from '../filtroRanking'
 const TOOLTIP_ATALHO = 'Ctrl+clique (ou Cmd+clique) para acumular seleções'
 
 // ---------------------------------------------------------------------------
+// Semântica de seleção de filtro (D11 do ADR) — compartilhada com os cartões
+// do PainelNaturezas (ajuste 2026-08-02)
+// ---------------------------------------------------------------------------
+
+/**
+ * Próxima seleção de um filtro multi-valor a partir de um clique.
+ *
+ * - `acumular` (Ctrl/Cmd+clique): adiciona ou remove o item da seleção.
+ * - Clique simples: seleção única; se o item já era o único ativo, desliga.
+ */
+export function proximaSelecaoFiltro(
+  selecaoAtual: string[],
+  item: string,
+  acumular: boolean,
+): string[] {
+  if (acumular) {
+    return selecaoAtual.includes(item)
+      ? selecaoAtual.filter((x) => x !== item)
+      : [...selecaoAtual, item]
+  }
+  if (selecaoAtual.length === 1 && selecaoAtual[0] === item) {
+    return []
+  }
+  return [item]
+}
+
+// ---------------------------------------------------------------------------
 // Componente
 // ---------------------------------------------------------------------------
 
@@ -51,38 +78,14 @@ export function FiltroBar(_props: Record<string, never> = {}) {
   // Handlers de chips de Fonte (D11 do ADR)
   // ---------------------------------------------------------------------------
   function handleChipFonte(fonte: string, acumular: boolean) {
-    if (acumular) {
-      // Ctrl/Cmd+clique: adiciona ou remove da seleção acumulada
-      const novaSelecao = filtroFontes.includes(fonte)
-        ? filtroFontes.filter((f) => f !== fonte)
-        : [...filtroFontes, fonte]
-      setFiltroFontes(novaSelecao)
-    } else {
-      // Clique simples: seleção única ou toggle
-      if (filtroFontes.length === 1 && filtroFontes[0] === fonte) {
-        setFiltroFontes([]) // desliga se era o único ativo
-      } else {
-        setFiltroFontes([fonte])
-      }
-    }
+    setFiltroFontes(proximaSelecaoFiltro(filtroFontes, fonte, acumular))
   }
 
   // ---------------------------------------------------------------------------
   // Handlers de chips de Natureza (D11 do ADR)
   // ---------------------------------------------------------------------------
   function handleChipNatureza(natureza: string, acumular: boolean) {
-    if (acumular) {
-      const novaSelecao = filtroNaturezas.includes(natureza)
-        ? filtroNaturezas.filter((n) => n !== natureza)
-        : [...filtroNaturezas, natureza]
-      setFiltroNaturezas(novaSelecao)
-    } else {
-      if (filtroNaturezas.length === 1 && filtroNaturezas[0] === natureza) {
-        setFiltroNaturezas([])
-      } else {
-        setFiltroNaturezas([natureza])
-      }
-    }
+    setFiltroNaturezas(proximaSelecaoFiltro(filtroNaturezas, natureza, acumular))
   }
 
   // ---------------------------------------------------------------------------
