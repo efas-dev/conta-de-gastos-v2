@@ -5,10 +5,15 @@ import { render, screen, fireEvent, within } from '@testing-library/react'
 import { CentralDeAvisos } from '../CentralDeAvisos'
 import type { Aviso } from '../../../types'
 import * as vrDominio from '../../../dominio/vr'
+import * as rendimentosDominio from '../../../dominio/rendimentos'
 
 // TL-93/TL-94 (Task 7-bis): espiona `gerarLancamentosVR` para confirmar qual `mesRef` chega até
 // `FormVR`, sem mockar o módulo inteiro (preserva o comportamento real da função pura).
 const spyGerarLancamentosVR = vi.spyOn(vrDominio, 'gerarLancamentosVR')
+
+// T11-CA-08: espiona `gerarLancamentoRendimento` para confirmar qual `mesRef` chega até
+// `FormRendimentos`, mesmo raciocínio de TL-93 acima.
+const spyGerarLancamentoRendimento = vi.spyOn(rendimentosDominio, 'gerarLancamentoRendimento')
 
 // ---------------------------------------------------------------------------
 // Mock do store — mesmo padrão de SplitModal.test.tsx: seletor aplicado a um
@@ -33,6 +38,7 @@ vi.mock('../../store/appStore', () => ({
     selector({
       avisosAcionaveis: { avisos: avisosMock, removidos: {}, avisoEmInspecao: avisoEmInspecaoMock },
       lancamentos: [],
+      saldoAnterior: 0,
       aplicar: mockAplicar,
       desfazer: mockDesfazer,
       dispensar: mockDispensar,
@@ -80,6 +86,7 @@ beforeEach(() => {
     avisoEmInspecaoMock = null
   })
   spyGerarLancamentosVR.mockClear()
+  spyGerarLancamentoRendimento.mockClear()
 })
 
 describe('CentralDeAvisos — lista vazia (TL-05)', () => {
@@ -434,5 +441,110 @@ describe('CentralDeAvisos — mesRef real chega ao FormVR (TL-93, TL-94, Task 7-
 
     const mesUsado = spyGerarLancamentosVR.mock.calls[0]?.[1]
     expect(mesUsado).toMatch(/^\d{4}-\d{2}$/)
+  })
+})
+
+describe('CentralDeAvisos — aviso rendimentos abre FormRendimentos em vez do toggle de inspeção (Task 11)', () => {
+  function propostaRendimentos(parcial: Partial<Aviso> = {}): Aviso {
+    return proposta({
+      id: 'rendimentos',
+      origem: 'rendimentos',
+      mensagem: 'Informe o saldo real para lançar os rendimentos do mês.',
+      alvo: [],
+      permanece: [],
+      ...parcial,
+    })
+  }
+
+  function propostaVR(parcial: Partial<Aviso> = {}): Aviso {
+    return proposta({
+      id: 'vr',
+      origem: 'vr',
+      mensagem: 'Registre as despesas pagas com VR neste mês.',
+      alvo: [],
+      permanece: [],
+      ...parcial,
+    })
+  }
+
+  it('T11-CA-01: antes de qualquer clique, form-rendimentos não está no DOM', () => {
+    avisosMock = [propostaRendimentos()]
+    render(<CentralDeAvisos />)
+
+    expect(screen.queryByTestId('form-rendimentos')).toBeNull()
+  })
+
+  it('T11-CA-02: clicar no card do aviso rendimentos faz o FormRendimentos aparecer', () => {
+    avisosMock = [propostaRendimentos()]
+    render(<CentralDeAvisos />)
+
+    fireEvent.click(screen.getByText('Informe o saldo real para lançar os rendimentos do mês.'))
+
+    expect(screen.getByTestId('form-rendimentos')).toBeInTheDocument()
+  })
+
+  it('T11-CA-03: clicar no card do aviso rendimentos não chama entrarInspecao nem sairInspecao', () => {
+    avisosMock = [propostaRendimentos()]
+    render(<CentralDeAvisos />)
+
+    fireEvent.click(screen.getByText('Informe o saldo real para lançar os rendimentos do mês.'))
+
+    expect(mockEntrarInspecao).not.toHaveBeenCalled()
+    expect(mockSairInspecao).not.toHaveBeenCalled()
+  })
+
+  it('T11-CA-04: clicar no card do aviso vr continua abrindo FormVR, não FormRendimentos', () => {
+    avisosMock = [propostaVR(), propostaRendimentos()]
+    render(<CentralDeAvisos />)
+
+    fireEvent.click(screen.getByText('Registre as despesas pagas com VR neste mês.'))
+
+    expect(screen.getByTestId('form-vr')).toBeInTheDocument()
+    expect(screen.queryByTestId('form-rendimentos')).toBeNull()
+  })
+
+  it('T11-CA-05: clicar em outro aviso (não-rendimentos, não-vr) mantém o toggle de inspeção sem regressão', () => {
+    avisosMock = [propostaRendimentos(), proposta({ id: 'prop-1', origem: 'conciliacao' })]
+    render(<CentralDeAvisos />)
+
+    fireEvent.click(screen.getByText('Fatura conciliável com pagamento do extrato.'))
+
+    expect(mockEntrarInspecao).toHaveBeenCalledWith('prop-1')
+    expect(screen.queryByTestId('form-rendimentos')).toBeNull()
+  })
+
+  it('T11-CA-06: clicar de novo no card do aviso rendimentos (form já aberto) fecha o form', () => {
+    avisosMock = [propostaRendimentos()]
+    render(<CentralDeAvisos />)
+
+    const mensagem = screen.getByText('Informe o saldo real para lançar os rendimentos do mês.')
+    fireEvent.click(mensagem)
+    expect(screen.getByTestId('form-rendimentos')).toBeInTheDocument()
+
+    fireEvent.click(mensagem)
+    expect(screen.queryByTestId('form-rendimentos')).toBeNull()
+  })
+
+  it('T11-CA-07: com o FormRendimentos aberto, clicar em outro aviso não fecha nem abre form-rendimentos', () => {
+    avisosMock = [propostaRendimentos(), proposta({ id: 'prop-1', origem: 'conciliacao' })]
+    render(<CentralDeAvisos />)
+
+    fireEvent.click(screen.getByText('Informe o saldo real para lançar os rendimentos do mês.'))
+    expect(screen.getByTestId('form-rendimentos')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('Fatura conciliável com pagamento do extrato.'))
+
+    expect(screen.getByTestId('form-rendimentos')).toBeInTheDocument()
+  })
+
+  it('T11-CA-08: a prop mesRef de CentralDeAvisos chega ao FormRendimentos', () => {
+    avisosMock = [propostaRendimentos()]
+    render(<CentralDeAvisos mesRef="2026-03" />)
+
+    fireEvent.click(screen.getByText('Informe o saldo real para lançar os rendimentos do mês.'))
+    fireEvent.change(screen.getByLabelText('Conta corrente'), { target: { value: '100' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+
+    expect(spyGerarLancamentoRendimento).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), '2026-03')
   })
 })

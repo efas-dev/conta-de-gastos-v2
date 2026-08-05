@@ -2,12 +2,14 @@
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
 // ADR: see spec/vr-despesas.adr.md
+// ADR: see spec/rendimentos.adr.md
 
 import { useState } from 'react'
 import { useAppStore } from '../store/appStore'
 import type { Aviso } from '../../types'
 import { defaultMes } from '../../dominio/mes'
 import { FormVR } from './FormVR'
+import { FormRendimentos } from './FormRendimentos'
 
 /**
  * Conteúdo da aba "Avisos" do `PainelLateral` — Task T5.
@@ -61,8 +63,15 @@ export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
   // painel.
   const [formVRAberto, setFormVRAberto] = useState(false)
 
-  // Mês de referência efetivo do FormVR (Task 7-bis): usa o mês real quando o consumidor o
-  // repassa; sem ele, cai para `defaultMes()` — o stand-in que valia antes desta task.
+  // Estado local do painel — `formRendimentosAberto` (Task 11): abre/fecha o `FormRendimentos` no
+  // clique do card do aviso `origem==='rendimentos'`, mesmo padrão de `formVRAberto` acima. Também
+  // não vai para o store — puramente visual, independente de `formVRAberto` porque os dois avisos
+  // (`'rendimentos'` e `'vr'`) nunca são o mesmo card.
+  const [formRendimentosAberto, setFormRendimentosAberto] = useState(false)
+
+  // Mês de referência efetivo do FormVR/FormRendimentos (Task 7-bis, reusado pela Task 11): usa o
+  // mês real quando o consumidor o repassa; sem ele, cai para `defaultMes()` — o stand-in que valia
+  // antes da Task 7-bis.
   const mesRefEfetivo = mesRef ?? defaultMes()
 
   if (avisos.length === 0) return null
@@ -90,6 +99,8 @@ export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
                 sairInspecao={sairInspecao}
                 formVRAberto={formVRAberto}
                 alternarFormVR={() => setFormVRAberto((atual) => !atual)}
+                formRendimentosAberto={formRendimentosAberto}
+                alternarFormRendimentos={() => setFormRendimentosAberto((atual) => !atual)}
                 mesRef={mesRefEfetivo}
               />
             ))}
@@ -141,7 +152,15 @@ interface CartaoPropostaProps extends AcoesPropostaProps {
   formVRAberto: boolean
   /** Alterna `formVRAberto` — chamado no clique do card quando `aviso.origem === 'vr'`. */
   alternarFormVR: () => void
-  /** Mês de referência efetivo (real, com fallback a `defaultMes()`) repassado ao `FormVR` (Task 7-bis). */
+  /**
+   * `true` quando o `FormRendimentos` está aberto neste painel — só tem efeito visual/de
+   * renderização para o aviso `origem==='rendimentos'` (Task 11, ADR `rendimentos`). Estado local
+   * de `CentralDeAvisos`, não do store (invariante "etapa da jornada é derivada").
+   */
+  formRendimentosAberto: boolean
+  /** Alterna `formRendimentosAberto` — chamado no clique do card quando `aviso.origem === 'rendimentos'`. */
+  alternarFormRendimentos: () => void
+  /** Mês de referência efetivo (real, com fallback a `defaultMes()`) repassado ao `FormVR`/`FormRendimentos` (Task 7-bis/11). */
   mesRef: string
 }
 
@@ -151,11 +170,12 @@ interface CartaoPropostaProps extends AcoesPropostaProps {
  * ação usam `stopPropagation` para não disparar o toggle acidentalmente. Em inspeção, mostra os
  * papéis "sai"/"fica" (D2: `alvo`/`permanece`) e o `resumo` da regra quando presente.
  *
- * Exceção: o aviso `origem==='vr'` (Task 7, ADR `vr-despesas`) não participa do toggle de
- * inspeção — clicar no corpo do card abre/fecha o `FormVR` (D5 do ADR: "clicar no aviso abre um
- * formulário"), usando o `mesRef` efetivo repassado por `CentralDeAvisos` (Task 7-bis: mês real
- * encadeado de `TelaRevisao`, com fallback a `defaultMes()` só quando o consumidor não repassa a
- * prop `mesRef` — ver `CentralDeAvisos`).
+ * Exceção: os avisos `origem==='vr'` (Task 7, ADR `vr-despesas`) e `origem==='rendimentos'` (Task
+ * 11, ADR `rendimentos`) não participam do toggle de inspeção — clicar no corpo do card abre/fecha
+ * o `FormVR`/`FormRendimentos` respectivamente (D5 do ADR `vr-despesas`: "clicar no aviso abre um
+ * formulário", padrão reusado por `rendimentos`), usando o `mesRef` efetivo repassado por
+ * `CentralDeAvisos` (Task 7-bis: mês real encadeado de `TelaRevisao`, com fallback a `defaultMes()`
+ * só quando o consumidor não repassa a prop `mesRef` — ver `CentralDeAvisos`).
  */
 function CartaoProposta({
   aviso,
@@ -167,17 +187,37 @@ function CartaoProposta({
   sairInspecao,
   formVRAberto,
   alternarFormVR,
+  formRendimentosAberto,
+  alternarFormRendimentos,
   mesRef,
 }: CartaoPropostaProps) {
   const ehVR = aviso.origem === 'vr'
+  const ehRendimentos = aviso.origem === 'rendimentos'
   const formVRVisivel = ehVR && formVRAberto
+  const formRendimentosVisivel = ehRendimentos && formRendimentosAberto
+
+  function aoClicarNoCard() {
+    if (ehVR) {
+      alternarFormVR()
+      return
+    }
+    if (ehRendimentos) {
+      alternarFormRendimentos()
+      return
+    }
+    if (emInspecao) {
+      sairInspecao()
+      return
+    }
+    entrarInspecao(aviso.id)
+  }
 
   return (
     <li
-      onClick={() => (ehVR ? alternarFormVR() : emInspecao ? sairInspecao() : entrarInspecao(aviso.id))}
+      onClick={aoClicarNoCard}
       className={
         'card-aviso' +
-        (emInspecao || formVRVisivel ? ' inspecionando' : '') +
+        (emInspecao || formVRVisivel || formRendimentosVisivel ? ' inspecionando' : '') +
         (aviso.estado !== 'pendente' ? ' resolvido' : '')
       }
       style={{ cursor: 'pointer' }}
@@ -187,7 +227,7 @@ function CartaoProposta({
         <div style={{ flex: 1, fontSize: 13, lineHeight: 1.5 }}>{aviso.mensagem}</div>
       </div>
 
-      {emInspecao && !ehVR && (
+      {emInspecao && !ehVR && !ehRendimentos && (
         <div className="legenda-insp" aria-label="Papéis da proposta">
           <span aria-label="Papel: sai">
             Sai{aviso.alvo.length > 0 ? ` — ${aviso.alvo.length} lançamento(s)` : ''}
@@ -202,6 +242,12 @@ function CartaoProposta({
       {formVRVisivel && (
         <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 10 }}>
           <FormVR mesRef={mesRef} />
+        </div>
+      )}
+
+      {formRendimentosVisivel && (
+        <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 10 }}>
+          <FormRendimentos mesRef={mesRef} />
         </div>
       )}
 
