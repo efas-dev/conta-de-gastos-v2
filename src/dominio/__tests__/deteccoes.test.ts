@@ -232,4 +232,58 @@ describe('detectarConciliacao', () => {
     expect(avisos[0].permanece).toEqual([])
     expect(avisos[0].resumo).toBeUndefined()
   })
+
+  it('candidato único próximo (fora da tolerância exata, dentro da faixa de 10%) vira informativo com candidatos, sem mutacaoProposta (TL-13)', () => {
+    const fatura = [lancamento({ transcricao: 'Item A', valor: -200, id: 1 })]
+    const extrato = [
+      lancamento({ transcricao: 'Pagamento parecido', valor: -215, data: '2026-06-20', id: 42 }),
+      lancamento({ transcricao: 'Nada a ver', valor: -999, id: 99 }),
+    ]
+    const avisos = detectarConciliacao(fatura, extrato)
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].tipo).toBe('informativo')
+    expect(avisos[0].mutacaoProposta).toBeUndefined()
+    expect(avisos[0].candidatos).toEqual([
+      { alvo: '42', resumo: expect.stringContaining('215,00') },
+    ])
+    expect(avisos[0].candidatos?.[0].resumo).toContain('20/06/2026')
+  })
+
+  it('2+ candidatos próximos são todos listados, na ordem do extrato (TL-14)', () => {
+    const fatura = [lancamento({ transcricao: 'Item A', valor: -200, id: 1 })]
+    const extrato = [
+      lancamento({ transcricao: 'Perto 1', valor: -210, data: '2026-06-10', id: 10 }),
+      lancamento({ transcricao: 'Perto 2', valor: -190, data: '2026-06-11', id: 11 }),
+      lancamento({ transcricao: 'Longe demais', valor: -999, id: 12 }),
+    ]
+    const avisos = detectarConciliacao(fatura, extrato)
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].tipo).toBe('informativo')
+    expect(avisos[0].mutacaoProposta).toBeUndefined()
+    expect(avisos[0].candidatos).toHaveLength(2)
+    expect(avisos[0].candidatos?.map((c) => c.alvo)).toEqual(['10', '11'])
+  })
+
+  it('nenhum candidato dentro da faixa de proximidade mantém o informativo genérico, sem campo candidatos (TL-15)', () => {
+    const fatura = [lancamento({ transcricao: 'Item A', valor: -200, id: 1 })]
+    const extrato = [lancamento({ transcricao: 'Muito longe', valor: -999, id: 2 })]
+    const avisos = detectarConciliacao(fatura, extrato)
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].tipo).toBe('informativo')
+    expect(avisos[0].mensagem).toContain('fatura não conciliada')
+    expect(avisos[0].candidatos).toBeUndefined()
+  })
+
+  it('faixa de proximidade (10% do somatório da fatura) é inclusiva na borda superior (TL-16)', () => {
+    const fatura = [lancamento({ transcricao: 'Item A', valor: -200, id: 1 })]
+    // diferença exata de R$ 20,00 = 10% de R$ 200,00 → deve entrar como candidato
+    const extratoNaBorda = [lancamento({ transcricao: 'Na borda', valor: -220, id: 5 })]
+    const avisosNaBorda = detectarConciliacao(fatura, extratoNaBorda)
+    expect(avisosNaBorda[0].candidatos).toHaveLength(1)
+
+    // diferença de R$ 20,01 → passou da faixa, volta ao informativo genérico
+    const extratoForaDaBorda = [lancamento({ transcricao: 'Passou da borda', valor: -220.01, id: 6 })]
+    const avisosForaDaBorda = detectarConciliacao(fatura, extratoForaDaBorda)
+    expect(avisosForaDaBorda[0].candidatos).toBeUndefined()
+  })
 })

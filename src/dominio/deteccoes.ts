@@ -6,6 +6,15 @@ import type { Aviso, Lancamento } from '../types'
 
 const TOLERANCIA_CENTAVOS = 5
 
+/**
+ * Faixa de proximidade (D2 do ADR `conciliacao-robusta`): além da tolerância exata de
+ * R$ 0,05, um lançamento do extrato cuja diferença absoluta em relação ao somatório da
+ * fatura seja de até 10% desse somatório é listado como "candidato próximo" — critério
+ * simples e proporcional ao tamanho da fatura, sem casamento/remoção automática (listar
+ * ≠ casar). Ver `detectarConciliacao`.
+ */
+const FAIXA_PROXIMIDADE_PERCENTUAL = 0.1
+
 /** Converte um valor em reais para centavos inteiros, evitando float drift. */
 function paraCentavos(valor: number): number {
   return Math.round(valor * 100)
@@ -17,6 +26,17 @@ function formatarReais(centavos: number): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
+}
+
+/** Formata uma data ISO (`YYYY-MM-DD`) como `DD/MM/YYYY`, sem passar por `Date` (evita fuso). */
+function formatarDataBr(dataIso: string): string {
+  const [ano, mes, dia] = dataIso.split('-')
+  return `${dia}/${mes}/${ano}`
+}
+
+/** Resumo textual (valor + data) de um candidato próximo — ver `candidatosProximos`. */
+function formatarResumoCandidato(lancamento: Lancamento): string {
+  return `R$ ${formatarReais(Math.abs(paraCentavos(lancamento.valor)))} em ${formatarDataBr(lancamento.data)}`
 }
 
 /**
@@ -170,13 +190,19 @@ function propostaConciliacao(
  *    de pagamento parcial).
  * 3. Em ambas as etapas, 2+ candidatos dentro do critério é ambiguidade — par único
  *    conservador (R2): nenhuma proposta é gerada.
- * 4. Nenhum casamento em nenhuma etapa → aviso informativo "fatura não conciliada".
+ * 4. Nenhum casamento em nenhuma etapa: se existir ≥1 lançamento do extrato dentro da
+ *    faixa de proximidade do total da fatura (`FAIXA_PROXIMIDADE_PERCENTUAL`, ADR
+ *    `conciliacao-robusta` Decisão 2), emite 1 aviso informativo com `Aviso.candidatos`
+ *    listando-os (valor/data/id) para seleção manual — nunca casamento/remoção
+ *    automática (D2: listar ≠ casar). Sem candidato próximo, mantém o informativo
+ *    genérico "fatura não conciliada".
  *
  * Função pura: não faz I/O, não tem efeito colateral, não referencia o store.
  *
  * @param lancamentosFatura - Lançamentos da fatura a conciliar.
  * @param lancamentosExtrato - Lançamentos do extrato candidatos ao casamento.
- * @returns Array com 0 ou 1 `Aviso` (proposta de conciliação ou informativo de não-casamento).
+ * @returns Array com 0 ou 1 `Aviso` (proposta de conciliação, informativo com
+ * candidatos próximos, ou informativo genérico de não-casamento).
  */
 export function detectarConciliacao(
   lancamentosFatura: Lancamento[],
@@ -233,6 +259,36 @@ export function detectarConciliacao(
   }
   if (candidatosSubset.length >= 2) {
     return []
+  }
+
+  const limiteProximidadeCentavos = somaFaturaCentavos * FAIXA_PROXIMIDADE_PERCENTUAL
+  const candidatosProximos = lancamentosExtrato
+    .map((lancamento, index) => ({
+      lancamento,
+      index,
+      diferencaCentavos: Math.abs(Math.abs(paraCentavos(lancamento.valor)) - somaFaturaCentavos),
+    }))
+    .filter(
+      ({ diferencaCentavos }) =>
+        diferencaCentavos > TOLERANCIA_CENTAVOS && diferencaCentavos <= limiteProximidadeCentavos,
+    )
+
+  if (candidatosProximos.length > 0) {
+    return [
+      {
+        id: 'conciliacao-candidatos-proximos',
+        tipo: 'informativo',
+        origem: 'conciliacao',
+        mensagem: `Aviso: fatura não conciliada exatamente — ${candidatosProximos.length} candidato(s) próximo(s) encontrado(s) no extrato para seleção manual.`,
+        alvo: [],
+        permanece: [],
+        estado: 'pendente',
+        candidatos: candidatosProximos.map(({ lancamento }) => ({
+          alvo: String(lancamento.id),
+          resumo: formatarResumoCandidato(lancamento),
+        })),
+      },
+    ]
   }
 
   return [
