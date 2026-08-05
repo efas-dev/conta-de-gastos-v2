@@ -36,3 +36,78 @@ export function detectarVR(_lancamentos: Lancamento[], _contexto?: ContextoDetec
     },
   ]
 }
+
+/** Converte um valor em reais para centavos inteiros, evitando float drift (mesmo padrão de `deteccoes.ts`/`investimento.ts`). */
+function paraCentavos(valor: number): number {
+  return Math.round(valor * 100)
+}
+
+/**
+ * Retorna o último dia do mês de `mesRef` (`YYYY-MM`) no formato `YYYY-MM-DD`, sem passar por
+ * `Date` (evita drift de fuso horário — mesmo cuidado de `formatarDataBr` em `deteccoes.ts`).
+ */
+function ultimoDiaDoMes(mesRef: string): string {
+  const [anoStr, mesStr] = mesRef.split('-')
+  const ano = Number(anoStr)
+  const mes = Number(mesStr) // 1-based
+
+  const bissexto = ano % 4 === 0 && (ano % 100 !== 0 || ano % 400 === 0)
+  const diasPorMes = [31, bissexto ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  const ultimoDia = diasPorMes[mes - 1]
+
+  return `${anoStr}-${mesStr}-${String(ultimoDia).padStart(2, '0')}`
+}
+
+/** Uma despesa informada pelo usuário no `FormVR` (Task 6): valor, natureza e descrição. */
+interface DespesaVR {
+  valor: number
+  natureza: string
+  descricao: string
+}
+
+/**
+ * Transforma N despesas de VR num lote de lançamentos a inserir: N saídas (fonte `form_vr`,
+ * valor negativo, natureza/descrição da despesa) mais 1 entrada de compensação (natureza `'RR'`,
+ * descrição fixa, valor positivo = soma dos módulos das N saídas) — ver ADR `vr-despesas`,
+ * Decisões 2 e 4. Todas as N+1 entradas compartilham a mesma data: o último dia de `mesRef`
+ * (data automática, D4 — o usuário não escolhe data por despesa).
+ *
+ * Função pura: nenhum objeto retornado tem `id` — a atribuição do id serial de nascimento é
+ * responsabilidade exclusiva de quem aplica a mutação (`avisosSlice.aplicar`, T3, via
+ * `atribuirIds`), nunca de quem propõe.
+ *
+ * `despesas: []` devolve `[]` — sem nenhuma despesa informada, não há o que compensar; gerar
+ * apenas uma entrada RR de valor zero não tem significado de negócio.
+ *
+ * @returns N+1 lançamentos sem `id` (ou `[]` quando `despesas` é vazio).
+ */
+export function gerarLancamentosVR(despesas: DespesaVR[], mesRef: string): Omit<Lancamento, 'id'>[] {
+  if (despesas.length === 0) return []
+
+  const data = ultimoDiaDoMes(mesRef)
+
+  const saidas: Omit<Lancamento, 'id'>[] = despesas.map((despesa) => ({
+    fonte: 'form_vr',
+    data,
+    transcricao: despesa.descricao,
+    valor: -Math.abs(despesa.valor),
+    iniciais: '',
+    natureza: despesa.natureza,
+    descricao: despesa.descricao,
+  }))
+
+  const somaCentavos = despesas.reduce((acc, despesa) => acc + Math.abs(paraCentavos(despesa.valor)), 0)
+  const descricaoRR = 'VR utilizado para despesas familiares'
+
+  const entradaRR: Omit<Lancamento, 'id'> = {
+    fonte: 'form_vr',
+    data,
+    transcricao: descricaoRR,
+    valor: somaCentavos / 100,
+    iniciais: '',
+    natureza: 'RR',
+    descricao: descricaoRR,
+  }
+
+  return [...saidas, entradaRR]
+}
