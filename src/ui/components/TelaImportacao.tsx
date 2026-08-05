@@ -9,7 +9,7 @@ import {
   criarAvisoInformativo,
   handleProduzir as handleProduzirPipeline,
 } from '../handlersPipeline'
-import { lerDicionario, ehDicionario, lerIniciais } from '../../excel/reader/leitor'
+import { lerDicionario, ehDicionario, lerIniciais, lerSaldoAnterior } from '../../excel/reader/leitor'
 import { detectarMesSugerido, classificarFontePorPrefixo } from '../../dominio/mes'
 import { detectar } from '../../parsers/index'
 import type { Lancamento } from '../../types'
@@ -66,6 +66,7 @@ export function TelaImportacao({
   const setLancamentos = useAppStore((s) => s.setLancamentos)
   const setDic = useAppStore((s) => s.setDic)
   const setNaturezasRicas = useAppStore((s) => s.setNaturezasRicas)
+  const setSaldoAnterior = useAppStore((s) => s.setSaldoAnterior)
   const addAviso = useAppStore((s) => s.addAviso)
   const adicionarAvisosAcionaveis = useAppStore((s) => s.adicionarAvisos)
   /** Ação do avisosSlice (T09) que zera `avisosAcionaveis` — política D8, cutover T14. */
@@ -184,6 +185,10 @@ export function TelaImportacao({
           const inicialsDoDic = await lerIniciais(bytes)
           if (inicialsDoDic !== null && !usuarioEditouIniciais) {
             setIniciais(inicialsDoDic)
+          }
+          const saldoDoDic = lerSaldoAnterior(bytes)
+          if (saldoDoDic !== null) {
+            setSaldoAnterior(saldoDoDic)
           }
         } else {
           const mensagem = `${arquivo.name}: arquivo .xlsx não reconhecido como dicionário — ignorado`

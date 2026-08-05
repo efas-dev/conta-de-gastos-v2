@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import React from 'react'
 import { TelaImportacao } from '../TelaImportacao'
+import * as leitor from '../../../excel/reader/leitor'
 import type { Aviso, DicEntry, Lancamento, NaturezaRica } from '../../../types'
 
 // ---------------------------------------------------------------------------
@@ -30,6 +31,7 @@ const {
   setLancamentos,
   setDic,
   setNaturezasRicas,
+  setSaldoAnterior,
   addAviso,
   adicionarAvisos,
   clearAvisos,
@@ -42,6 +44,7 @@ const {
   setLancamentos: vi.fn(),
   setDic: vi.fn(),
   setNaturezasRicas: vi.fn(),
+  setSaldoAnterior: vi.fn(),
   addAviso: vi.fn(),
   adicionarAvisos: vi.fn(),
   clearAvisos: vi.fn(),
@@ -57,6 +60,7 @@ function acoes() {
     setLancamentos,
     setDic,
     setNaturezasRicas,
+    setSaldoAnterior,
     addAviso,
     adicionarAvisos,
     clearAvisos,
@@ -95,6 +99,7 @@ vi.mock('../../../excel/reader/leitor', () => ({
   lerDicionario: vi.fn(() => []),
   ehDicionario: vi.fn(async () => false),
   lerIniciais: vi.fn(async () => null),
+  lerSaldoAnterior: vi.fn(() => null),
 }))
 
 vi.mock('../../../dominio/mes', async (importOriginal) => {
@@ -146,6 +151,18 @@ function props(overrides: Partial<React.ComponentProps<typeof TelaImportacao>> =
 
 function csvFile(nome = 'extrato.csv'): File {
   return new File(['col1,col2'], nome, { type: 'text/csv' })
+}
+
+/** Cria um File sintético de .xlsx com arrayBuffer() funcional (jsdom não implementa). */
+function xlsxFile(nome = 'dicionario.xlsx', bytes: Uint8Array = new Uint8Array([1, 2, 3])): File {
+  const file = new File([bytes], nome, {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  })
+  Object.defineProperty(file, 'arrayBuffer', {
+    value: () => Promise.resolve(bytes.buffer),
+    writable: true,
+  })
+  return file
 }
 
 beforeEach(() => {
@@ -341,5 +358,48 @@ describe('TelaImportacao', () => {
 
     await waitFor(() => expect(screen.getByTestId('fonte-rotulo')).toBeInTheDocument())
     expect(screen.getByTestId('fonte-rotulo')).toHaveAttribute('data-tipo', 'extrato')
+  })
+
+  // Task 4 (spec rendimentos), item 1: wiring do upload chama lerSaldoAnterior/setSaldoAnterior,
+  // mesmo padrão já usado para lerIniciais/setIniciais no mesmo handler.
+  it('TL4-WIRE-01: upload de .xlsx reconhecido como dicionário com B5 lida chama setSaldoAnterior com o valor', async () => {
+    vi.mocked(leitor.ehDicionario).mockResolvedValueOnce(true)
+    vi.mocked(leitor.lerSaldoAnterior).mockReturnValueOnce(1234.56)
+    const { container } = render(<TelaImportacao {...props()} />)
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [xlsxFile()] } })
+    })
+
+    await waitFor(() => expect(setSaldoAnterior).toHaveBeenCalledWith(1234.56))
+  })
+
+  it('TL4-WIRE-02: upload de .xlsx reconhecido como dicionário sem B5 (lerSaldoAnterior retorna null) não chama setSaldoAnterior', async () => {
+    vi.mocked(leitor.ehDicionario).mockResolvedValueOnce(true)
+    vi.mocked(leitor.lerSaldoAnterior).mockReturnValueOnce(null)
+    const { container } = render(<TelaImportacao {...props()} />)
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [xlsxFile()] } })
+    })
+
+    await waitFor(() => expect(setDic).toHaveBeenCalled())
+    expect(setSaldoAnterior).not.toHaveBeenCalled()
+  })
+
+  it('TL4-WIRE-03: upload de .xlsx NÃO reconhecido como dicionário não chama lerSaldoAnterior nem setSaldoAnterior', async () => {
+    vi.mocked(leitor.ehDicionario).mockResolvedValueOnce(false)
+    const { container } = render(<TelaImportacao {...props()} />)
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [xlsxFile()] } })
+    })
+
+    await waitFor(() => expect(addAviso).toHaveBeenCalled())
+    expect(leitor.lerSaldoAnterior).not.toHaveBeenCalled()
+    expect(setSaldoAnterior).not.toHaveBeenCalled()
   })
 })
