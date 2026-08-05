@@ -4,6 +4,7 @@
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 // ADR: see spec/fundacao-operacoes.adr.md
 // ADR: see spec/conciliacao-robusta.adr.md
+// ADR: see spec/vr-despesas.adr.md
 
 /**
  * Representa um lançamento financeiro normalizado, independente da fonte de origem.
@@ -119,16 +120,36 @@ export interface ResultadoParse {
  * precise conhecer a semântica de cada detector (ver ADR `fundacao-operacoes`,
  * Decisões 1 e 5).
  *
- * União TypeScript extensível por verbo — hoje só `'remover'`. Novos verbos
- * (ex.: `'editar'`) só entram quando uma spec futura os exigir; nenhum outro
- * verbo existe no código desta spec.
+ * União discriminada por `verbo`, extensível — hoje `'remover'` e `'adicionar'`
+ * (ver ADR `spec-20260805-vr-despesas`, Decisão 1). Novos verbos (ex.: `'editar'`)
+ * só entram quando uma spec futura os exigir.
+ *
+ * `'remover'` referencia lançamentos JÁ EXISTENTES por id (`alvo`): quem propõe a
+ * mutação (o detector) já viu o `Lancamento` completo em `lancamentos` e só precisa
+ * apontar para ele. `'adicionar'` carrega os LANÇAMENTOS COMPLETOS a inserir (sem
+ * `id`) em vez de ids, porque eles ainda não existem no momento da proposta — são
+ * construídos no submit do form que gera a proposta (ex.: `FormVR`, spec
+ * `vr-despesas`) e só ganham `id` serial de nascimento quando `avisosSlice.aplicar`
+ * os insere (via `atribuirIds`, `src/parsers/idSerial.ts`). Referenciar por id não
+ * seria possível aqui: não há id para referenciar antes da inserção.
  */
-export type Mutacao = {
-  /** Verbo único suportado nesta spec: remove os lançamentos de `alvo`. */
-  verbo: 'remover'
-  /** Ids (`Lancamento.id`) dos lançamentos alvo da mutação. */
-  alvo: number[]
-}
+export type Mutacao =
+  | {
+      /** Remove os lançamentos existentes referenciados por `alvo`. */
+      verbo: 'remover'
+      /** Ids (`Lancamento.id`) dos lançamentos alvo da mutação. */
+      alvo: number[]
+    }
+  | {
+      /** Insere `lancamentos` como novos lançamentos, ainda sem `id`. */
+      verbo: 'adicionar'
+      /**
+       * Lançamentos completos a inserir, sem `id` — o id serial de nascimento é
+       * atribuído por quem aplica a mutação (`avisosSlice.aplicar`), nunca por
+       * quem propõe.
+       */
+      lancamentos: Omit<Lancamento, 'id'>[]
+    }
 
 /**
  * Aviso acionável exibido na Central de Avisos (ver ADR `avisos-acionaveis`, Decisão 5).

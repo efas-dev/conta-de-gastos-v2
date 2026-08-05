@@ -354,6 +354,77 @@ describe('Mutacao', () => {
     }
     expect(aviso.mutacaoProposta).toBeUndefined()
   })
+
+  // TL-37: verbo 'adicionar' tem a forma { verbo: 'adicionar'; lancamentos: Omit<Lancamento,'id'>[] }
+  // (ADR spec-20260805-vr-despesas, Decisão 1)
+  it("verbo 'adicionar' tem a forma { verbo: 'adicionar'; lancamentos: Omit<Lancamento,'id'>[] } (TL-37)", () => {
+    const lancamentoSemId: Omit<Lancamento, 'id'> = {
+      fonte: 'form_vr',
+      data: '2024-01-31',
+      transcricao: '',
+      valor: -50,
+      iniciais: 'ES',
+      natureza: 'ALM',
+      descricao: 'Despesa VR',
+    }
+    const mutacao: Mutacao = { verbo: 'adicionar', lancamentos: [lancamentoSemId] }
+    expect(mutacao.verbo).toBe('adicionar')
+    expect(mutacao.lancamentos).toEqual([lancamentoSemId])
+  })
+
+  // TL-38: lancamentos do verbo 'adicionar' aceita objetos com todos os campos de Lancamento exceto id
+  it("lancamentos do verbo 'adicionar' aceita Lancamento completo sem id (TL-38)", () => {
+    const lancamentoCompleto: Omit<Lancamento, 'id'> = {
+      fonte: 'form_vr',
+      data: '2024-01-31',
+      transcricao: '',
+      valor: 50,
+      iniciais: 'ES',
+      natureza: 'RR',
+      descricao: 'VR utilizado para despesas familiares',
+      transferenciaInterna: false,
+      investimento: null,
+      origemEspecial: undefined,
+    }
+    const mutacao: Mutacao = { verbo: 'adicionar', lancamentos: [lancamentoCompleto] }
+    expect(mutacao.lancamentos[0]).not.toHaveProperty('id')
+    expect(mutacao.lancamentos[0].natureza).toBe('RR')
+  })
+
+  // TL-39: Aviso.mutacaoProposta aceita uma Mutacao de 'adicionar' com lançamentos completos
+  it("Aviso.mutacaoProposta aceita uma Mutacao de 'adicionar' com lançamentos completos (TL-39)", () => {
+    const aviso: Aviso = {
+      id: 'aviso-vr',
+      tipo: 'proposta',
+      origem: 'vr',
+      mensagem: 'teste',
+      alvo: [],
+      permanece: [],
+      estado: 'pendente',
+      mutacaoProposta: {
+        verbo: 'adicionar',
+        lancamentos: [
+          {
+            fonte: 'form_vr',
+            data: '2024-01-31',
+            transcricao: '',
+            valor: -50,
+            iniciais: 'ES',
+            natureza: 'ALM',
+            descricao: 'Despesa VR',
+          },
+        ],
+      },
+    }
+    expect(aviso.mutacaoProposta?.verbo).toBe('adicionar')
+  })
+
+  // TL-40: regressão zero — Mutacao continua aceitando o verbo 'remover' após a extensão da união
+  it("Mutacao continua aceitando { verbo: 'remover'; alvo: number[] } após a extensão da união (TL-40)", () => {
+    const mutacao: Mutacao = { verbo: 'remover', alvo: [1, 2] }
+    expect(mutacao.verbo).toBe('remover')
+    expect(mutacao.alvo).toEqual([1, 2])
+  })
 })
 
 // TL-35 a TL-36: Aviso.candidatos (spec conciliacao-robusta, Task 5 / Decisão 2-3 do ADR)
