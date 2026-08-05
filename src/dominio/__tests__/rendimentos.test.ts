@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { Lancamento } from '../../types'
-import { calcularSaldoCalculado, parsearSomaInline } from '../rendimentos'
+import { avaliarSanityCheck, calcularSaldoCalculado, parsearSomaInline } from '../rendimentos'
 
 function lancamento(valor: number): Lancamento {
   return {
@@ -91,5 +91,37 @@ describe('parsearSomaInline', () => {
 
   it('T6-PSI-10: precisão em centavos evita drift de ponto flutuante', () => {
     expect(parsearSomaInline('0,1+0,2')).toEqual({ valor: 0.3, valido: true })
+  })
+})
+
+describe('avaliarSanityCheck', () => {
+  it('T7-SC-01: diferença acima de 5% do saldo informado retorna over:true', () => {
+    expect(avaliarSanityCheck(51, 1000)).toEqual({ over: true })
+  })
+
+  it('T7-SC-02: diferença abaixo de 5% do saldo informado retorna over:false', () => {
+    expect(avaliarSanityCheck(49, 1000)).toEqual({ over: false })
+  })
+
+  it('T7-SC-03: diferença exatamente igual a 5% do saldo informado (borda) retorna over:false', () => {
+    expect(avaliarSanityCheck(50, 1000)).toEqual({ over: false })
+  })
+
+  it('T7-SC-04: saldo informado zero com diferença zero retorna over:false, sem divisão por zero', () => {
+    expect(avaliarSanityCheck(0, 0)).toEqual({ over: false })
+  })
+
+  it('T7-SC-05: saldo informado zero com diferença positiva retorna over:true', () => {
+    expect(avaliarSanityCheck(10, 0)).toEqual({ over: true })
+  })
+
+  it('T7-SC-06: saldo informado negativo inverte o sinal do limiar, conforme a fórmula declarada', () => {
+    // saldoInformado=-1000 → limiar = -1000*0.05 = -50
+    expect(avaliarSanityCheck(-10, -1000)).toEqual({ over: true }) // -10 > -50
+    expect(avaliarSanityCheck(-60, -1000)).toEqual({ over: false }) // -60 não é > -50
+  })
+
+  it('T7-SC-07: diferença negativa nunca é over:true para saldo informado positivo', () => {
+    expect(avaliarSanityCheck(-500, 1000)).toEqual({ over: false })
   })
 })
