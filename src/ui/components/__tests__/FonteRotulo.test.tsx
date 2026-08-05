@@ -59,6 +59,24 @@ describe('FonteRotulo — rótulo "form_vr" (Task 2, ADR vr-despesas Decisão 3)
   })
 })
 
+describe('FonteRotulo — rótulo "form_rendimentos" (Task 4, ADR rendimentos)', () => {
+  it('TL4-RD-01: renderiza o nome da fonte quando tipo="form_rendimentos", sem erro de tipo/runtime', () => {
+    render(<FonteRotulo fonte="Rendimentos Agosto" tipo="form_rendimentos" />)
+    expect(screen.getByText('Rendimentos Agosto')).toBeInTheDocument()
+  })
+
+  it('TL4-RD-02: badge de form_rendimentos renderiza texto "form_rendimentos" com className e aria-label distintos de fatura/extrato/form_vr', () => {
+    render(<FonteRotulo fonte="Rendimentos Agosto" tipo="form_rendimentos" />)
+    const rotulo = screen.getByRole('status')
+    expect(rotulo).toHaveTextContent('form_rendimentos')
+    expect(rotulo).toHaveClass('tag-tipo', 'form_rendimentos')
+    const label = rotulo.getAttribute('aria-label')
+    expect(label).not.toBe('tipo fatura')
+    expect(label).not.toBe('tipo extrato')
+    expect(label).not.toBe('tipo form_vr')
+  })
+})
+
 describe('FonteRotulo — discriminação visual', () => {
   it('TL6-5: fatura e extrato têm aria-label distintos', () => {
     const { rerender } = render(<FonteRotulo fonte="Nubank" tipo="fatura" />)
