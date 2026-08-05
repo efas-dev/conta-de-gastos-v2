@@ -170,6 +170,32 @@ describe('classificarFontePorPrefixo', () => {
       /prefixo.*desconhecido/i,
     )
   })
+
+  it('TL-31: fonte "form_rendimentos" → "form_rendimentos" (T2, ADR rendimentos Decisão 3)', () => {
+    expect(classificarFontePorPrefixo('form_rendimentos')).toBe('form_rendimentos')
+  })
+
+  it('TL-32: prefixo "form_rendimentos_qualquercoisa" (com sufixo) → "form_rendimentos"', () => {
+    expect(classificarFontePorPrefixo('form_rendimentos_qualquercoisa')).toBe('form_rendimentos')
+  })
+
+  it('TL-33: prefixo desconhecido não form_rendimentos*/form_vr*/fatura_*/extrato_* continua lançando Error', () => {
+    expect(() => classificarFontePorPrefixo('manual_qualquer')).toThrow(
+      /prefixo.*desconhecido/i,
+    )
+  })
+
+  it('TL-35: form_vr e os demais tipos seguem funcionando sem regressão após adicionar form_rendimentos', () => {
+    expect(classificarFontePorPrefixo('form_vr')).toBe('form_vr')
+    expect(classificarFontePorPrefixo('fatura_nubank_cc')).toBe('fatura')
+    expect(classificarFontePorPrefixo('extrato_bb')).toBe('extrato')
+  })
+
+  it('TL-36: "form_rendimentos" nunca é "fatura" nem "extrato" — prova indireta de que o filtro estrito de registry.ts (=== \'fatura\'/=== \'extrato\') excluirá a fonte naturalmente (mesmo raciocínio de TL-29/TL-30 para form_vr)', () => {
+    const resultado = classificarFontePorPrefixo('form_rendimentos')
+    expect(resultado).not.toBe('fatura')
+    expect(resultado).not.toBe('extrato')
+  })
 })
 
 describe('detectarDesalinhamentoMes', () => {
@@ -234,6 +260,13 @@ describe('detectarDesalinhamentoMes', () => {
       lancamento({ fonte: 'form_vr', data: '2026-06-30' }),
     ]
     expect(detectarDesalinhamentoMes('form_vr', lancamentos, '2026-06')).toEqual([])
+  })
+
+  it('TL-34: fonte "form_rendimentos" retorna [] sem comparar contra a heurística (cross-check não se aplica a lançamentos sintéticos)', () => {
+    const lancamentos = [
+      lancamento({ fonte: 'form_rendimentos', data: '2026-06-30' }),
+    ]
+    expect(detectarDesalinhamentoMes('form_rendimentos', lancamentos, '2026-06')).toEqual([])
   })
 })
 
