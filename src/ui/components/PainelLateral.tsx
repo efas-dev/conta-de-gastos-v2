@@ -21,6 +21,13 @@ interface PainelLateralProps {
    * aberto (hotfix 2026-08-02), sem botão de fechar.
    */
   fechavel?: boolean
+  /**
+   * Mês de referência real (`YYYY-MM`), encadeado de `TelaRevisao` (`mesEscolhido`) — repassado
+   * intacto a `CentralDeAvisos`, que o usa para o `FormVR` (Task 7-bis, ADR `vr-despesas`).
+   * Opcional por compatibilidade retroativa: consumidores que ainda não repassam a prop deixam
+   * `CentralDeAvisos` cair para seu próprio fallback (`defaultMes()`).
+   */
+  mesRef?: string
 }
 
 /**
@@ -40,7 +47,7 @@ interface PainelLateralProps {
  * `inspecao-proposta-conciliacao`) migrou do botão de toggle antigo de
  * `CentralDeAvisos` para a própria aba "Avisos".
  */
-export function PainelLateral({ aba, setAba, naturezas, fechavel = false }: PainelLateralProps) {
+export function PainelLateral({ aba, setAba, naturezas, fechavel = false, mesRef }: PainelLateralProps) {
   const contagemPendentes = useAppStore(selecionarContagemPendentes)
 
   return (
@@ -83,7 +90,7 @@ export function PainelLateral({ aba, setAba, naturezas, fechavel = false }: Pain
         )}
       </div>
       <div className="painel-corpo">
-        {aba === 'avisos' && <CentralDeAvisos />}
+        {aba === 'avisos' && <CentralDeAvisos mesRef={mesRef} />}
         {aba === 'naturezas' && <PainelNaturezas naturezas={naturezas} />}
       </div>
     </aside>

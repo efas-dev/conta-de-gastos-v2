@@ -3,8 +3,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { PainelLateral } from '../PainelLateral'
+import { CentralDeAvisos } from '../CentralDeAvisos'
 import type { Aviso } from '../../../types'
 import type { NaturezaRica } from '../../../types'
+
+// TL-92 (Task 7-bis): envolve a implementação real de `CentralDeAvisos` num `vi.fn` — preserva o
+// comportamento/conteúdo real (os demais testes deste arquivo continuam vendo o conteúdo
+// renderizado de verdade) e permite inspecionar com qual `mesRef` o componente foi chamado.
+vi.mock('../CentralDeAvisos', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../CentralDeAvisos')>()
+  return { ...real, CentralDeAvisos: vi.fn(real.CentralDeAvisos) }
+})
 
 const mockAplicar = vi.fn()
 const mockDesfazer = vi.fn()
@@ -53,6 +62,7 @@ beforeEach(() => {
   mockDispensar.mockReset()
   mockEntrarInspecao.mockReset()
   mockSairInspecao.mockReset()
+  vi.mocked(CentralDeAvisos).mockClear()
 })
 
 describe('PainelLateral — estrutura (TL-13)', () => {
@@ -151,5 +161,23 @@ describe('PainelLateral — badge de propostas pendentes (TL-19, TL-20)', () => 
 
     const botaoAvisos = screen.getByRole('button', { name: /^avisos/i })
     expect(botaoAvisos.querySelector('.badge')).toBeNull()
+  })
+})
+
+describe('PainelLateral — repassa mesRef para CentralDeAvisos (TL-92, Task 7-bis)', () => {
+  it('mesRef recebido chega intacto até CentralDeAvisos', () => {
+    render(
+      <PainelLateral aba="avisos" setAba={vi.fn()} naturezas={naturezasFicticias} mesRef="2026-03" />,
+    )
+
+    const [propsRecebidas] = vi.mocked(CentralDeAvisos).mock.calls[0]!
+    expect(propsRecebidas).toEqual(expect.objectContaining({ mesRef: '2026-03' }))
+  })
+
+  it('sem mesRef fornecido, CentralDeAvisos é chamado sem essa prop (compatibilidade retroativa)', () => {
+    render(<PainelLateral aba="avisos" setAba={vi.fn()} naturezas={naturezasFicticias} />)
+
+    const [propsRecebidas] = vi.mocked(CentralDeAvisos).mock.calls[0]!
+    expect(propsRecebidas).not.toEqual(expect.objectContaining({ mesRef: expect.anything() }))
   })
 })

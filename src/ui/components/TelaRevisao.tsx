@@ -329,7 +329,12 @@ export function TelaRevisao({
         {/* Painel sempre aberto na revisão (hotfix 2026-08-02): `null` herdado
             da importação vira a aba padrão "avisos"; as abas do próprio painel
             fazem a troca — sem botão de toggle na toolbar, sem "×". */}
-        <PainelLateral aba={painel ?? 'avisos'} setAba={setPainel} naturezas={naturezasDescritas} />
+        <PainelLateral
+          aba={painel ?? 'avisos'}
+          setAba={setPainel}
+          naturezas={naturezasDescritas}
+          mesRef={mesEscolhido}
+        />
       </div>
 
       {/* Popup de sugestão de replicar classificação (item 36) — flutua no

@@ -116,8 +116,8 @@ vi.mock('../ToolbarRevisao', () => ({
     React.createElement('div', { 'data-testid': 'toolbar-revisao' }, children),
 }))
 vi.mock('../PainelLateral', () => ({
-  PainelLateral: ({ aba }: { aba: string | null }) =>
-    React.createElement('div', { 'data-testid': 'painel-lateral', 'data-aba': aba }),
+  PainelLateral: ({ aba, mesRef }: { aba: string | null; mesRef?: string }) =>
+    React.createElement('div', { 'data-testid': 'painel-lateral', 'data-aba': aba, 'data-mes-ref': mesRef }),
 }))
 vi.mock('../BannerInspecao', () => ({
   BannerInspecao: ({ aviso }: { aviso: Aviso | null }) =>
@@ -232,6 +232,12 @@ describe('TelaRevisao', () => {
 
     rerender(<TelaRevisao {...props({ painel: 'naturezas' })} />)
     expect(screen.getByTestId('painel-lateral').getAttribute('data-aba')).toBe('naturezas')
+  })
+
+  it('TL-91 (Task 7-bis): repassa mesEscolhido como mesRef para PainelLateral', () => {
+    render(<TelaRevisao {...props({ mesEscolhido: '2026-03' })} />)
+
+    expect(screen.getByTestId('painel-lateral').getAttribute('data-mes-ref')).toBe('2026-03')
   })
 
   it('toolbar não tem mais botões de toggle "Avisos"/"Naturezas" — o painel tem abas próprias', () => {

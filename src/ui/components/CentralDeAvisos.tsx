@@ -34,7 +34,18 @@ import { FormVR } from './FormVR'
  * Retorna `null` quando não há avisos (mesmo padrão de `AvisoList.tsx` e
  * `PainelNaturezas.tsx` — nada montado sem conteúdo).
  */
-export function CentralDeAvisos() {
+export interface CentralDeAvisosProps {
+  /**
+   * Mês de referência real (`YYYY-MM`), encadeado de `TelaRevisao` (`mesEscolhido`) via
+   * `PainelLateral` (Task 7-bis) — usado por `FormVR` para a data automática dos lançamentos
+   * (D4 do ADR `vr-despesas`). Opcional por compatibilidade retroativa: quando ausente (todo
+   * consumidor que ainda não repassa a prop), cai para `defaultMes()`, o stand-in usado antes
+   * desta task.
+   */
+  mesRef?: string
+}
+
+export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
   const avisos = useAppStore((s) => s.avisosAcionaveis.avisos)
   const aplicar = useAppStore((s) => s.aplicar)
   const desfazer = useAppStore((s) => s.desfazer)
@@ -48,6 +59,10 @@ export function CentralDeAvisos() {
   // derivada", `Docs/ARCHITECTURE.md`) — é puramente visual, sem significado fora desta sessão de
   // painel.
   const [formVRAberto, setFormVRAberto] = useState(false)
+
+  // Mês de referência efetivo do FormVR (Task 7-bis): usa o mês real quando o consumidor o
+  // repassa; sem ele, cai para `defaultMes()` — o stand-in que valia antes desta task.
+  const mesRefEfetivo = mesRef ?? defaultMes()
 
   if (avisos.length === 0) return null
 
@@ -74,6 +89,7 @@ export function CentralDeAvisos() {
                 sairInspecao={sairInspecao}
                 formVRAberto={formVRAberto}
                 alternarFormVR={() => setFormVRAberto((atual) => !atual)}
+                mesRef={mesRefEfetivo}
               />
             ))}
           </ul>
@@ -124,6 +140,8 @@ interface CartaoPropostaProps extends AcoesPropostaProps {
   formVRAberto: boolean
   /** Alterna `formVRAberto` — chamado no clique do card quando `aviso.origem === 'vr'`. */
   alternarFormVR: () => void
+  /** Mês de referência efetivo (real, com fallback a `defaultMes()`) repassado ao `FormVR` (Task 7-bis). */
+  mesRef: string
 }
 
 /**
@@ -134,8 +152,9 @@ interface CartaoPropostaProps extends AcoesPropostaProps {
  *
  * Exceção: o aviso `origem==='vr'` (Task 7, ADR `vr-despesas`) não participa do toggle de
  * inspeção — clicar no corpo do card abre/fecha o `FormVR` (D5 do ADR: "clicar no aviso abre um
- * formulário"), usando o `mesRef` derivado de `defaultMes()` (não há mês selecionado disponível
- * nesta camada — ver achado de Plan da iteração 8 no log da spec).
+ * formulário"), usando o `mesRef` efetivo repassado por `CentralDeAvisos` (Task 7-bis: mês real
+ * encadeado de `TelaRevisao`, com fallback a `defaultMes()` só quando o consumidor não repassa a
+ * prop `mesRef` — ver `CentralDeAvisos`).
  */
 function CartaoProposta({
   aviso,
@@ -147,6 +166,7 @@ function CartaoProposta({
   sairInspecao,
   formVRAberto,
   alternarFormVR,
+  mesRef,
 }: CartaoPropostaProps) {
   const ehVR = aviso.origem === 'vr'
   const formVRVisivel = ehVR && formVRAberto
@@ -180,7 +200,7 @@ function CartaoProposta({
 
       {formVRVisivel && (
         <div onClick={(e) => e.stopPropagation()} style={{ marginTop: 10 }}>
-          <FormVR mesRef={defaultMes()} />
+          <FormVR mesRef={mesRef} />
         </div>
       )}
 

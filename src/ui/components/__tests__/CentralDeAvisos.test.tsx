@@ -4,6 +4,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import { CentralDeAvisos } from '../CentralDeAvisos'
 import type { Aviso } from '../../../types'
+import * as vrDominio from '../../../dominio/vr'
+
+// TL-93/TL-94 (Task 7-bis): espiona `gerarLancamentosVR` para confirmar qual `mesRef` chega até
+// `FormVR`, sem mockar o módulo inteiro (preserva o comportamento real da função pura).
+const spyGerarLancamentosVR = vi.spyOn(vrDominio, 'gerarLancamentosVR')
 
 // ---------------------------------------------------------------------------
 // Mock do store — mesmo padrão de SplitModal.test.tsx: seletor aplicado a um
@@ -74,6 +79,7 @@ beforeEach(() => {
   mockSairInspecao.mockReset().mockImplementation(() => {
     avisoEmInspecaoMock = null
   })
+  spyGerarLancamentosVR.mockClear()
 })
 
 describe('CentralDeAvisos — lista vazia (TL-05)', () => {
@@ -387,5 +393,46 @@ describe('CentralDeAvisos — aviso VR abre FormVR em vez do toggle de inspeçã
     fireEvent.click(screen.getByText('Fatura conciliável com pagamento do extrato.'))
 
     expect(screen.getByTestId('form-vr')).toBeInTheDocument()
+  })
+})
+
+describe('CentralDeAvisos — mesRef real chega ao FormVR (TL-93, TL-94, Task 7-bis)', () => {
+  function propostaVR(parcial: Partial<Aviso> = {}): Aviso {
+    return proposta({
+      id: 'vr',
+      origem: 'vr',
+      mensagem: 'Registre as despesas pagas com VR neste mês.',
+      alvo: [],
+      permanece: [],
+      ...parcial,
+    })
+  }
+
+  function preencherEConfirmar() {
+    fireEvent.change(screen.getByLabelText('Valor da despesa 1'), { target: { value: '50' } })
+    fireEvent.change(screen.getByLabelText('Natureza da despesa 1'), { target: { value: 'ALM' } })
+    fireEvent.change(screen.getByLabelText('Descrição da despesa 1'), { target: { value: 'Mercado' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+  }
+
+  it('TL-93: com a prop mesRef fornecida (diferente do default), FormVR usa esse mesRef ao gerar os lançamentos', () => {
+    avisosMock = [propostaVR()]
+    render(<CentralDeAvisos mesRef="2026-03" />)
+
+    fireEvent.click(screen.getByText('Registre as despesas pagas com VR neste mês.'))
+    preencherEConfirmar()
+
+    expect(spyGerarLancamentosVR).toHaveBeenCalledWith(expect.any(Array), '2026-03')
+  })
+
+  it('TL-94: sem a prop mesRef (compatibilidade retroativa), FormVR usa defaultMes() — comportamento pré-Task 7-bis preservado', () => {
+    avisosMock = [propostaVR()]
+    render(<CentralDeAvisos />)
+
+    fireEvent.click(screen.getByText('Registre as despesas pagas com VR neste mês.'))
+    preencherEConfirmar()
+
+    const mesUsado = spyGerarLancamentosVR.mock.calls[0]?.[1]
+    expect(mesUsado).toMatch(/^\d{4}-\d{2}$/)
   })
 })
