@@ -1,6 +1,7 @@
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
+// ADR: see spec/vr-despesas.adr.md
 
 import { useState } from 'react'
 import { useAppStore } from '../store/appStore'
