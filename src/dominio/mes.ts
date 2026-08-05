@@ -1,4 +1,5 @@
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
+// ADR: see spec/conciliacao-robusta.adr.md
 
 import type { Aviso, Lancamento } from '../types'
 

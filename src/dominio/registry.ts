@@ -1,4 +1,5 @@
 // ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see spec/conciliacao-robusta.adr.md
 
 import type { Aviso, Lancamento } from '../types'
 import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from './deteccoes'
