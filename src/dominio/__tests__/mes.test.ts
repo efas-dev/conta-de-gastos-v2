@@ -1,7 +1,13 @@
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
-import { defaultMes, detectarMesSugerido, classificarFonte, classificarFontePorPrefixo } from '../mes'
+import {
+  defaultMes,
+  detectarMesSugerido,
+  classificarFonte,
+  classificarFontePorPrefixo,
+  detectarDesalinhamentoMes,
+} from '../mes'
 import type { Lancamento } from '../../types'
 
 function lancamento(overrides: Partial<Lancamento> = {}): Lancamento {
@@ -148,6 +154,64 @@ describe('classificarFontePorPrefixo', () => {
   it('TL-18: prefixo desconhecido lança Error explícito em vez de default silencioso', () => {
     expect(() => classificarFontePorPrefixo('xyz_desconhecido')).toThrow(
       /prefixo.*desconhecido|fatura_|extrato_/i,
+    )
+  })
+})
+
+describe('detectarDesalinhamentoMes', () => {
+  it('TL-19: concordância fatura×fatura — prefixo e heurística concordam — retorna []', () => {
+    const lancamentos = [
+      lancamento({ fonte: 'fatura_nubank_cc', data: '2026-05-10' }),
+      lancamento({ fonte: 'fatura_nubank_cc', data: '2026-06-01' }),
+    ]
+    expect(detectarDesalinhamentoMes('fatura_nubank_cc', lancamentos, '2026-06')).toEqual([])
+  })
+
+  it('TL-20: concordância extrato×extrato — prefixo e heurística concordam — retorna []', () => {
+    const lancamentos = [
+      lancamento({ fonte: 'extrato_bb', data: '2026-06-05' }),
+      lancamento({ fonte: 'extrato_bb', data: '2026-06-20' }),
+    ]
+    expect(detectarDesalinhamentoMes('extrato_bb', lancamentos, '2026-06')).toEqual([])
+  })
+
+  it('TL-21: divergência (F1) — prefixo diz fatura mas heurística diz extrato — retorna aviso informativo', () => {
+    // Cenário motivador: fatura de junho carregada com mesRef='2026-06' (o mês escolhido é o próprio
+    // mês da fatura) — nenhuma data é anterior a mesRef, então classificarFonte (heurística) erra
+    // "extrato", enquanto o prefixo autoritativo "fatura_nubank_cc" diz "fatura".
+    const lancamentos = [
+      lancamento({ fonte: 'fatura_nubank_cc', data: '2026-06-03' }),
+      lancamento({ fonte: 'fatura_nubank_cc', data: '2026-06-18' }),
+    ]
+    const avisos = detectarDesalinhamentoMes('fatura_nubank_cc', lancamentos, '2026-06')
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].tipo).toBe('informativo')
+  })
+
+  it('TL-22: divergência — prefixo diz extrato mas heurística diz fatura — retorna aviso informativo', () => {
+    const lancamentos = [
+      lancamento({ fonte: 'extrato_itau', data: '2026-04-10' }),
+    ]
+    const avisos = detectarDesalinhamentoMes('extrato_itau', lancamentos, '2026-06')
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].tipo).toBe('informativo')
+  })
+
+  it('TL-23: shape do aviso divergente — origem, estado, mensagem referencia fonte e mesRef, sem mutacaoProposta', () => {
+    const lancamentos = [
+      lancamento({ fonte: 'fatura_nubank_cc', data: '2026-06-03' }),
+    ]
+    const [aviso] = detectarDesalinhamentoMes('fatura_nubank_cc', lancamentos, '2026-06')
+    expect(aviso.origem).toBe('desalinhamento-mes')
+    expect(aviso.estado).toBe('pendente')
+    expect(aviso.mensagem).toContain('fatura_nubank_cc')
+    expect(aviso.mensagem).toContain('2026-06')
+    expect(aviso.mutacaoProposta).toBeUndefined()
+  })
+
+  it('TL-24: prefixo desconhecido propaga o Error de classificarFontePorPrefixo sem mascarar', () => {
+    expect(() => detectarDesalinhamentoMes('xyz_desconhecido', [], '2026-06')).toThrow(
+      /prefixo.*desconhecido/i,
     )
   })
 })

@@ -1,6 +1,6 @@
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
 
-import type { Lancamento } from '../types'
+import type { Aviso, Lancamento } from '../types'
 
 /**
  * Retorna o mês anterior ao corrente no formato YYYY-MM.
@@ -100,4 +100,38 @@ export function classificarFontePorPrefixo(fonte: string): 'fatura' | 'extrato' 
   throw new Error(
     `classificarFontePorPrefixo: prefixo de fonte desconhecido "${fonte}" — esperado "fatura_*" ou "extrato_*"`,
   )
+}
+
+/**
+ * Cross-check informativo entre a classificação autoritativa por prefixo (`classificarFontePorPrefixo`,
+ * T1) e a heurística por data (`classificarFonte`), rebaixada a este papel pela Decisão 1 do ADR
+ * `conciliacao-robusta`. Função pura: nunca decide fatura/extrato — apenas sinaliza quando as duas
+ * classificações divergem, o que indica que o `mesRef` escolhido pelo usuário provavelmente está
+ * desalinhado com os dados (ex.: fatura de junho com `mesRef='2026-06'` sem nenhuma data anterior ao
+ * mês escolhido — cenário motivador F1 desta spec).
+ *
+ * @returns `[]` quando prefixo e heurística concordam; um único `Aviso` `tipo:'informativo'` (sem
+ * `mutacaoProposta`) quando divergem.
+ */
+export function detectarDesalinhamentoMes(
+  fonte: string,
+  lancamentos: Lancamento[],
+  mesRef: string,
+): Aviso[] {
+  const porPrefixo = classificarFontePorPrefixo(fonte)
+  const porHeuristica = classificarFonte(fonte, lancamentos, mesRef)
+
+  if (porPrefixo === porHeuristica) return []
+
+  return [
+    {
+      id: `desalinhamento-mes-${fonte}`,
+      tipo: 'informativo',
+      origem: 'desalinhamento-mes',
+      mensagem: `Aviso: mês de referência "${mesRef}" pode estar desalinhado com a fonte "${fonte}" — classificação por prefixo indica "${porPrefixo}", mas nenhum lançamento da fonte corresponde a essa data em relação ao mês escolhido.`,
+      alvo: [],
+      permanece: [],
+      estado: 'pendente',
+    },
+  ]
 }
