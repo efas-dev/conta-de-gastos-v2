@@ -42,6 +42,23 @@ describe('FonteRotulo — migração para className', () => {
   })
 })
 
+describe('FonteRotulo — rótulo "form_vr" (Task 2, ADR vr-despesas Decisão 3)', () => {
+  it('TL-31: renderiza o nome da fonte quando tipo="form_vr", sem erro de tipo/runtime', () => {
+    render(<FonteRotulo fonte="VR Agosto" tipo="form_vr" />)
+    expect(screen.getByText('VR Agosto')).toBeInTheDocument()
+  })
+
+  it('TL-31b: badge de form_vr renderiza texto "form_vr" com className e aria-label distintos de fatura/extrato', () => {
+    render(<FonteRotulo fonte="VR Agosto" tipo="form_vr" />)
+    const rotulo = screen.getByRole('status')
+    expect(rotulo).toHaveTextContent('form_vr')
+    expect(rotulo).toHaveClass('tag-tipo', 'form_vr')
+    const label = rotulo.getAttribute('aria-label')
+    expect(label).not.toBe('tipo fatura')
+    expect(label).not.toBe('tipo extrato')
+  })
+})
+
 describe('FonteRotulo — discriminação visual', () => {
   it('TL6-5: fatura e extrato têm aria-label distintos', () => {
     const { rerender } = render(<FonteRotulo fonte="Nubank" tipo="fatura" />)

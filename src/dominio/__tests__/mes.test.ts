@@ -156,6 +156,20 @@ describe('classificarFontePorPrefixo', () => {
       /prefixo.*desconhecido|fatura_|extrato_/i,
     )
   })
+
+  it('TL-25: fonte "form_vr" → "form_vr" (T2, ADR vr-despesas Decisão 3)', () => {
+    expect(classificarFontePorPrefixo('form_vr')).toBe('form_vr')
+  })
+
+  it('TL-26: prefixo "form_vr_qualquercoisa" (com sufixo) → "form_vr"', () => {
+    expect(classificarFontePorPrefixo('form_vr_qualquercoisa')).toBe('form_vr')
+  })
+
+  it('TL-27: prefixo desconhecido não form_vr_*/fatura_*/extrato_* continua lançando Error', () => {
+    expect(() => classificarFontePorPrefixo('manual_qualquer')).toThrow(
+      /prefixo.*desconhecido/i,
+    )
+  })
 })
 
 describe('detectarDesalinhamentoMes', () => {
@@ -213,6 +227,13 @@ describe('detectarDesalinhamentoMes', () => {
     expect(() => detectarDesalinhamentoMes('xyz_desconhecido', [], '2026-06')).toThrow(
       /prefixo.*desconhecido/i,
     )
+  })
+
+  it('TL-28: fonte "form_vr" retorna [] sem comparar contra a heurística (cross-check não se aplica a lançamentos sintéticos)', () => {
+    const lancamentos = [
+      lancamento({ fonte: 'form_vr', data: '2026-06-30' }),
+    ]
+    expect(detectarDesalinhamentoMes('form_vr', lancamentos, '2026-06')).toEqual([])
   })
 })
 

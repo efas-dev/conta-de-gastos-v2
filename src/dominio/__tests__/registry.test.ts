@@ -535,6 +535,43 @@ describe('detectores — Task 6 (classificação de conciliação por prefixo, n
 })
 
 // ---------------------------------------------------------------------------
+// Task 2 (spec vr-despesas, ADR Decisão 3) — detectarConciliacaoRegistry exclui fontes `form_vr`
+// naturalmente: não são fatura, não são extrato, não entram em nenhum dos dois filtros.
+// ---------------------------------------------------------------------------
+
+describe('detectores — Task 2 (spec vr-despesas): conciliação exclui fonte form_vr', () => {
+  it('TL-29: lançamentos form_vr presentes ao lado de fatura/extrato reais não entram em fontesFatura/fontesExtrato e a conciliação real não estoura', () => {
+    const faturaA = lancamento({ id: 1, fonte: 'fatura_nubank_cc', data: '2026-06-05', transcricao: 'Item A', valor: -100 })
+    const extratoPagamento = lancamento({ id: 2, fonte: 'extrato_itau', data: '2026-06-15', transcricao: 'Pagamento de fatura', valor: -100 })
+    const vrSaida = lancamento({ id: 3, fonte: 'form_vr', data: '2026-06-30', transcricao: 'Supermercado', valor: -50, natureza: 'Alimentação' })
+    const vrEntrada = lancamento({ id: 4, fonte: 'form_vr', data: '2026-06-30', transcricao: 'VR utilizado para despesas familiares', valor: 50, natureza: 'RR' })
+    const todosLancamentos = [faturaA, extratoPagamento, vrSaida, vrEntrada]
+    const mesRef = '2026-07'
+
+    const avisos = orquestrarDeteccao(todosLancamentos, detectores, undefined, mesRef)
+    const avisoConciliacao = avisos.find((a) => a.origem === 'conciliacao' && a.tipo === 'proposta')
+
+    expect(avisoConciliacao).toBeDefined()
+    // form_vr não entra nos ids remapeados de fatura nem de extrato — só faturaA (índice 0) e
+    // extratoPagamento (índice 1) participam da conciliação.
+    expect(avisoConciliacao?.alvo).toEqual(['1'])
+    expect(avisoConciliacao?.permanece).toEqual(['0'])
+  })
+
+  it('TL-30: lançamentos SOMENTE form_vr (sem fatura/extrato real) não produzem aviso de conciliação e não lançam', () => {
+    const vrSaida = lancamento({ id: 1, fonte: 'form_vr', data: '2026-06-30', transcricao: 'Farmácia', valor: -30, natureza: 'Saúde' })
+    const vrEntrada = lancamento({ id: 2, fonte: 'form_vr', data: '2026-06-30', transcricao: 'VR utilizado para despesas familiares', valor: 30, natureza: 'RR' })
+
+    expect(() =>
+      orquestrarDeteccao([vrSaida, vrEntrada], detectores, undefined, '2026-06'),
+    ).not.toThrow()
+
+    const avisos = orquestrarDeteccao([vrSaida, vrEntrada], detectores, undefined, '2026-06')
+    expect(avisos.some((a) => a.origem === 'conciliacao')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // T07 — migração de investimento (proposta de remoção completa via mutacaoProposta)
 // ---------------------------------------------------------------------------
 

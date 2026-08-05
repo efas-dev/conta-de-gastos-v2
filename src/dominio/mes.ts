@@ -85,21 +85,30 @@ export function classificarFonte(
 }
 
 /**
- * Fonte AUTORITATIVA de classificação fatura/extrato (D1, ADR conciliacao-robusta).
- * Decide UNICAMENTE pelo prefixo do campo `fonte` declarado pelo parser no momento do parse
- * (`fatura_*` → 'fatura', `extrato_*` → 'extrato') — nunca depende de `lancamentos` nem de `mesRef`,
- * ao contrário de `classificarFonte` (heurística por data, rebaixada a cross-check informativo).
+ * Fonte AUTORITATIVA de classificação fatura/extrato/form_vr (D1, ADR conciliacao-robusta; D3, ADR
+ * vr-despesas). Decide UNICAMENTE pelo prefixo do campo `fonte` declarado pelo parser (ou, no caso de
+ * `form_vr`, pelo form de registro manual de VR) no momento do parse/geração (`fatura_*` → 'fatura',
+ * `extrato_*` → 'extrato', `form_vr`/`form_vr_*` → 'form_vr') — nunca depende de `lancamentos` nem de
+ * `mesRef`, ao contrário de `classificarFonte` (heurística por data, rebaixada a cross-check
+ * informativo).
  *
- * Um `fonte` que não seguir a convenção `fatura_*`/`extrato_*` é um parser não-conformante: falha
+ * `'form_vr'` é um TERCEIRO tipo nomeado (não `'fatura'`, não `'extrato'`, não `'manual'` — reservado
+ * para um caso futuro, D3 do ADR vr-despesas): lançamentos sintéticos gerados pelo form de VR não vêm
+ * de nenhum documento bancário, então nenhuma das duas classificações existentes faria sentido para
+ * eles. A conciliação (`detectarConciliacaoRegistry`, `src/dominio/registry.ts`) e o cross-check de
+ * desalinhamento (`detectarDesalinhamentoMes`, abaixo) excluem/ignoram `form_vr` naturalmente.
+ *
+ * Um `fonte` que não seguir nenhuma das três convenções é um parser não-conformante: falha
  * ruidosamente (lança `Error`) em vez de assumir um default silencioso, para que o problema apareça
  * no momento do parse e não vire uma classificação errada mascarada.
  */
-export function classificarFontePorPrefixo(fonte: string): 'fatura' | 'extrato' {
+export function classificarFontePorPrefixo(fonte: string): 'fatura' | 'extrato' | 'form_vr' {
   if (fonte.startsWith('fatura_')) return 'fatura'
   if (fonte.startsWith('extrato_')) return 'extrato'
+  if (fonte === 'form_vr' || fonte.startsWith('form_vr_')) return 'form_vr'
 
   throw new Error(
-    `classificarFontePorPrefixo: prefixo de fonte desconhecido "${fonte}" — esperado "fatura_*" ou "extrato_*"`,
+    `classificarFontePorPrefixo: prefixo de fonte desconhecido "${fonte}" — esperado "fatura_*", "extrato_*" ou "form_vr"`,
   )
 }
 
@@ -111,8 +120,10 @@ export function classificarFontePorPrefixo(fonte: string): 'fatura' | 'extrato' 
  * desalinhado com os dados (ex.: fatura de junho com `mesRef='2026-06'` sem nenhuma data anterior ao
  * mês escolhido — cenário motivador F1 desta spec).
  *
- * @returns `[]` quando prefixo e heurística concordam; um único `Aviso` `tipo:'informativo'` (sem
- * `mutacaoProposta`) quando divergem.
+ * @returns `[]` quando prefixo e heurística concordam, ou quando `fonte` classifica como `'form_vr'`
+ * (T2, ADR vr-despesas Decisão 3 — o cross-check de mês não se aplica a lançamentos sintéticos, que
+ * não vêm de nenhum documento bancário e não têm heurística por data significativa); um único `Aviso`
+ * `tipo:'informativo'` (sem `mutacaoProposta`) quando fatura/extrato divergem.
  */
 export function detectarDesalinhamentoMes(
   fonte: string,
@@ -120,6 +131,8 @@ export function detectarDesalinhamentoMes(
   mesRef: string,
 ): Aviso[] {
   const porPrefixo = classificarFontePorPrefixo(fonte)
+  if (porPrefixo === 'form_vr') return []
+
   const porHeuristica = classificarFonte(fonte, lancamentos, mesRef)
 
   if (porPrefixo === porHeuristica) return []
