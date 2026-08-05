@@ -64,6 +64,12 @@ export interface EstadoApp {
   lancamentos: Lancamento[]
   /** Iniciais do usuário logado (padrão para novos lançamentos). */
   iniciais: string
+  /**
+   * Saldo do mês anterior, lido de B5 da aba Extrato do xlsx-dicionário
+   * (`lerSaldoAnterior`). `null` quando não há xlsx carregado ou a leitura
+   * falhou. Consumido pelo cálculo do rendimento (spec rendimentos, Task 5).
+   */
+  saldoAnterior: number | null
   /** Nome do usuário para detecção de Pix nominais. */
   nomeUsuario: string
   /** Naturezas válidas lidas do Modelo.xlsx (aba Naturezas B3:B32). */
@@ -246,6 +252,9 @@ export interface AcoesApp extends AcoesAvisosSlice {
   /** Atualiza as iniciais do usuário (sem rastreamento de undo). */
   setIniciais: (iniciais: string) => void
 
+  /** Atualiza o saldo do mês anterior (sem rastreamento de undo). */
+  setSaldoAnterior: (saldo: number | null) => void
+
   /** Atualiza o nome do usuário para detecção de Pix nominais (sem rastreamento de undo). */
   setNomeUsuario: (nomeUsuario: string) => void
 
@@ -391,6 +400,7 @@ function calcularVisao(
 const estadoInicial: EstadoApp = {
   lancamentos: [],
   iniciais: '',
+  saldoAnterior: null,
   nomeUsuario: '',
   naturezasValidas: [],
   naturezasRicas: [],
@@ -419,6 +429,7 @@ function extrairEstado(store: AppStore): EstadoApp {
   return {
     lancamentos: store.lancamentos,
     iniciais: store.iniciais,
+    saldoAnterior: store.saldoAnterior,
     nomeUsuario: store.nomeUsuario,
     naturezasValidas: store.naturezasValidas,
     naturezasRicas: store.naturezasRicas,
@@ -714,6 +725,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
       set({ lancamentos, ...(lancamentos.length > 0 ? { sujo: true } : {}), sugestaoReplicacao: null, ...visao })
     },
     setIniciais: (iniciais) => set({ iniciais }),
+    setSaldoAnterior: (saldo) => set({ saldoAnterior: saldo }),
     setNomeUsuario: (nomeUsuario) => set({ nomeUsuario }),
     setCSV: (arquivo) => set({ csvArquivo: arquivo }),
     setDic: (entries) => set({ dicEntries: entries }),

@@ -66,6 +66,7 @@ function resetarStore(): void {
     filtroSoIncompletos: false,
     ordenacaoColuna: null,
     ordenacaoDirecao: 'asc',
+    saldoAnterior: null,
   })
 }
 
@@ -95,6 +96,39 @@ describe('setIniciais', () => {
   it('persiste iniciais no estado', () => {
     useAppStore.getState().setIniciais('JF')
     expect(useAppStore.getState().iniciais).toBe('JF')
+  })
+})
+
+describe('setSaldoAnterior', () => {
+  beforeEach(resetarStore)
+
+  it('inicia como null antes de qualquer setSaldoAnterior', () => {
+    expect(useAppStore.getState().saldoAnterior).toBeNull()
+  })
+
+  it('persiste o número no estado', () => {
+    useAppStore.getState().setSaldoAnterior(1500)
+    expect(useAppStore.getState().saldoAnterior).toBe(1500)
+  })
+
+  it('restaura para null', () => {
+    useAppStore.getState().setSaldoAnterior(1500)
+    useAppStore.getState().setSaldoAnterior(null)
+    expect(useAppStore.getState().saldoAnterior).toBeNull()
+  })
+
+  it('não empilha entrada em historico/futuro (sem rastreamento de undo)', () => {
+    useAppStore.getState().setSaldoAnterior(1500)
+    expect(useAppStore.getState().historico).toHaveLength(0)
+    expect(useAppStore.getState().futuro).toHaveLength(0)
+  })
+
+  it('passa incólume por undo de uma mutação rastreada', () => {
+    useAppStore.getState().setLancamentos([lancamento()])
+    useAppStore.getState().setSaldoAnterior(1500)
+    useAppStore.getState().editarCelula(0, 'valor', -200)
+    useAppStore.getState().undo()
+    expect(useAppStore.getState().saldoAnterior).toBe(1500)
   })
 })
 
