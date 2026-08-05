@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { zipSync, strToU8 } from 'fflate'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { lerDicionario, lerNaturezas, ehDicionario, lerIniciais } from '../leitor'
+import { lerDicionario, lerNaturezas, ehDicionario, lerIniciais, lerSaldoAnterior } from '../leitor'
 import type { DicEntry, NaturezaRica } from '../../../types'
 
 // ---------------------------------------------------------------------------
@@ -662,6 +662,115 @@ describe('lerIniciais — bytes inválidos', () => {
     const bytesInvalidos = new Uint8Array([0, 1, 2, 3])
     expect(() => lerIniciais(bytesInvalidos)).not.toThrow()
     expect(lerIniciais(bytesInvalidos)).toBeNull()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Helper: cria .xlsx com aba "Extrato" contendo B5 com valor opcional
+// ---------------------------------------------------------------------------
+
+/**
+ * Constrói um .xlsx sintético com aba "Extrato" cuja linha 5 contém (ou não)
+ * a célula B5. `valorB5` numérico gera célula sem atributo `t` (valor OOXML
+ * numérico nativo); string gera célula `t="inlineStr"` (texto não-numérico,
+ * usado para exercitar o caminho de parse malsucedido); `null` omite a
+ * célula B5 da linha 5 inteiramente.
+ */
+function criarXlsxComExtratoB5(valorB5: number | string | null): Uint8Array {
+  const b5Cell = valorB5 === null
+    ? ''
+    : typeof valorB5 === 'number'
+      ? `<c r="B5"><v>${valorB5}</v></c>`
+      : `<c r="B5" t="inlineStr"><is><t>${valorB5}</t></is></c>`
+
+  const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetData>
+    <row r="1"><c r="A1" t="inlineStr"><is><t>Mês</t></is></c></row>
+    <row r="5">${b5Cell}</row>
+  </sheetData>
+</worksheet>`
+
+  const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+          xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Extrato" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`
+
+  const workbookRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet"
+    Target="worksheets/sheet1.xml"/>
+</Relationships>`
+
+  const contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+</Types>`
+
+  const rootRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
+    Target="xl/workbook.xml"/>
+</Relationships>`
+
+  return zipSync({
+    '[Content_Types].xml': strToU8(contentTypesXml),
+    '_rels/.rels': strToU8(rootRelsXml),
+    'xl/workbook.xml': strToU8(workbookXml),
+    'xl/_rels/workbook.xml.rels': strToU8(workbookRelsXml),
+    'xl/worksheets/sheet1.xml': strToU8(sheetXml),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// lerSaldoAnterior — Test List T1-LSA-01 a T1-LSA-06
+// ---------------------------------------------------------------------------
+
+describe('lerSaldoAnterior — aba Extrato com B5 numérica', () => {
+  it('T1-LSA-01: retorna o número de B5 quando preenchida com valor numérico', () => {
+    const bytes = criarXlsxComExtratoB5(1234.56)
+    expect(lerSaldoAnterior(bytes)).toBe(1234.56)
+  })
+})
+
+describe('lerSaldoAnterior — célula B5 ausente', () => {
+  it('T1-LSA-02: retorna null quando a linha 5 existe mas não tem célula B5', () => {
+    const bytes = criarXlsxComExtratoB5(null)
+    expect(lerSaldoAnterior(bytes)).toBeNull()
+  })
+})
+
+describe('lerSaldoAnterior — aba Extrato ausente', () => {
+  it('T1-LSA-03: retorna null quando não há aba Extrato', () => {
+    const bytes = criarXlsxDicionario(LINHAS_FIXTURE)
+    expect(lerSaldoAnterior(bytes)).toBeNull()
+  })
+})
+
+describe('lerSaldoAnterior — bytes inválidos', () => {
+  it('T1-LSA-04: retorna null para bytes não-ZIP sem lançar exceção', () => {
+    const bytesInvalidos = new Uint8Array([0, 1, 2, 3])
+    expect(() => lerSaldoAnterior(bytesInvalidos)).not.toThrow()
+    expect(lerSaldoAnterior(bytesInvalidos)).toBeNull()
+  })
+})
+
+describe('lerSaldoAnterior — B5 com valor não-numérico', () => {
+  it('T1-LSA-05: retorna null quando B5 contém texto não-numérico', () => {
+    const bytes = criarXlsxComExtratoB5('abc')
+    expect(lerSaldoAnterior(bytes)).toBeNull()
+  })
+})
+
+describe('lerSaldoAnterior — bytes vazios', () => {
+  it('T1-LSA-06: retorna null para Uint8Array vazio', () => {
+    expect(lerSaldoAnterior(new Uint8Array(0))).toBeNull()
   })
 })
 

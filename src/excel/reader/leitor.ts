@@ -580,6 +580,150 @@ export function lerIniciais(bytes: Uint8Array): string | null {
 }
 
 // ---------------------------------------------------------------------------
+// lerSaldoAnterior
+// ---------------------------------------------------------------------------
+
+/**
+ * Lê a célula B5 da aba "Extrato" de um arquivo .xlsx e converte para número.
+ *
+ * Usada para obter o saldo do mês anterior a partir do .xlsx de dicionário
+ * que o usuário carrega: a aba Extrato traz esse saldo em B5 (F3 da spec
+ * `rendimentos`). Mesmo padrão estrutural de `lerIniciais` (que lê B2),
+ * diferindo apenas na célula alvo e na conversão final para `number`.
+ *
+ * @param bytes  Conteúdo binário do arquivo .xlsx.
+ * @returns      Número da célula B5, ou null se ausente, vazia, não-numérica
+ *               ou em caso de qualquer erro de parse (best-effort).
+ */
+export function lerSaldoAnterior(bytes: Uint8Array): number | null {
+  if (bytes.length === 0) return null
+
+  let zip: Record<string, Uint8Array>
+  try {
+    zip = unzipSync(bytes) as Record<string, Uint8Array>
+  } catch {
+    return null
+  }
+
+  const decoder = new TextDecoder()
+
+  const workbookBytes = zip['xl/workbook.xml']
+  if (!workbookBytes) return null
+
+  let workbookDoc: Document
+  try {
+    workbookDoc = new DOMParser().parseFromString(
+      decoder.decode(workbookBytes),
+      'text/xml',
+    )
+  } catch {
+    return null
+  }
+
+  // Localizar r:id da aba "Extrato"
+  const sheetEls = workbookDoc.getElementsByTagNameNS('*', 'sheet')
+  let extratoRid: string | null = null
+  for (let i = 0; i < sheetEls.length; i++) {
+    const el = sheetEls[i]
+    if (el.getAttribute('name') === 'Extrato') {
+      extratoRid = getAttr(el, 'id')
+      break
+    }
+  }
+
+  if (!extratoRid) return null
+
+  // Resolver Target via workbook.xml.rels
+  const relsBytes = zip['xl/_rels/workbook.xml.rels']
+  if (!relsBytes) return null
+
+  let relsDoc: Document
+  try {
+    relsDoc = new DOMParser().parseFromString(
+      decoder.decode(relsBytes),
+      'text/xml',
+    )
+  } catch {
+    return null
+  }
+
+  const relEls = relsDoc.getElementsByTagNameNS('*', 'Relationship')
+  let sheetTarget: string | null = null
+  for (let i = 0; i < relEls.length; i++) {
+    const el = relEls[i]
+    if (el.getAttribute('Id') === extratoRid) {
+      sheetTarget = el.getAttribute('Target')
+      break
+    }
+  }
+
+  if (!sheetTarget) return null
+
+  // Carregar sharedStrings opcionalmente
+  const sharedStrings: string[] = []
+  const ssBytes = zip['xl/sharedStrings.xml']
+  if (ssBytes) {
+    try {
+      const ssDoc = new DOMParser().parseFromString(
+        decoder.decode(ssBytes),
+        'text/xml',
+      )
+      const siEls = ssDoc.getElementsByTagNameNS('*', 'si')
+      for (let i = 0; i < siEls.length; i++) {
+        const tEls = siEls[i].getElementsByTagNameNS('*', 't')
+        let text = ''
+        for (let j = 0; j < tEls.length; j++) {
+          text += tEls[j].textContent ?? ''
+        }
+        sharedStrings.push(text)
+      }
+    } catch {
+      // sem sharedStrings: células tipo "s" retornarão vazio
+    }
+  }
+
+  // Carregar a planilha da aba Extrato
+  const sheetPath = sheetTarget.startsWith('/')
+    ? sheetTarget.slice(1)
+    : `xl/${sheetTarget}`
+
+  const sheetBytes = zip[sheetPath]
+  if (!sheetBytes) return null
+
+  let sheetDoc: Document
+  try {
+    sheetDoc = new DOMParser().parseFromString(
+      decoder.decode(sheetBytes),
+      'text/xml',
+    )
+  } catch {
+    return null
+  }
+
+  // Localizar a célula B5
+  const rowEls = sheetDoc.getElementsByTagNameNS('*', 'row')
+  for (let i = 0; i < rowEls.length; i++) {
+    const rowEl = rowEls[i]
+    const rowNum = parseInt(rowEl.getAttribute('r') ?? '0', 10)
+    if (rowNum !== 5) continue
+
+    const cellEls = rowEl.getElementsByTagNameNS('*', 'c')
+    for (let j = 0; j < cellEls.length; j++) {
+      const cell = cellEls[j]
+      const ref = cell.getAttribute('r') ?? ''
+      if (colLetterFromRef(ref) !== 'B') continue
+      const val = getCellText(cell, sharedStrings).trim()
+      if (!val) return null
+      const numero = Number(val)
+      return isNaN(numero) ? null : numero
+    }
+    break // linha 5 encontrada mas sem célula B5
+  }
+
+  return null
+}
+
+// ---------------------------------------------------------------------------
 // Utilitários internos
 // ---------------------------------------------------------------------------
 
