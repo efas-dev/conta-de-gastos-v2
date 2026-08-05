@@ -86,3 +86,71 @@ const LIMIAR_SANITY_CHECK = 0.05
 export function avaliarSanityCheck(diferenca: number, saldoInformado: number): { over: boolean } {
   return { over: diferenca > saldoInformado * LIMIAR_SANITY_CHECK }
 }
+
+/**
+ * Retorna o último dia do mês de `mesRef` (`YYYY-MM`) no formato `YYYY-MM-DD`, sem passar por
+ * `Date` (evita drift de fuso horário). Replicada localmente a partir da mesma função privada já
+ * existente em `vr.ts` (não exportada de lá — importar exigiria ampliar a superfície pública de um
+ * módulo fora das `Áreas tocadas` desta task); mesmo padrão já adotado para `paraCentavos` acima.
+ */
+function ultimoDiaDoMes(mesRef: string): string {
+  const [anoStr, mesStr] = mesRef.split('-')
+  const ano = Number(anoStr)
+  const mes = Number(mesStr) // 1-based
+
+  const bissexto = ano % 4 === 0 && (ano % 100 !== 0 || ano % 400 === 0)
+  const diasPorMes = [31, bissexto ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+  const ultimoDia = diasPorMes[mes - 1]
+
+  return `${anoStr}-${mesStr}-${String(ultimoDia).padStart(2, '0')}`
+}
+
+/** Descrição fixa do lançamento sintético de rendimentos, sem I/O nem interação do usuário. */
+const DESCRICAO_RR = 'Rendimento de aplicações (RR)'
+
+/**
+ * Decide o desfecho do cálculo de rendimentos (ver ADR `rendimentos`, Decisão 6): quando o saldo
+ * informado pelo usuário no form (`FormRendimentos`, T10) é maior ou igual ao saldo calculado a
+ * partir do saldo anterior + lançamentos do grid (`calcularSaldoCalculado`, T5), a diferença é
+ * lançada como 1 lançamento sintético de natureza `"RR"`. Quando o saldo calculado excede o
+ * informado (diferença negativa), nenhum lançamento é produzido — o sinal é tratado como um
+ * lançamento faltando no grid, a ser resolvido por conciliação manual do usuário, não como um
+ * "rendimento negativo" (orientação ao usuário é responsabilidade da UI, T10, não desta função).
+ *
+ * Função pura, sem I/O. Soma em centavos inteiros antes de converter de volta para reais, mesmo
+ * cuidado de `calcularSaldoCalculado`/`parsearSomaInline` acima. O objeto de lançamento retornado
+ * não tem campo `id` — atribuição é responsabilidade exclusiva de quem aplica a mutação
+ * (`avisosSlice.aplicar`, verbo `'adicionar'`, via `atribuirIds`).
+ *
+ * @param saldoCalculado saldo anterior + soma dos lançamentos do grid (`calcularSaldoCalculado`).
+ * @param saldoInformado saldo real informado pelo usuário no form (conta corrente + aplicações).
+ * @param mesRef mês de referência corrente, formato `YYYY-MM`.
+ * @returns `{ tipo: 'lancamento', lancamento }` quando `saldoInformado >= saldoCalculado` (inclui
+ *   diferença zero); `{ tipo: 'diferenca-negativa' }` caso contrário, sem nenhum lançamento.
+ */
+export function gerarLancamentoRendimento(
+  saldoCalculado: number,
+  saldoInformado: number,
+  mesRef: string,
+): { tipo: 'lancamento'; lancamento: Omit<Lancamento, 'id'> } | { tipo: 'diferenca-negativa' } {
+  const diferencaCentavos = paraCentavos(saldoInformado) - paraCentavos(saldoCalculado)
+
+  if (diferencaCentavos < 0) {
+    return { tipo: 'diferenca-negativa' }
+  }
+
+  const data = ultimoDiaDoMes(mesRef)
+
+  return {
+    tipo: 'lancamento',
+    lancamento: {
+      fonte: 'form_rendimentos',
+      data,
+      transcricao: DESCRICAO_RR,
+      valor: diferencaCentavos / 100,
+      iniciais: '',
+      natureza: 'RR',
+      descricao: DESCRICAO_RR,
+    },
+  }
+}

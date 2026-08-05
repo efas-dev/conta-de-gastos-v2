@@ -2,7 +2,12 @@
 
 import { describe, expect, it } from 'vitest'
 import type { Lancamento } from '../../types'
-import { avaliarSanityCheck, calcularSaldoCalculado, parsearSomaInline } from '../rendimentos'
+import {
+  avaliarSanityCheck,
+  calcularSaldoCalculado,
+  gerarLancamentoRendimento,
+  parsearSomaInline,
+} from '../rendimentos'
 
 function lancamento(valor: number): Lancamento {
   return {
@@ -123,5 +128,68 @@ describe('avaliarSanityCheck', () => {
 
   it('T7-SC-07: diferença negativa nunca é over:true para saldo informado positivo', () => {
     expect(avaliarSanityCheck(-500, 1000)).toEqual({ over: false })
+  })
+})
+
+describe('gerarLancamentoRendimento', () => {
+  it('T8-GLR-01: saldoInformado > saldoCalculado retorna lançamento com valor = diferença', () => {
+    const resultado = gerarLancamentoRendimento(1000, 1150, '2026-08')
+
+    expect(resultado.tipo).toBe('lancamento')
+    if (resultado.tipo === 'lancamento') {
+      expect(resultado.lancamento.valor).toBe(150)
+    }
+  })
+
+  it('T8-GLR-02: diferença zero (saldoInformado === saldoCalculado) também retorna lançamento, valor 0', () => {
+    const resultado = gerarLancamentoRendimento(1000, 1000, '2026-08')
+
+    expect(resultado.tipo).toBe('lancamento')
+    if (resultado.tipo === 'lancamento') {
+      expect(resultado.lancamento.valor).toBe(0)
+    }
+  })
+
+  it('T8-GLR-03: saldoCalculado > saldoInformado (diferença negativa) sinaliza sem lançamento', () => {
+    const resultado = gerarLancamentoRendimento(1150, 1000, '2026-08')
+
+    expect(resultado).toEqual({ tipo: 'diferenca-negativa' })
+  })
+
+  it('T8-GLR-04: campos fixos do lançamento gerado: natureza RR, fonte form_rendimentos, data = último dia do mês', () => {
+    const resultado = gerarLancamentoRendimento(1000, 1150, '2026-08')
+
+    expect(resultado.tipo).toBe('lancamento')
+    if (resultado.tipo === 'lancamento') {
+      expect(resultado.lancamento.natureza).toBe('RR')
+      expect(resultado.lancamento.fonte).toBe('form_rendimentos')
+      expect(resultado.lancamento.data).toBe('2026-08-31')
+    }
+  })
+
+  it('T8-GLR-05: o lançamento gerado não tem propriedade id', () => {
+    const resultado = gerarLancamentoRendimento(1000, 1150, '2026-08')
+
+    expect(resultado.tipo).toBe('lancamento')
+    if (resultado.tipo === 'lancamento') {
+      expect('id' in resultado.lancamento).toBe(false)
+    }
+  })
+
+  it('T8-GLR-06: precisão em centavos evita drift de ponto flutuante na diferença', () => {
+    const resultado = gerarLancamentoRendimento(0.2, 0.3, '2026-08')
+
+    expect(resultado.tipo).toBe('lancamento')
+    if (resultado.tipo === 'lancamento') {
+      expect(resultado.lancamento.valor).toBe(0.1)
+    }
+  })
+
+  it('T8-GLR-07: último dia do mês correto em fevereiro bissexto e não-bissexto', () => {
+    const bissexto = gerarLancamentoRendimento(1000, 1150, '2028-02')
+    const naoBissexto = gerarLancamentoRendimento(1000, 1150, '2026-02')
+
+    expect(bissexto.tipo === 'lancamento' && bissexto.lancamento.data).toBe('2028-02-29')
+    expect(naoBissexto.tipo === 'lancamento' && naoBissexto.lancamento.data).toBe('2026-02-28')
   })
 })
