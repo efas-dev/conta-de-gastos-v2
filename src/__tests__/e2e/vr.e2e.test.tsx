@@ -7,8 +7,10 @@
  * `'adicionar'`, T3; export real via `handleGerar`).
  *
  * Cenário 1 (fluxo completo, F7): upload real de fatura+extrato sintéticos → "Produzir revisão"
- * → aviso `'vr'` aparece na Central de Avisos na posição PENÚLTIMA (última do array atual de
- * `detectores`, F2/Decisão 5 do ADR) → clique no card abre `FormVR` → preenche N=2 despesas →
+ * → aviso `'vr'` aparece na Central de Avisos na posição PENÚLTIMA (o detector `'rendimentos'`,
+ * spec `rendimentos` Task 9, passou a ocupar a última posição do array de `detectores`,
+ * conforme o Follow-up já previsto na Decisão 5 do ADR `vr-despesas`) → clique no card abre
+ * `FormVR` → preenche N=2 despesas →
  * aplica → grid ganha N saídas `form_vr` + 1 entrada `RR` → desfazer remove exatamente as N+1 →
  * export final inclui somente os lançamentos que permaneceram na grid no momento do export (as
  * despesas de VR desfeitas NÃO aparecem no `.xlsx`, provando que o export reflete o estado atual,
@@ -194,19 +196,21 @@ describe('E2E — Task 9: fluxo completo VR (F7) + F6/D6 (recomposição não pr
 
     abrirCentralDeAvisos()
 
-    // ---- 1. Posição do aviso VR: penúltima — o último do array atual de --------
-    //         `detectores` (F2/Decisão 5 do ADR; `rendimentos` ocupará a última
-    //         posição numa spec futura). Duas verificações independentes:
-    //         (a) no registry, 'vr' é o detector mais recentemente registrado;
-    //         (b) na Central de Avisos, a proposta 'vr' aparece por último entre
-    //         as propostas efetivamente emitidas para este cenário.
-    expect(detectores[detectores.length - 1].origem).toBe('vr')
+    // ---- 1. Posição do aviso VR: penúltima — o penúltimo do array atual de -----
+    //         `detectores` (F2/Decisão 5 do ADR; `rendimentos`, spec `rendimentos`
+    //         Task 9, agora ocupa a última posição). Duas verificações
+    //         independentes: (a) no registry, 'vr' é o penúltimo detector
+    //         registrado, 'rendimentos' é o último; (b) na Central de Avisos, a
+    //         proposta 'vr' aparece antes de 'rendimentos' entre as propostas
+    //         efetivamente emitidas para este cenário.
+    expect(detectores[detectores.length - 2].origem).toBe('vr')
+    expect(detectores[detectores.length - 1].origem).toBe('rendimentos')
 
     await waitFor(() => {
       const propostas = useAppStore
         .getState()
         .avisosAcionaveis.avisos.filter((a) => a.tipo === 'proposta')
-      expect(propostas.map((a) => a.origem)).toEqual(['conciliacao', 'vr'])
+      expect(propostas.map((a) => a.origem)).toEqual(['conciliacao', 'vr', 'rendimentos'])
       expect(propostas.every((a) => a.estado === 'pendente')).toBe(true)
     })
 

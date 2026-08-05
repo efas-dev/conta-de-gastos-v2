@@ -1,12 +1,14 @@
 // ADR: see spec/fundacao-operacoes.adr.md
 // ADR: see spec/conciliacao-robusta.adr.md
 // ADR: see spec/vr-despesas.adr.md
+// ADR: see spec/rendimentos.adr.md
 
 import type { Aviso, Lancamento } from '../types'
 import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from './deteccoes'
 import { detectarInvestimentoAvisos } from './investimento'
 import { detectarTransferenciaInternaAvisos } from './transferencia'
 import { detectarVR } from './vr'
+import { detectarRendimentos } from './rendimentos'
 import { classificarFontePorPrefixo } from './mes'
 
 /**
@@ -153,12 +155,18 @@ function detectarConciliacaoRegistry(lancamentos: Lancamento[], contexto: Contex
  * `todosLancamentos`. `nomeUsuario` é repassado do `contexto` (já propagado pelo orquestrador,
  * T05), sem exigir nenhuma mudança na assinatura de `FuncaoDeteccao`.
  *
- * Task 4 (spec `vr-despesas`) acrescenta `vr` (`detectarVR`, `src/dominio/vr.ts`) como PENÚLTIMO
- * elemento — posição deliberada (ADR `vr-despesas`, Decisão 5): a próxima spec (rendimentos, item
- * 30 do `TODO.md`) registrará seu detector como o último do array, preservando `vr` na penúltima
- * posição. Escopo `'global'` pelos mesmos motivos de paridade/simplicidade dos detectores
- * anteriores, ainda que aqui não haja `alvo` id-based algum (o detector sempre emite 1 aviso fixo,
- * sem `mutacaoProposta` — ver JSDoc de `detectarVR`).
+ * Task 4 (spec `vr-despesas`) acrescentou `vr` (`detectarVR`, `src/dominio/vr.ts`) como PENÚLTIMO
+ * elemento — posição deliberada (ADR `vr-despesas`, Decisão 5). Escopo `'global'` pelos mesmos
+ * motivos de paridade/simplicidade dos detectores anteriores, ainda que aqui não haja `alvo`
+ * id-based algum (o detector sempre emite 1 aviso fixo, sem `mutacaoProposta` — ver JSDoc de
+ * `detectarVR`).
+ *
+ * Task 9 (spec `rendimentos`) acrescenta `rendimentos` (`detectarRendimentos`,
+ * `src/dominio/rendimentos.ts`) como o ÚLTIMO elemento do array — posição definitiva conforme a
+ * Decisão 2 do ADR `rendimentos` e o Follow-up já registrado na Decisão 5 do ADR `vr-despesas`,
+ * preservando `vr` na penúltima posição. Mesmo padrão de escopo `'global'` e mesmo formato
+ * "detector sempre emite 1 aviso fixo, sem `mutacaoProposta`" de `detectarVR` — ver JSDoc de
+ * `detectarRendimentos`.
  */
 export const detectores: Detector[] = [
   {
@@ -191,6 +199,11 @@ export const detectores: Detector[] = [
     origem: 'vr',
     escopo: 'global',
     detectar: (lancamentos, contexto) => detectarVR(lancamentos, contexto),
+  },
+  {
+    origem: 'rendimentos',
+    escopo: 'global',
+    detectar: (lancamentos, contexto) => detectarRendimentos(lancamentos, contexto),
   },
 ]
 

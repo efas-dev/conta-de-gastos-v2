@@ -101,11 +101,12 @@ describe('registry — lista de detectores', () => {
     expect(Array.isArray(detectores)).toBe(true)
   })
 
-  it('T06/T07/T07-bis/T4(vr-despesas) migram/acrescentam 6 detectores (valor-pendente, pagamento-recebido, conciliação, investimento, transferência interna, vr)', () => {
-    expect(detectores).toHaveLength(6)
+  it('T06/T07/T07-bis/T4(vr-despesas)/T9(rendimentos) migram/acrescentam 7 detectores (valor-pendente, pagamento-recebido, conciliação, investimento, transferência interna, vr, rendimentos)', () => {
+    expect(detectores).toHaveLength(7)
     expect(detectores.map((d) => d.origem)).toContain('investimento')
     expect(detectores.map((d) => d.origem)).toContain('transferencia-interna')
     expect(detectores.map((d) => d.origem)).toContain('vr')
+    expect(detectores.map((d) => d.origem)).toContain('rendimentos')
   })
 })
 
@@ -304,7 +305,7 @@ describe('orquestrarDeteccao — detectores mistos e agregação', () => {
 // ---------------------------------------------------------------------------
 
 describe('detectores — T06 (migração dos 3 detectores legados)', () => {
-  it('contém, nesta ordem, valor-pendente, pagamento-recebido, conciliacao, investimento, transferencia-interna, vr (T07/T07-bis, T4 vr-despesas)', () => {
+  it('contém, nesta ordem, valor-pendente, pagamento-recebido, conciliacao, investimento, transferencia-interna, vr, rendimentos (T07/T07-bis, T4 vr-despesas, T9 rendimentos)', () => {
     expect(detectores.map((d) => d.origem)).toEqual([
       'valor-pendente',
       'pagamento-recebido',
@@ -312,6 +313,7 @@ describe('detectores — T06 (migração dos 3 detectores legados)', () => {
       'investimento',
       'transferencia-interna',
       'vr',
+      'rendimentos',
     ])
   })
 
@@ -320,7 +322,15 @@ describe('detectores — T06 (migração dos 3 detectores legados)', () => {
     const indiceTransferencia = origens.indexOf('transferencia-interna')
     const indiceVR = origens.indexOf('vr')
     expect(indiceVR).toBe(indiceTransferencia + 1)
-    expect(indiceVR).toBe(origens.length - 1)
+    expect(indiceVR).toBe(origens.length - 2)
+  })
+
+  it('rendimentos fica posicionado imediatamente após vr — último do array (T9-RD-03)', () => {
+    const origens = detectores.map((d) => d.origem)
+    const indiceVR = origens.indexOf('vr')
+    const indiceRendimentos = origens.indexOf('rendimentos')
+    expect(indiceRendimentos).toBe(indiceVR + 1)
+    expect(indiceRendimentos).toBe(origens.length - 1)
   })
 
   it('valor-pendente e pagamento-recebido têm escopo "global" (não "por-fonte")', () => {
@@ -738,5 +748,43 @@ describe('detectores — vr (Task 4, spec vr-despesas)', () => {
       estado: 'pendente',
     })
     expect(avisosVR[0].mutacaoProposta).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 9 (spec rendimentos) — detector 'rendimentos' via orquestrarDeteccao
+//
+// Mesma disciplina de TL-54 (Task 4, spec vr-despesas, acima): a agregação de
+// orquestrarDeteccao é exercida aqui com um array LOCAL MÍNIMO contendo só a entrada
+// 'rendimentos' (extraída de `detectores`, o registry real, apenas para obter o `Detector` já
+// registrado por T9-RD-03) — nenhuma chamada abaixo passa `detectores` inteiro, os 7 detectores
+// reais, à orquestração. Isso mantém a boundary sob teste restrita a
+// `detectarRendimentos`+`orquestrarDeteccao`, sem depender do comportamento combinado dos outros 6
+// detectores — unit genuíno, não integração.
+// ---------------------------------------------------------------------------
+
+describe('detectores — rendimentos (Task 9, spec rendimentos)', () => {
+  const detectorRendimentos = detectores.find((d) => d.origem === 'rendimentos')!
+  const arrayLocalMinimo: Detector[] = [detectorRendimentos]
+
+  it('orquestrarDeteccao, com array local mínimo contendo só o detector rendimentos, inclui exatamente 1 aviso origem "rendimentos" para lancamentos: [] (T9-RD-04)', () => {
+    const avisos = orquestrarDeteccao([], arrayLocalMinimo)
+    const avisosRendimentos = avisos.filter((a) => a.origem === 'rendimentos')
+    expect(avisosRendimentos).toHaveLength(1)
+  })
+
+  it('orquestrarDeteccao, mesmo array local mínimo, com lancamentos não vazios, também inclui exatamente 1 aviso origem "rendimentos" (T9-RD-05)', () => {
+    const avisos = orquestrarDeteccao(
+      [lancamento({ id: 1 }), lancamento({ id: 2, fonte: 'Itaú' })],
+      arrayLocalMinimo,
+    )
+    const avisosRendimentos = avisos.filter((a) => a.origem === 'rendimentos')
+    expect(avisosRendimentos).toHaveLength(1)
+    expect(avisosRendimentos[0]).toMatchObject({
+      origem: 'rendimentos',
+      tipo: 'proposta',
+      estado: 'pendente',
+    })
+    expect(avisosRendimentos[0].mutacaoProposta).toBeUndefined()
   })
 })

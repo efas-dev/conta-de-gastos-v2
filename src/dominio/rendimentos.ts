@@ -1,6 +1,7 @@
 // ADR: see spec/rendimentos.adr.md
 
-import type { Lancamento } from '../types'
+import type { Aviso, Lancamento } from '../types'
+import type { ContextoDeteccao } from './registry'
 
 /** Converte um valor em reais para centavos inteiros, evitando float drift (mesmo padrão de `deteccoes.ts`/`vr.ts`). */
 function paraCentavos(valor: number): number {
@@ -153,4 +154,38 @@ export function gerarLancamentoRendimento(
       descricao: DESCRICAO_RR,
     },
   }
+}
+
+/**
+ * Detecta a oportunidade de lançar rendimentos do mês (ver ADR `rendimentos`, Decisão 2).
+ *
+ * Mesmo padrão do detector `'vr'` (`detectarVR`, `src/dominio/vr.ts`, ADR `vr-despesas`, Decisão 5):
+ * SEMPRE devolve exatamente 1 `Aviso` de convite, independente do conteúdo de `lancamentos`
+ * (inclusive `[]`) — a origem dos dados de rendimentos (saldos informados pelo usuário no
+ * `FormRendimentos`, Task 10) é inteiramente manual, sem nenhum indício nos lançamentos importados
+ * a detectar.
+ *
+ * O aviso não carrega `mutacaoProposta`: a mutação (verbo `'adicionar'`, reusando o padrão do VR)
+ * só é construída no submit do formulário `FormRendimentos` (Task 10), a partir do lançamento que
+ * `gerarLancamentoRendimento` produzir — a detecção pura não antecipa esse conteúdo.
+ *
+ * `lancamentos`/`contexto` seguem o contrato `FuncaoDeteccao` (`src/dominio/registry.ts`) para
+ * poder ser registrada diretamente no array `detectores`, mas nenhum dos dois é lido pelo corpo da
+ * função — prefixados com `_` para respeitar `noUnusedParameters` do projeto.
+ *
+ * @returns Sempre um array com exatamente 1 `Aviso` (`origem:'rendimentos'`, `tipo:'proposta'`,
+ *   `estado:'pendente'`, sem `mutacaoProposta`).
+ */
+export function detectarRendimentos(_lancamentos: Lancamento[], _contexto?: ContextoDeteccao): Aviso[] {
+  return [
+    {
+      id: 'rendimentos',
+      tipo: 'proposta',
+      origem: 'rendimentos',
+      mensagem: 'Lançar rendimentos do mês? Clique para informar os saldos.',
+      alvo: [],
+      permanece: [],
+      estado: 'pendente',
+    },
+  ]
 }

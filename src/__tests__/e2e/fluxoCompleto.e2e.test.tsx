@@ -204,12 +204,14 @@ describe('E2E — Task T17: jornada completa ponta a ponta', () => {
       const propostas = useAppStore
         .getState()
         .avisosAcionaveis.avisos.filter((a) => a.tipo === 'proposta')
-      // 4ª proposta: 'vr' (Task 4, spec vr-despesas) — detector sempre presente, independente
-      // do conteúdo dos lançamentos importados.
-      expect(propostas).toHaveLength(4)
+      // 4ª/5ª propostas: 'vr' (Task 4, spec vr-despesas) e 'rendimentos' (Task 9, spec
+      // rendimentos) — ambos detectores sempre presentes, independente do conteúdo dos
+      // lançamentos importados.
+      expect(propostas).toHaveLength(5)
       expect(propostas.map((a) => a.origem).sort()).toEqual([
         'conciliacao',
         'investimento',
+        'rendimentos',
         'valor-pendente',
         'vr',
       ])
@@ -290,12 +292,12 @@ describe('E2E — Task T17: jornada completa ponta a ponta', () => {
     ).toBe(false)
 
     // Fora dos pendentes: conciliação (voltou a pendente no passo 3) + 'vr' (sempre presente,
-    // Task 4 spec vr-despesas) seguem pendentes — valor-pendente foi dispensado, investimento é
-    // obsoleto.
-    expect(selecionarContagemPendentes(useAppStore.getState())).toBe(2)
+    // Task 4 spec vr-despesas) + 'rendimentos' (sempre presente, Task 9 spec rendimentos) seguem
+    // pendentes — valor-pendente foi dispensado, investimento é obsoleto.
+    expect(selecionarContagemPendentes(useAppStore.getState())).toBe(3)
 
     await waitFor(() => {
-      expect(screen.getByLabelText('2 propostas pendentes')).toBeInTheDocument()
+      expect(screen.getByLabelText('3 propostas pendentes')).toBeInTheDocument()
     })
 
     // O card do aviso obsoleto continua listado (não desaparece), mas sem
@@ -356,8 +358,9 @@ describe('E2E — Task T17: jornada completa ponta a ponta', () => {
     const propostasReproduzidas = useAppStore
       .getState()
       .avisosAcionaveis.avisos.filter((a) => a.tipo === 'proposta')
-    // +1 'vr' pelo mesmo motivo do passo 1 (detector sempre presente, Task 4 spec vr-despesas).
-    expect(propostasReproduzidas).toHaveLength(4)
+    // +1 'vr' e +1 'rendimentos' pelo mesmo motivo do passo 1 (detectores sempre presentes,
+    // Task 4 spec vr-despesas e Task 9 spec rendimentos).
+    expect(propostasReproduzidas).toHaveLength(5)
     // D8: nenhuma decisão da rodada anterior sobrevive — tudo volta a
     // 'pendente', incluindo o que era 'obsoleto' e o que era 'dispensado'.
     expect(propostasReproduzidas.every((a) => a.estado === 'pendente')).toBe(true)

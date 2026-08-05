@@ -5,6 +5,7 @@ import type { Lancamento } from '../../types'
 import {
   avaliarSanityCheck,
   calcularSaldoCalculado,
+  detectarRendimentos,
   gerarLancamentoRendimento,
   parsearSomaInline,
 } from '../rendimentos'
@@ -191,5 +192,31 @@ describe('gerarLancamentoRendimento', () => {
 
     expect(bissexto.tipo === 'lancamento' && bissexto.lancamento.data).toBe('2028-02-29')
     expect(naoBissexto.tipo === 'lancamento' && naoBissexto.lancamento.data).toBe('2026-02-28')
+  })
+})
+
+describe('detectarRendimentos', () => {
+  it('T9-RD-01: lancamentos vazio ([]) retorna exatamente 1 Aviso origem rendimentos, proposta, pendente, sem mutacaoProposta', () => {
+    const avisos = detectarRendimentos([])
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0]).toMatchObject({
+      origem: 'rendimentos',
+      tipo: 'proposta',
+      estado: 'pendente',
+    })
+    expect(avisos[0].mutacaoProposta).toBeUndefined()
+  })
+
+  it('T9-RD-02: lancamentos não vazio também retorna exatamente 1 Aviso, com os mesmos campos', () => {
+    const avisos = detectarRendimentos([lancamento(100), lancamento(-50)])
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0]).toMatchObject({
+      origem: 'rendimentos',
+      tipo: 'proposta',
+      estado: 'pendente',
+    })
+    expect(avisos[0].mutacaoProposta).toBeUndefined()
   })
 })
