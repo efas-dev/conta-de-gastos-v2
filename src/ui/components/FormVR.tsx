@@ -127,32 +127,38 @@ export function FormVR({ mesRef }: FormVRProps) {
         <p style={{ fontSize: 13, color: 'var(--texto-2)' }}>Nenhuma despesa adicionada.</p>
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {/* Duas linhas por despesa: o painel lateral tem ~330px e não comporta
+              Valor+Natureza+Descrição+Remover lado a lado (overflow horizontal). */}
           {despesas.map((despesa, indice) => (
-            <li key={indice} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input
-                aria-label={`Valor da despesa ${indice + 1}`}
-                placeholder="Valor"
-                value={despesa.valor}
-                onChange={(e) => atualizarCampo(indice, 'valor', e.target.value)}
-                style={{ width: 90 }}
-              />
-              <input
-                aria-label={`Natureza da despesa ${indice + 1}`}
-                placeholder="Natureza"
-                value={despesa.natureza}
-                onChange={(e) => atualizarCampo(indice, 'natureza', e.target.value)}
-                style={{ width: 90 }}
-              />
-              <input
-                aria-label={`Descrição da despesa ${indice + 1}`}
-                placeholder="Descrição"
-                value={despesa.descricao}
-                onChange={(e) => atualizarCampo(indice, 'descricao', e.target.value)}
-                style={{ flex: 1 }}
-              />
-              <button type="button" className="btn sec mini" onClick={() => removerLinha(indice)}>
-                Remover
-              </button>
+            <li key={indice} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  aria-label={`Valor da despesa ${indice + 1}`}
+                  placeholder="Valor"
+                  value={despesa.valor}
+                  onChange={(e) => atualizarCampo(indice, 'valor', e.target.value)}
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+                <input
+                  aria-label={`Natureza da despesa ${indice + 1}`}
+                  placeholder="Natureza"
+                  value={despesa.natureza}
+                  onChange={(e) => atualizarCampo(indice, 'natureza', e.target.value)}
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  aria-label={`Descrição da despesa ${indice + 1}`}
+                  placeholder="Descrição"
+                  value={despesa.descricao}
+                  onChange={(e) => atualizarCampo(indice, 'descricao', e.target.value)}
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+                <button type="button" className="btn sec mini" onClick={() => removerLinha(indice)}>
+                  Remover
+                </button>
+              </div>
             </li>
           ))}
         </ul>
