@@ -501,7 +501,7 @@ export function TelaImportacao({
         // aplicado neste wrapper, não no componente em si — T5 removeu
         // `position:fixed` do componente).
         <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 40 }}>
-          <PainelLateral aba={painel} setAba={setPainel} naturezas={naturezasDescritas} />
+          <PainelLateral aba={painel} setAba={setPainel} naturezas={naturezasDescritas} fechavel />
         </div>
       )}
     </div>

@@ -226,12 +226,22 @@ describe('TelaRevisao', () => {
     expect(screen.getByTestId('export-modal')).toHaveAttribute('data-fase', 'feito')
   })
 
-  it('PainelLateral só é renderizado quando painel !== null', () => {
+  it('PainelLateral é SEMPRE renderizado — painel null abre na aba "avisos" (hotfix 2026-08-02)', () => {
     const { rerender } = render(<TelaRevisao {...props({ painel: null })} />)
-    expect(screen.queryByTestId('painel-lateral')).not.toBeInTheDocument()
-
-    rerender(<TelaRevisao {...props({ painel: 'avisos' })} />)
     expect(screen.getByTestId('painel-lateral')).toBeInTheDocument()
+    expect(screen.getByTestId('painel-lateral').getAttribute('data-aba')).toBe('avisos')
+
+    rerender(<TelaRevisao {...props({ painel: 'naturezas' })} />)
+    expect(screen.getByTestId('painel-lateral').getAttribute('data-aba')).toBe('naturezas')
+  })
+
+  it('toolbar não tem mais botões de toggle "Avisos"/"Naturezas" — o painel tem abas próprias', () => {
+    render(<TelaRevisao {...props({ painel: null })} />)
+
+    // O PainelLateral está mockado sem botões: qualquer botão Avisos/Naturezas
+    // encontrado seria o toggle antigo da toolbar, que não deve mais existir.
+    expect(screen.queryByRole('button', { name: /^avisos/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^naturezas/i })).toBeNull()
   })
 
   it('SplitModal abre quando onSplitDetectado é disparado pela grid', () => {

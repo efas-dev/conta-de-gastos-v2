@@ -124,8 +124,10 @@ describe('T5/T11 — integração PainelNaturezas + App.tsx (botão "Naturezas")
     expect(botaoNaturezas).not.toBeNull()
   })
 
-  // [TL-T5-3][unit] Botão "Naturezas" ausente quando naturezasRicas é vazio
-  it('NÃO renderiza o botão "Naturezas" quando naturezasRicas está vazio', () => {
+  // [TL-T5-3][unit] Hotfix 2026-08-02: o painel lateral fica SEMPRE aberto na
+  // revisão, então a aba "Naturezas" existe mesmo com naturezasRicas vazio
+  // (antes o botão de toggle da toolbar sumia; o toggle foi removido).
+  it('aba "Naturezas" do painel existe mesmo quando naturezasRicas está vazio (painel sempre aberto)', () => {
     // Store com lançamentos mas sem naturezas ricas (lista filtrada vazia)
     act(() => {
       useAppStore.setState({
@@ -146,7 +148,8 @@ describe('T5/T11 — integração PainelNaturezas + App.tsx (botão "Naturezas")
 
     render(React.createElement(App))
 
-    const botaoNaturezas = screen.queryByRole('button', { name: /naturezas/i })
-    expect(botaoNaturezas).toBeNull()
+    const abaNaturezas = screen.queryByRole('button', { name: /naturezas/i })
+    expect(abaNaturezas).not.toBeNull()
+    expect(abaNaturezas).toHaveClass('aba')
   })
 })

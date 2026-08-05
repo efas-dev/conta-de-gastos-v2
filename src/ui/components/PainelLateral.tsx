@@ -15,6 +15,12 @@ interface PainelLateralProps {
   setAba: (aba: AbaPainelLateral) => void
   /** Lista pré-filtrada de naturezas com descrição — mesmo contrato de `PainelNaturezas`. */
   naturezas: NaturezaRica[]
+  /**
+   * Exibe o botão "×" de fechar. Só faz sentido onde o painel é um overlay
+   * dispensável (TelaImportacao); na revisão o painel é fixo e fica sempre
+   * aberto (hotfix 2026-08-02), sem botão de fechar.
+   */
+  fechavel?: boolean
 }
 
 /**
@@ -34,7 +40,7 @@ interface PainelLateralProps {
  * `inspecao-proposta-conciliacao`) migrou do botão de toggle antigo de
  * `CentralDeAvisos` para a própria aba "Avisos".
  */
-export function PainelLateral({ aba, setAba, naturezas }: PainelLateralProps) {
+export function PainelLateral({ aba, setAba, naturezas, fechavel = false }: PainelLateralProps) {
   const contagemPendentes = useAppStore(selecionarContagemPendentes)
 
   return (
@@ -64,15 +70,17 @@ export function PainelLateral({ aba, setAba, naturezas }: PainelLateralProps) {
         >
           Naturezas
         </button>
-        <button
-          type="button"
-          className="btn sec mini icone"
-          style={{ marginLeft: 'auto' }}
-          aria-label="Fechar painel"
-          onClick={() => setAba(null)}
-        >
-          ×
-        </button>
+        {fechavel && (
+          <button
+            type="button"
+            className="btn sec mini icone"
+            style={{ marginLeft: 'auto' }}
+            aria-label="Fechar painel"
+            onClick={() => setAba(null)}
+          >
+            ×
+          </button>
+        )}
       </div>
       <div className="painel-corpo">
         {aba === 'avisos' && <CentralDeAvisos />}

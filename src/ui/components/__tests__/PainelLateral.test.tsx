@@ -66,12 +66,18 @@ describe('PainelLateral — estrutura (TL-13)', () => {
     expect(container.querySelector('.painel-corpo')).not.toBeNull()
   })
 
-  it('renderiza as abas "Avisos" e "Naturezas" e o botão de fechar', () => {
+  it('renderiza as abas "Avisos" e "Naturezas" — sem botão de fechar por padrão (painel fixo)', () => {
     const setAba = vi.fn()
     render(<PainelLateral aba="avisos" setAba={setAba} naturezas={naturezasFicticias} />)
 
     expect(screen.getByRole('button', { name: /avisos/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /naturezas/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /fechar/i })).toBeNull()
+  })
+
+  it('com fechavel=true (overlay da importação) exibe o botão de fechar', () => {
+    render(<PainelLateral aba="avisos" setAba={vi.fn()} naturezas={naturezasFicticias} fechavel />)
+
     expect(screen.getByRole('button', { name: /fechar/i })).toBeInTheDocument()
   })
 })
@@ -108,9 +114,9 @@ describe('PainelLateral — alternância de abas (TL-14 a TL-18, TL-21)', () => 
     expect(setAba).toHaveBeenCalledWith('avisos')
   })
 
-  it('clicar no botão de fechar chama setAba(null)', () => {
+  it('clicar no botão de fechar (fechavel=true) chama setAba(null)', () => {
     const setAba = vi.fn()
-    render(<PainelLateral aba="avisos" setAba={setAba} naturezas={naturezasFicticias} />)
+    render(<PainelLateral aba="avisos" setAba={setAba} naturezas={naturezasFicticias} fechavel />)
 
     screen.getByRole('button', { name: /fechar/i }).click()
     expect(setAba).toHaveBeenCalledWith(null)

@@ -96,10 +96,6 @@ export function TelaRevisao({
 
   const nomeArquivoExport = computarNomeArquivo(lancamentos, iniciais)
 
-  function togglePainel(aba: Exclude<AbaPainelLateral, null>) {
-    setPainel((atual) => (atual === aba ? null : aba))
-  }
-
   // ---------------------------------------------------------------------------
   // Atalhos de teclado (estilo Google Sheets) — desfazer/refazer
   // ---------------------------------------------------------------------------
@@ -259,28 +255,6 @@ export function TelaRevisao({
             onChange={onMudarMes}
           />
         </span>
-        {avisosAcionaveis.avisos.length > 0 && (
-          <button
-            type="button"
-            className={'btn sec' + (painel === 'avisos' ? ' ativo' : '')}
-            style={{ position: 'relative' }}
-            onClick={() => togglePainel('avisos')}
-          >
-            Avisos
-            {contagemAvisosPendentes > 0 && (
-              <span className="badge">{contagemAvisosPendentes}</span>
-            )}
-          </button>
-        )}
-        {naturezasDescritas.length > 0 && (
-          <button
-            type="button"
-            className={'btn sec' + (painel === 'naturezas' ? ' ativo' : '')}
-            onClick={() => togglePainel('naturezas')}
-          >
-            Naturezas
-          </button>
-        )}
         <button
           type="button"
           className="btn pri"
@@ -357,7 +331,10 @@ export function TelaRevisao({
           </div>
         </div>
 
-        {painel && <PainelLateral aba={painel} setAba={setPainel} naturezas={naturezasDescritas} />}
+        {/* Painel sempre aberto na revisão (hotfix 2026-08-02): `null` herdado
+            da importação vira a aba padrão "avisos"; as abas do próprio painel
+            fazem a troca — sem botão de toggle na toolbar, sem "×". */}
+        <PainelLateral aba={painel ?? 'avisos'} setAba={setPainel} naturezas={naturezasDescritas} />
       </div>
 
       {/* Popup de sugestão de replicar classificação (item 36) — flutua no
