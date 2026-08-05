@@ -107,9 +107,6 @@ vi.mock('../ReviewGrid', () => ({
       onClick: () => onSplitDetectado?.(0),
     }),
 }))
-vi.mock('../FiltroBar', () => ({
-  FiltroBar: () => React.createElement('div', { 'data-testid': 'filtro-bar' }),
-}))
 vi.mock('../SplitModal', () => ({
   SplitModal: ({ indice }: { indice: number }) =>
     React.createElement('div', { 'data-testid': 'split-modal', 'data-indice': indice }),
@@ -186,13 +183,15 @@ beforeEach(() => {
 })
 
 describe('TelaRevisao', () => {
-  it('renderiza a composição principal (toolbar, filtro, banner de inspeção e grid)', () => {
+  it('renderiza a composição principal (toolbar, banner de inspeção e grid) — sem linha de filterchips', () => {
     render(<TelaRevisao {...props()} />)
 
     expect(screen.getByTestId('toolbar-revisao')).toBeInTheDocument()
-    expect(screen.getByTestId('filtro-bar')).toBeInTheDocument()
     expect(screen.getByTestId('banner-inspecao')).toBeInTheDocument()
     expect(screen.getByTestId('review-grid')).toBeInTheDocument()
+    // A linha de filterchips foi removida (hotfix 2026-08-02): o filtro por
+    // natureza vive nos cartões da colinha do PainelLateral.
+    expect(document.querySelector('.filtros')).toBeNull()
   })
 
   it('botão "Exportar .xlsx" fica desabilitado quando não há lançamentos', () => {

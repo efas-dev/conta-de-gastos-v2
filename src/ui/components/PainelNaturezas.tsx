@@ -3,7 +3,7 @@
 
 import { useMemo } from 'react'
 import { useAppStore } from '../store/appStore'
-import { proximaSelecaoFiltro } from './FiltroBar'
+import { proximaSelecaoFiltro } from '../selecaoFiltro'
 import type { Lancamento, NaturezaRica } from '../../types'
 
 // ---------------------------------------------------------------------------

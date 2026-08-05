@@ -9,7 +9,6 @@ import { handleGerar as handleGerarPipeline } from '../handlersPipeline'
 import { validarLinha } from '../../dominio/validacao'
 import { detectarDesalinhamentoMes } from '../../dominio/mes'
 import { ReviewGrid } from './ReviewGrid'
-import { FiltroBar } from './FiltroBar'
 import { SplitModal } from './SplitModal'
 import { ToolbarRevisao } from './ToolbarRevisao'
 import { PainelLateral, type AbaPainelLateral } from './PainelLateral'
@@ -268,12 +267,9 @@ export function TelaRevisao({
         </button>
       </ToolbarRevisao>
 
-      {/* Filtros (esquerda) + legenda de cores e lembrete de zero-retenção
-          (direita) numa faixa só — fiel ao protótipo, que não tem uma
-          linha-rótulo separada. A contagem "N lançamentos" saiu por ser
-          redundante (a toolbar mostra "X de Y classificados" e o FiltroBar
-          "X de Y visíveis"); o aviso de efemeridade fica discreto ao lado
-          da legenda e o chip "não exportado" da toolbar reforça o estado. */}
+      {/* Legenda de cores e lembrete de zero-retenção. A linha de filterchips
+          foi aposentada (hotfix 2026-08-02): o filtro por natureza vive nos
+          cartões da colinha do PainelLateral. */}
       <div
         style={{
           display: 'flex',
@@ -283,7 +279,6 @@ export function TelaRevisao({
           flexWrap: 'wrap',
         }}
       >
-        <FiltroBar />
         <span
           style={{
             marginLeft: 'auto',
