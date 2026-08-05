@@ -4,7 +4,7 @@ import type { Aviso, Lancamento } from '../types'
 import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from './deteccoes'
 import { detectarInvestimentoAvisos } from './investimento'
 import { detectarTransferenciaInternaAvisos } from './transferencia'
-import { classificarFonte } from './mes'
+import { classificarFontePorPrefixo } from './mes'
 
 /**
  * Escopo de execução declarado por um detector (ver ADR `fundacao-operacoes`, Decisão 3):
@@ -29,11 +29,12 @@ export interface ContextoDeteccao {
   /** Nome do usuário, quando informado — habilita heurísticas nominais (ex.: Pix nominal). */
   nomeUsuario?: string
   /**
-   * Mês de referência (formato `YYYY-MM`), quando informado — necessário para
-   * `classificarFonte` (`src/dominio/mes.ts`) distinguir fatura de extrato por fonte
-   * (ver ADR `fundacao-operacoes`, Task T06). Campo aditivo introduzido em T06 para o
-   * detector de conciliação; sem ele, conciliação não tem como classificar as fontes e
-   * não produz aviso (ver `detectarConciliacaoRegistry`).
+   * Mês de referência (formato `YYYY-MM`), quando informado — usado por
+   * `detectarConciliacaoRegistry` apenas como guard de entrada (sem ele, o detector não produz
+   * aviso). A classificação fatura/extrato em si é autoritativa por prefixo de `fonte`
+   * (`classificarFontePorPrefixo`, `src/dominio/mes.ts`, T1, ADR `conciliacao-robusta` Decisão 1)
+   * e não depende deste campo — diferente do papel que `mesRef` tinha antes da Task 6 (ADR
+   * `conciliacao-robusta`), quando alimentava a heurística por data `classificarFonte`.
    */
   mesRef?: string
 }
@@ -70,25 +71,32 @@ export interface Detector {
  * `lancamentosFatura`/`lancamentosExtrato` já filtrados e devolve `alvo`/`permanece` como índices
  * relativos a esses arrays filtrados. Este wrapper reproduz, célula a célula, a orquestração que
  * hoje vive em `App.tsx` (linhas 528-591): classifica cada fonte presente em `lancamentos` como
- * fatura/extrato via `classificarFonte` (exige `contexto.mesRef` — sem ele, não há como
- * classificar e o detector não produz nada), agrupa todas as fontes de extrato num único array
- * (`lancamentosExtratoTotal`), e itera uma vez por fonte de FATURA chamando `detectarConciliacao`
- * e remapeando os índices locais de volta para índices globais em `lancamentos`.
+ * fatura/extrato via `classificarFontePorPrefixo` (T1, ADR `conciliacao-robusta` Decisão 1 —
+ * classificação AUTORITATIVA pelo prefixo de `fonte`, não mais pela heurística por data
+ * `classificarFonte`; `contexto.mesRef` segue exigido apenas como guard de entrada, ver abaixo),
+ * agrupa todas as fontes de extrato num único array (`lancamentosExtratoTotal`), e itera uma vez
+ * por fonte de FATURA chamando `detectarConciliacao` e remapeando os índices locais de volta para
+ * índices globais em `lancamentos`.
  *
  * Escopo `'global'` (ver Decisão de escopo no iteração-log de T06): conciliação precisa enxergar
  * todas as fontes simultaneamente para classificar e casar através delas — um fatiamento cego
  * `'por-fonte'` do orquestrador (T05) isolaria cada fonte sem o contexto cruzado necessário.
  */
 function detectarConciliacaoRegistry(lancamentos: Lancamento[], contexto: ContextoDeteccao): Aviso[] {
+  // `mesRef` já não é usado para classificar fatura/extrato (T1 é autoritativo por prefixo e
+  // independe de data/mesRef) — o guard abaixo é preservado como está, como sinal de produto
+  // ("usuário ainda não escolheu o mês de referência"), não como requisito técnico da
+  // classificação. Mudar esse guard está fora do escopo declarado pela Task 6 (troca só QUEM
+  // decide fatura/extrato).
   const mesRef = contexto.mesRef
   if (!mesRef) return []
 
   const fontesProduzidas = Array.from(new Set(lancamentos.map((l) => l.fonte)))
   const fontesFatura = fontesProduzidas.filter(
-    (fonte) => classificarFonte(fonte, lancamentos, mesRef) === 'fatura',
+    (fonte) => classificarFontePorPrefixo(fonte) === 'fatura',
   )
   const fontesExtrato = fontesProduzidas.filter(
-    (fonte) => classificarFonte(fonte, lancamentos, mesRef) === 'extrato',
+    (fonte) => classificarFontePorPrefixo(fonte) === 'extrato',
   )
 
   if (fontesFatura.length === 0 || fontesExtrato.length === 0) return []
@@ -185,9 +193,10 @@ export const detectores: Detector[] = [
  * Os `Aviso[]` de todas as chamadas são concatenados, preservando a ordem de execução.
  *
  * `mesRef` (T06, ver ADR `fundacao-operacoes`): repassado ao contexto sem alteração — usado hoje
- * apenas pelo detector de conciliação (`detectarConciliacaoRegistry`) para classificar fontes via
- * `classificarFonte`. Parâmetro opcional e aditivo; chamadas existentes (T05) continuam válidas
- * sem informá-lo.
+ * apenas pelo detector de conciliação (`detectarConciliacaoRegistry`) como guard de entrada (a
+ * classificação fatura/extrato em si é autoritativa por prefixo de `fonte`, ver Task 6 do ADR
+ * `conciliacao-robusta`). Parâmetro opcional e aditivo; chamadas existentes (T05) continuam
+ * válidas sem informá-lo.
  */
 export function orquestrarDeteccao(
   lancamentos: Lancamento[],

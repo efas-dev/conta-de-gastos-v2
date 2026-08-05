@@ -368,10 +368,10 @@ describe('detectores — T06 (migração dos 3 detectores legados)', () => {
 
   it('conciliacao: com mesRef fornecido, alvo/permanece remapeados para índices globais idênticos ao call-site legado', () => {
     // Mesmo padrão de App.tsx: extrato antes, fatura depois no array total.
-    const extratoOutro = lancamento({ id: 1, fonte: 'Itaú', data: '2026-07-05', transcricao: 'Débito qualquer', valor: -999 })
-    const extratoPagamento = lancamento({ id: 2, fonte: 'Itaú', data: '2026-07-10', transcricao: 'Pagamento de fatura', valor: -150.32 })
-    const faturaA = lancamento({ id: 3, fonte: 'Nubank', data: '2026-06-05', transcricao: 'Item A', valor: -100 })
-    const faturaB = lancamento({ id: 4, fonte: 'Nubank', data: '2026-06-10', transcricao: 'Item B', valor: -50.3 })
+    const extratoOutro = lancamento({ id: 1, fonte: 'extrato_itau', data: '2026-07-05', transcricao: 'Débito qualquer', valor: -999 })
+    const extratoPagamento = lancamento({ id: 2, fonte: 'extrato_itau', data: '2026-07-10', transcricao: 'Pagamento de fatura', valor: -150.32 })
+    const faturaA = lancamento({ id: 3, fonte: 'fatura_nubank_cc', data: '2026-06-05', transcricao: 'Item A', valor: -100 })
+    const faturaB = lancamento({ id: 4, fonte: 'fatura_nubank_cc', data: '2026-06-10', transcricao: 'Item B', valor: -50.3 })
     const todosLancamentos = [extratoOutro, extratoPagamento, faturaA, faturaB]
     const mesRef = '2026-07' // Nubank (datas de junho) < mesRef → fatura; Itaú (datas de julho) === mesRef → extrato
 
@@ -392,20 +392,20 @@ describe('detectores — T06 (migração dos 3 detectores legados)', () => {
   })
 
   it('conciliacao: só há fonte fatura (sem extrato) — não produz aviso, mesmo guard de App.tsx', () => {
-    const faturaA = lancamento({ id: 1, fonte: 'Nubank', data: '2026-06-05', transcricao: 'Item A', valor: -100 })
+    const faturaA = lancamento({ id: 1, fonte: 'fatura_nubank_cc', data: '2026-06-05', transcricao: 'Item A', valor: -100 })
     const avisos = orquestrarDeteccao([faturaA], detectores, undefined, '2026-07')
     expect(avisos.some((a) => a.origem === 'conciliacao')).toBe(false)
   })
 
   it('PARIDADE: fixture combinado (valor-pendente + pagamento-recebido + conciliação) produz avisos idênticos ao call-site legado reproduzido passo a passo', () => {
-    const extratoDebito = lancamento({ id: 1, fonte: 'Itaú', data: '2026-07-03', transcricao: 'Débito qualquer', valor: -999 })
-    const extratoPagamento = lancamento({ id: 2, fonte: 'Itaú', data: '2026-07-10', transcricao: 'Pagamento de fatura', valor: -150.32 })
-    const faturaComum = lancamento({ id: 3, fonte: 'Nubank', data: '2026-06-05', transcricao: 'Compra qualquer', valor: -20 })
-    const faturaA = lancamento({ id: 4, fonte: 'Nubank', data: '2026-06-06', transcricao: 'Item A', valor: -100 })
-    const faturaB = lancamento({ id: 5, fonte: 'Nubank', data: '2026-06-07', transcricao: 'Item B', valor: -50.3 })
+    const extratoDebito = lancamento({ id: 1, fonte: 'extrato_itau', data: '2026-07-03', transcricao: 'Débito qualquer', valor: -999 })
+    const extratoPagamento = lancamento({ id: 2, fonte: 'extrato_itau', data: '2026-07-10', transcricao: 'Pagamento de fatura', valor: -150.32 })
+    const faturaComum = lancamento({ id: 3, fonte: 'fatura_nubank_cc', data: '2026-06-05', transcricao: 'Compra qualquer', valor: -20 })
+    const faturaA = lancamento({ id: 4, fonte: 'fatura_nubank_cc', data: '2026-06-06', transcricao: 'Item A', valor: -100 })
+    const faturaB = lancamento({ id: 5, fonte: 'fatura_nubank_cc', data: '2026-06-07', transcricao: 'Item B', valor: -50.3 })
     const faturaValorPendente = lancamento({
       id: 6,
-      fonte: 'Nubank',
+      fonte: 'fatura_nubank_cc',
       data: '2026-06-08',
       transcricao: 'Valor pendente do mês anterior',
       valor: -40,
@@ -413,7 +413,7 @@ describe('detectores — T06 (migração dos 3 detectores legados)', () => {
     })
     const faturaPagamentoRecebido = lancamento({
       id: 7,
-      fonte: 'Nubank',
+      fonte: 'fatura_nubank_cc',
       data: '2026-06-09',
       transcricao: 'Pagamento recebido',
       valor: 300,
@@ -475,6 +475,62 @@ describe('detectores — T06 (migração dos 3 detectores legados)', () => {
     )
 
     expect(avisosNovo).toEqual(avisosLegado)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 6 (ADR conciliacao-robusta, Decisão 1) — detectarConciliacaoRegistry usa
+// classificarFontePorPrefixo (T1) em vez de classificarFonte (heurística por data) para
+// decidir fontesFatura/fontesExtrato. Bug motivador: mês-ref desalinhado fazia a heurística
+// classificar uma fonte fatura_* como 'extrato', silenciando a conciliação por completo.
+// ---------------------------------------------------------------------------
+
+describe('detectores — Task 6 (classificação de conciliação por prefixo, não mais por data)', () => {
+  it('TL-D: mês-ref desalinhado com o mês da própria fatura (não anterior) — fatura_* ainda é reconhecida como fatura via prefixo e concilia normalmente (total bate exatamente)', () => {
+    // Todas as datas da fonte fatura_nubank_cc caem no PRÓPRIO mesRef (não antes dele) —
+    // sob classificarFonte (heurística por data) isso classificaria a fonte como 'extrato'
+    // (nenhuma data < mesRef), e a conciliação silenciaria por falta de fontesFatura.
+    const faturaA = lancamento({ id: 1, fonte: 'fatura_nubank_cc', data: '2026-06-05', transcricao: 'Item A', valor: -100 })
+    const faturaB = lancamento({ id: 2, fonte: 'fatura_nubank_cc', data: '2026-06-10', transcricao: 'Item B', valor: -50.3 })
+    const extratoPagamento = lancamento({ id: 3, fonte: 'extrato_itau', data: '2026-06-15', transcricao: 'Pagamento de fatura', valor: -150.3 })
+    const mesRef = '2026-06' // igual ao mês da fatura, não anterior — cenário desalinhado (F1)
+    const todosLancamentos = [faturaA, faturaB, extratoPagamento]
+
+    // Confirma a premissa do bug: a heurística antiga classificaria fatura_nubank_cc como 'extrato' neste cenário.
+    expect(classificarFonte('fatura_nubank_cc', todosLancamentos, mesRef)).toBe('extrato')
+
+    const avisos = orquestrarDeteccao(todosLancamentos, detectores, undefined, mesRef)
+    const avisoConciliacao = avisos.find((a) => a.origem === 'conciliacao' && a.tipo === 'proposta')
+
+    expect(avisoConciliacao).toBeDefined()
+    expect(avisoConciliacao?.alvo).toEqual(['2']) // índice global de extratoPagamento
+    expect(avisoConciliacao?.permanece).toEqual(['0', '1']) // índices globais de faturaA/faturaB
+  })
+
+  it('TL-E: mês-ref desalinhado sem casamento exato de total — informativo com candidatos próximos, não silêncio', () => {
+    const faturaA = lancamento({ id: 1, fonte: 'fatura_nubank_cc', data: '2026-06-05', transcricao: 'Item A', valor: -100 })
+    const faturaB = lancamento({ id: 2, fonte: 'fatura_nubank_cc', data: '2026-06-10', transcricao: 'Item B', valor: -50 })
+    // Total da fatura: R$ 150,00. Candidato do extrato a R$ 155,00 — fora da tolerância exata
+    // (R$ 0,05), dentro da faixa de proximidade de 10% (R$ 15,00 de margem).
+    const extratoProximo = lancamento({ id: 3, fonte: 'extrato_itau', data: '2026-06-15', transcricao: 'Pagamento aproximado', valor: -155 })
+    const mesRef = '2026-06' // desalinhado, mesmo cenário de TL-D
+    const todosLancamentos = [faturaA, faturaB, extratoProximo]
+
+    const avisos = orquestrarDeteccao(todosLancamentos, detectores, undefined, mesRef)
+    const avisoConciliacao = avisos.find((a) => a.origem === 'conciliacao')
+
+    expect(avisoConciliacao).toBeDefined()
+    expect(avisoConciliacao?.tipo).toBe('informativo')
+    expect(avisoConciliacao?.mutacaoProposta).toBeUndefined()
+    expect(avisoConciliacao?.candidatos).toHaveLength(1)
+    expect(avisoConciliacao?.candidatos?.[0]?.alvo).toBe('3') // id do lançamento candidato
+  })
+
+  it('TL-F: fonte com prefixo desconhecido propaga o Error de classificarFontePorPrefixo sem mascarar', () => {
+    const lancamentoInvalido = lancamento({ id: 1, fonte: 'xyz_desconhecido', data: '2026-06-05', valor: -100 })
+    expect(() => orquestrarDeteccao([lancamentoInvalido], detectores, undefined, '2026-06')).toThrow(
+      /prefixo de fonte desconhecido/,
+    )
   })
 })
 
