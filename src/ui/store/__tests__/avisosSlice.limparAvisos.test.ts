@@ -106,9 +106,19 @@ describe('avisosSlice — limparAvisos (T09, ADR Decisão 8)', () => {
     const { get, acoes } = criarStoreDeTeste()
 
     expect(() => acoes.limparAvisos()).not.toThrow()
-    expect(get().avisosAcionaveis).toEqual({ avisos: [], removidos: {}, avisoEmInspecao: null })
+    expect(get().avisosAcionaveis).toEqual({
+      avisos: [],
+      removidos: {},
+      adicionados: {},
+      avisoEmInspecao: null,
+    })
 
     acoes.limparAvisos()
-    expect(get().avisosAcionaveis).toEqual({ avisos: [], removidos: {}, avisoEmInspecao: null })
+    expect(get().avisosAcionaveis).toEqual({
+      avisos: [],
+      removidos: {},
+      adicionados: {},
+      avisoEmInspecao: null,
+    })
   })
 })

@@ -1,12 +1,13 @@
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
 
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   criarAvisosSlice,
   estadoInicialAvisos,
   selecionarContagemPendentes,
   type StoreComAvisos,
 } from '../avisosSlice'
+import { reiniciarContadorIds } from '../../../parsers/idSerial'
 import type { Aviso, Lancamento } from '../../../types'
 
 // ---------------------------------------------------------------------------
@@ -60,7 +61,7 @@ function informativo(parcial: Partial<Aviso> = {}): Aviso {
 function criarStoreDeTeste(lancamentos: Lancamento[] = []) {
   let estado: StoreComAvisos = {
     lancamentos,
-    avisosAcionaveis: { avisos: [], removidos: {} },
+    avisosAcionaveis: { ...estadoInicialAvisos },
   }
 
   const get = () => estado
@@ -78,6 +79,10 @@ function criarStoreDeTeste(lancamentos: Lancamento[] = []) {
 }
 
 describe('avisosSlice', () => {
+  beforeEach(() => {
+    reiniciarContadorIds()
+  })
+
   describe('adicionarAvisos', () => {
     it('adiciona avisos ao estado do slice em modo append', () => {
       const { get, acoes } = criarStoreDeTeste()
@@ -88,7 +93,12 @@ describe('avisosSlice', () => {
     })
 
     it('parte de estadoInicialAvisos vazio', () => {
-      expect(estadoInicialAvisos).toEqual({ avisos: [], removidos: {}, avisoEmInspecao: null })
+      expect(estadoInicialAvisos).toEqual({
+        avisos: [],
+        removidos: {},
+        adicionados: {},
+        avisoEmInspecao: null,
+      })
     })
   })
 
@@ -267,6 +277,104 @@ describe('avisosSlice', () => {
       acoes.aplicar('a1')
 
       expect(get().lancamentos).toEqual([l0, l2])
+    })
+  })
+
+  describe("mutação 'adicionar' (Task 3, ADR vr-despesas Decisão 1)", () => {
+    function despesaSemId(parcial: Partial<Omit<Lancamento, 'id'>> = {}): Omit<Lancamento, 'id'> {
+      return {
+        fonte: 'form_vr',
+        data: '2025-03-31',
+        transcricao: 'VR',
+        valor: -50,
+        iniciais: 'ES',
+        natureza: 'Alimentação',
+        descricao: 'Despesa VR',
+        ...parcial,
+      }
+    }
+
+    it('TL-41/TL-42: aplicar insere N lançamentos com ids seriais novos ao final e marca o aviso aplicado', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const { get, acoes } = criarStoreDeTeste([l0])
+      const novos = [despesaSemId({ descricao: 'Padaria' }), despesaSemId({ descricao: 'Farmácia' })]
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', origem: 'vr', alvo: [], mutacaoProposta: { verbo: 'adicionar', lancamentos: novos } }),
+      ])
+
+      acoes.aplicar('a1')
+
+      const estado = get()
+      expect(estado.lancamentos).toHaveLength(3)
+      expect(estado.lancamentos[0]).toEqual(l0)
+      expect(estado.lancamentos[1]).toMatchObject({ descricao: 'Padaria' })
+      expect(estado.lancamentos[2]).toMatchObject({ descricao: 'Farmácia' })
+      expect(typeof estado.lancamentos[1].id).toBe('number')
+      expect(typeof estado.lancamentos[2].id).toBe('number')
+      expect(estado.lancamentos[1].id).not.toBe(estado.lancamentos[2].id)
+      expect(estado.avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('aplicado')
+    })
+
+    it('TL-43: desfazer remove exatamente os ids inseridos e volta o aviso a pendente', () => {
+      const l0 = lancamento({ transcricao: 'Item 0' })
+      const { get, acoes } = criarStoreDeTeste([l0])
+      const novos = [despesaSemId({ descricao: 'Padaria' }), despesaSemId({ descricao: 'Farmácia' })]
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', origem: 'vr', alvo: [], mutacaoProposta: { verbo: 'adicionar', lancamentos: novos } }),
+      ])
+
+      acoes.aplicar('a1')
+      expect(get().lancamentos).toHaveLength(3)
+
+      acoes.desfazer('a1')
+
+      expect(get().lancamentos).toEqual([l0])
+      expect(get().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado).toBe('pendente')
+    })
+
+    it('TL-44: novo aplicar após desfazer gera um novo lote de ids, sem reaproveitar os anteriores', () => {
+      const { get, acoes } = criarStoreDeTeste([])
+      const novos = [despesaSemId({ descricao: 'Padaria' })]
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', origem: 'vr', alvo: [], mutacaoProposta: { verbo: 'adicionar', lancamentos: novos } }),
+      ])
+
+      acoes.aplicar('a1')
+      const primeiroId = get().lancamentos[0].id
+      acoes.desfazer('a1')
+      expect(get().lancamentos).toEqual([])
+
+      acoes.aplicar('a1')
+      const segundoId = get().lancamentos[0].id
+
+      expect(segundoId).not.toBe(primeiroId)
+      expect(get().lancamentos).toHaveLength(1)
+    })
+
+    it('TL-45: aplicar é idempotente — chamar duas vezes seguidas não insere um segundo lote', () => {
+      const { get, acoes } = criarStoreDeTeste([])
+      const novos = [despesaSemId({ descricao: 'Padaria' })]
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', origem: 'vr', alvo: [], mutacaoProposta: { verbo: 'adicionar', lancamentos: novos } }),
+      ])
+
+      acoes.aplicar('a1')
+      acoes.aplicar('a1')
+
+      expect(get().lancamentos).toHaveLength(1)
+    })
+
+    it('não usa `removidos` para o aviso de adicionar — o registro fica em `adicionados`', () => {
+      const { get, acoes } = criarStoreDeTeste([])
+      const novos = [despesaSemId({ descricao: 'Padaria' })]
+      acoes.adicionarAvisos([
+        proposta({ id: 'a1', origem: 'vr', alvo: [], mutacaoProposta: { verbo: 'adicionar', lancamentos: novos } }),
+      ])
+
+      acoes.aplicar('a1')
+
+      expect(get().avisosAcionaveis.removidos['a1']).toBeUndefined()
+      expect(get().avisosAcionaveis.adicionados['a1']).toEqual([get().lancamentos[0].id])
     })
   })
 

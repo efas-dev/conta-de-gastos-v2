@@ -3,6 +3,7 @@
 // ADR: see spec/fundacao-operacoes.adr.md
 
 import type { Aviso, Lancamento } from '../../types'
+import { atribuirIds } from '../../parsers/idSerial'
 
 /**
  * Registro de um lançamento removido por `aplicar`, guardando uma âncora por
@@ -33,8 +34,17 @@ export interface LancamentoRemovido {
  */
 export interface EstadoAvisosSlice {
   avisos: Aviso[]
-  /** Lançamentos removidos por `aplicar`, indexados pelo id do aviso — usado por `desfazer`. */
+  /** Lançamentos removidos por `aplicar` (verbo `'remover'`), indexados pelo id do aviso — usado por `desfazer`. */
   removidos: Record<string, LancamentoRemovido[]>
+  /**
+   * Ids seriais de nascimento atribuídos por `aplicar` (verbo `'adicionar'`, Task 3 do ADR
+   * `vr-despesas`), indexados pelo id do aviso — usado por `desfazer` para saber exatamente
+   * quais lançamentos remover. Estrutura irmã de `removidos` (mesmo padrão keyed-by-aviso-id),
+   * não um terceiro mecanismo de estado: `removidos` guarda lançamentos completos com âncora de
+   * reinserção (verbo `'remover'`); `adicionados` guarda só os ids recém-criados a apagar (verbo
+   * `'adicionar'`) — os dois verbos precisam desfazer coisas estruturalmente diferentes.
+   */
+  adicionados: Record<string, number[]>
   /**
    * Id do aviso atualmente em modo inspeção, ou `null` quando nenhum está
    * ativo. No máximo 1 ativo por vez — entrar em inspeção de outro aviso
@@ -49,18 +59,25 @@ export interface AcoesAvisosSlice {
   adicionarAvisos: (novos: Aviso[]) => void
   /**
    * Aplica uma proposta pendente: interpreta `aviso.mutacaoProposta` de forma
-   * genérica (Decisão 1 do ADR `fundacao-operacoes`) e remove de `lancamentos`
-   * os itens cujo `id` está no alvo da mutação, marcando o aviso como
-   * `'aplicado'`. Avisos legados sem `mutacaoProposta` ainda são suportados
-   * via ponte de compatibilidade (ver `resolverAlvoParaRemocao`). Sem efeito em avisos
-   * informativos, avisos inexistentes ou avisos que já não estão `'pendente'`
-   * (idempotente).
+   * genérica por verbo (Decisão 1 do ADR `fundacao-operacoes`; verbo
+   * `'adicionar'` estreado pela Decisão 1 do ADR `vr-despesas`, Task 3).
+   * Verbo `'remover'` (ou aviso legado sem `mutacaoProposta`) remove de
+   * `lancamentos` os itens cujo `id` está no alvo da mutação (ver
+   * `resolverAlvoParaRemocao`). Verbo `'adicionar'` atribui ids seriais novos
+   * (`atribuirIds`) aos `mutacaoProposta.lancamentos` e os insere ao final de
+   * `lancamentos`, registrando os ids inseridos em `adicionados[id]` para que
+   * `desfazer` saiba o que remover. Em ambos os casos o aviso é marcado
+   * `'aplicado'`. Sem efeito em avisos informativos, avisos inexistentes ou
+   * avisos que já não estão `'pendente'` (idempotente).
    */
   aplicar: (id: string) => void
   /**
-   * Reverte um `aplicar`: reinsere em `lancamentos` os itens removidos, nas
-   * posições originais, e volta o aviso ao estado `'pendente'`.
-   * Sem efeito em avisos que não estão `'aplicado'` (idempotente).
+   * Reverte um `aplicar`. Para o verbo `'remover'`: reinsere em `lancamentos`
+   * os itens removidos, nas posições originais (via `removidos[id]`). Para o
+   * verbo `'adicionar'` (Task 3, ADR `vr-despesas`): remove de `lancamentos`
+   * exatamente os ids registrados em `adicionados[id]`. Em ambos os casos o
+   * aviso volta ao estado `'pendente'`. Sem efeito em avisos que não estão
+   * `'aplicado'` (idempotente).
    */
   desfazer: (id: string) => void
   /**
@@ -80,21 +97,24 @@ export interface AcoesAvisosSlice {
    * `mutacaoProposta.alvo`) deixaram de existir em `lancamentosAtuais`, transicionando-os
    * para `'obsoleto'` (ver ADR `fundacao-operacoes`, Decisão 7). Basta que UM dos ids-alvo
    * esteja ausente para o aviso inteiro virar obsoleto — nunca aplicável pela metade.
-   * Só afeta avisos `'pendente'` com `mutacaoProposta` (caminho definitivo, T03); avisos
-   * já `'aplicado'`/`'dispensado'` e avisos legados sem `mutacaoProposta` não são tocados.
-   * Idempotente. O gatilho real (chamar isto após uma exclusão manual de linha na grid)
+   * Só afeta avisos `'pendente'` com `mutacaoProposta` de verbo `'remover'` (caminho
+   * definitivo, T03); avisos já `'aplicado'`/`'dispensado'`, avisos legados sem
+   * `mutacaoProposta` e avisos de verbo `'adicionar'` (Task 3, ADR `vr-despesas` — não
+   * referenciam lançamentos existentes, então não há alvo a ficar obsoleto) não são
+   * tocados. Idempotente. O gatilho real (chamar isto após uma exclusão manual de linha na grid)
    * é responsabilidade de quem manipula `lancamentos` (ex.: `excluirLinha` no
    * `appStore.ts`) — fora do escopo desta ação, que só materializa a transição.
    */
   reconciliarObsoletos: (lancamentosAtuais: Lancamento[]) => void
   /**
-   * Zera `avisos`, `removidos` e `avisoEmInspecao` por inteiro (Decisão 8 do ADR
-   * `fundacao-operacoes`, T09): cada chamada de "produzir" limpa o estado de avisos do zero,
-   * incluindo decisões já tomadas (`'aplicado'`/`'dispensado'`) — previsibilidade sobre
+   * Zera `avisos`, `removidos`, `adicionados` e `avisoEmInspecao` por inteiro (Decisão 8 do
+   * ADR `fundacao-operacoes`, T09): cada chamada de "produzir" limpa o estado de avisos do
+   * zero, incluindo decisões já tomadas (`'aplicado'`/`'dispensado'`) — previsibilidade sobre
    * memória, decisão humana explícita que contrariou a recomendação do agente na captura.
-   * `removidos` some junto porque um registro de remoção só faz sentido enquanto o aviso
-   * que o originou ainda existir para ser desfeito; `avisoEmInspecao` volta a `null` para
-   * não deixar uma inspeção pendurada num aviso que não existe mais. Idempotente.
+   * `removidos`/`adicionados` somem junto porque um registro de remoção/inserção só faz
+   * sentido enquanto o aviso que o originou ainda existir para ser desfeito; `avisoEmInspecao`
+   * volta a `null` para não deixar uma inspeção pendurada num aviso que não existe mais.
+   * Idempotente.
    */
   limparAvisos: () => void
 }
@@ -109,6 +129,7 @@ export interface StoreComAvisos {
 export const estadoInicialAvisos: EstadoAvisosSlice = {
   avisos: [],
   removidos: {},
+  adicionados: {},
   avisoEmInspecao: null,
 }
 
@@ -127,9 +148,12 @@ export function selecionarContagemPendentes(state: StoreComAvisos): number {
  * Resolve os `Lancamento`s-alvo de `aviso` para remoção, de forma genérica —
  * sem `switch` por `origem`/detector (Decisão 1 do ADR `fundacao-operacoes`).
  *
- * Caminho definitivo: quando `aviso.mutacaoProposta` está presente, o
- * casamento é estritamente por `Lancamento.id` — `mutacaoProposta.alvo` já
- * carrega ids reais (`Mutacao`, `src/types.ts`).
+ * Caminho definitivo: quando `aviso.mutacaoProposta` está presente com verbo
+ * `'remover'`, o casamento é estritamente por `Lancamento.id` —
+ * `mutacaoProposta.alvo` já carrega ids reais (`Mutacao`, `src/types.ts`).
+ * Só é chamada para o verbo `'remover'` (ou avisos legados sem
+ * `mutacaoProposta`) — o verbo `'adicionar'` (Task 3, ADR `vr-despesas`) tem
+ * caminho próprio em `aplicar`, que nunca resolve alvos a remover.
  *
  * Ponte de compatibilidade transitória: avisos legados — produzidos pelos
  * detectores que ainda não migraram para o registry (T06/T07/T07-bis) — não
@@ -144,7 +168,7 @@ export function selecionarContagemPendentes(state: StoreComAvisos): number {
  * Esta ponte é temporária: some quando os detectores restantes migrarem.
  */
 function resolverAlvoParaRemocao(aviso: Aviso, lancamentos: Lancamento[]): Lancamento[] {
-  if (aviso.mutacaoProposta) {
+  if (aviso.mutacaoProposta && aviso.mutacaoProposta.verbo === 'remover') {
     const idsAlvo = new Set(aviso.mutacaoProposta.alvo)
     return lancamentos.filter((lancamento) => idsAlvo.has(lancamento.id))
   }
@@ -239,9 +263,24 @@ export function criarAvisosSlice<TStore extends StoreComAvisos>(
 
     aplicar: (id) => {
       const state = get()
-      const { avisos, removidos } = state.avisosAcionaveis
+      const { avisos, removidos, adicionados } = state.avisosAcionaveis
       const aviso = avisos.find((a) => a.id === id)
       if (!aviso || aviso.tipo !== 'proposta' || aviso.estado !== 'pendente') {
+        return
+      }
+
+      if (aviso.mutacaoProposta && aviso.mutacaoProposta.verbo === 'adicionar') {
+        const novosLancamentos = atribuirIds(aviso.mutacaoProposta.lancamentos)
+
+        set({
+          lancamentos: [...state.lancamentos, ...novosLancamentos],
+          avisosAcionaveis: {
+            ...state.avisosAcionaveis,
+            avisos: avisos.map((a) => (a.id === id ? { ...a, estado: 'aplicado' as const } : a)),
+            adicionados: { ...adicionados, [id]: novosLancamentos.map((l) => l.id) },
+            avisoEmInspecao: encerrarInspecaoSeForAviso(state.avisosAcionaveis, id),
+          },
+        } as Partial<TStore>)
         return
       }
 
@@ -269,9 +308,28 @@ export function criarAvisosSlice<TStore extends StoreComAvisos>(
 
     desfazer: (id) => {
       const state = get()
-      const { avisos, removidos } = state.avisosAcionaveis
+      const { avisos, removidos, adicionados } = state.avisosAcionaveis
       const aviso = avisos.find((a) => a.id === id)
       if (!aviso) {
+        return
+      }
+
+      if (aviso.estado === 'aplicado' && aviso.mutacaoProposta?.verbo === 'adicionar') {
+        const idsAdicionados = new Set(adicionados[id] ?? [])
+        const lancamentosRestantes = state.lancamentos.filter(
+          (lancamento) => !idsAdicionados.has(lancamento.id),
+        )
+        const { [id]: _adicionadoDoAviso, ...adicionadosSemAviso } = adicionados
+
+        set({
+          lancamentos: lancamentosRestantes,
+          avisosAcionaveis: {
+            ...state.avisosAcionaveis,
+            avisos: avisos.map((a) => (a.id === id ? { ...a, estado: 'pendente' as const } : a)),
+            adicionados: adicionadosSemAviso,
+            avisoEmInspecao: encerrarInspecaoSeForAviso(state.avisosAcionaveis, id),
+          },
+        } as Partial<TStore>)
         return
       }
 
@@ -343,10 +401,10 @@ export function criarAvisosSlice<TStore extends StoreComAvisos>(
         avisosAcionaveis: {
           ...state.avisosAcionaveis,
           avisos: avisos.map((a) => {
-            if (a.estado !== 'pendente' || !a.mutacaoProposta) {
+            if (a.estado !== 'pendente' || !a.mutacaoProposta || a.mutacaoProposta.verbo !== 'remover') {
               return a
             }
-            const algumAlvoAusente = a.mutacaoProposta.alvo.some((id) => !idsAtuais.has(id))
+            const algumAlvoAusente = a.mutacaoProposta.alvo.some((id: number) => !idsAtuais.has(id))
             return algumAlvoAusente ? { ...a, estado: 'obsoleto' as const } : a
           }),
         },
