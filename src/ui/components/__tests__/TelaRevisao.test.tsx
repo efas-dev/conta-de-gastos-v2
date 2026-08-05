@@ -100,11 +100,6 @@ vi.mock('../../handlersPipeline', () => ({
   }),
 }))
 
-vi.mock('../../../dominio/mes', async (importOriginal) => {
-  const original = await importOriginal<typeof import('../../../dominio/mes')>()
-  return { ...original, classificarFonte: vi.fn(() => 'extrato') }
-})
-
 vi.mock('../ReviewGrid', () => ({
   ReviewGrid: ({ onSplitDetectado }: { onSplitDetectado?: (i: number) => void }) =>
     React.createElement('div', {
@@ -152,7 +147,7 @@ vi.mock('../ExportModal', () => ({
 
 function lan(overrides: Partial<Lancamento> = {}): Lancamento {
   return {
-    fonte: 'Nubank',
+    fonte: 'extrato_nubank',
     data: '2024-03-01',
     transcricao: 'Compra',
     valor: -100,
@@ -367,5 +362,47 @@ describe('PopupReplicacao na composição de TelaRevisao (item 36)', () => {
     fireEvent.click(screen.getByText('Dispensar'))
 
     expect(dispensarReplicacao).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 8 (spec conciliacao-robusta): aviso de desalinhamento de mês passa a
+// vir do cross-check `detectarDesalinhamentoMes` (T2) — só aparece quando a
+// heurística por data diverge da classificação autoritativa por prefixo (T1).
+// ---------------------------------------------------------------------------
+
+describe('Aviso de desalinhamento de mês (Task 8, cross-check T2)', () => {
+  it('mês-ref ALINHADO — heurística e prefixo concordam (fatura com data anterior ao mês) → sem aviso', () => {
+    estado.lancamentos = [lan({ fonte: 'fatura_nubank_cc', data: '2024-02-15' })]
+
+    render(<TelaRevisao {...props({ mesEscolhido: '2024-03' })} />)
+
+    const chamadasDesalinhamento = adicionarAvisos.mock.calls.filter(([avisos]) =>
+      (avisos as Aviso[]).some((a) => a.origem === 'desalinhamento-mes'),
+    )
+    expect(chamadasDesalinhamento).toHaveLength(0)
+  })
+
+  it('mês-ref DESALINHADO (bug motivador F1) — fatura sem data anterior ao mês escolhido → aviso via T2', () => {
+    estado.lancamentos = [lan({ fonte: 'fatura_nubank_cc', data: '2024-03-15' })]
+
+    render(<TelaRevisao {...props({ mesEscolhido: '2024-03' })} />)
+
+    const avisosDesalinhamento = adicionarAvisos.mock.calls
+      .flatMap(([avisos]) => avisos as Aviso[])
+      .filter((a) => a.origem === 'desalinhamento-mes')
+    expect(avisosDesalinhamento).toHaveLength(1)
+    expect(avisosDesalinhamento[0]).toMatchObject({ tipo: 'informativo' })
+  })
+
+  it('fonte com prefixo desconhecido (fora da convenção fatura_*/extrato_*) não derruba o render', () => {
+    estado.lancamentos = [lan({ fonte: 'Nubank', data: '2024-03-15' })]
+
+    expect(() => render(<TelaRevisao {...props({ mesEscolhido: '2024-03' })} />)).not.toThrow()
+
+    const avisosDesalinhamento = adicionarAvisos.mock.calls
+      .flatMap(([avisos]) => avisos as Aviso[])
+      .filter((a) => a.origem === 'desalinhamento-mes')
+    expect(avisosDesalinhamento).toHaveLength(0)
   })
 })

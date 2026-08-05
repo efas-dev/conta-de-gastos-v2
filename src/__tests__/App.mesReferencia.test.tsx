@@ -485,18 +485,30 @@ const lancamentosVazios: Array<{
   investimento: null
 }> = []
 
-describe('App — aviso de fatura (T5)', () => {
+// Cross-check de desalinhamento de mês (Decisão 1, ADR conciliacao-robusta, Task 8): o aviso deixou
+// de depender só da heurística por data (`classificarFonte`) e passou a comparar essa heurística com
+// a classificação autoritativa por prefixo (`classificarFontePorPrefixo`, T1) — só dispara quando as
+// duas DIVERGEM. Fixtures abaixo usam a convenção `fatura_*`/`extrato_*` (exigida pelo prefixo) e
+// escolhem datas que controlam deliberadamente o resultado da heurística para produzir divergência ou
+// alinhamento, reproduzindo o cenário motivador F1 desta spec (fatura sem nenhuma data anterior ao mês
+// escolhido — a heurística sozinha silenciava o aviso; o cross-check não).
+describe('App — aviso de desalinhamento de mês (cross-check heurística×prefixo, Task 8)', () => {
   beforeEach(() => {
     resetarStore()
     vi.clearAllMocks()
   })
 
-  // TL5-1: fonte com data anterior ao mesEscolhido → aviso contendo nome da fonte e "fatura"
-  it('TL5-1: fonte com data anterior ao mês de referência adiciona aviso de fatura', async () => {
-    // Mês de referência padrão = mês anterior ao corrente.
-    // Precisamos de uma data ANTERIOR a esse mês.
-    // Usamos data bem no passado para garantir independência do mês corrente.
-    const lancamentos = [lancamentoFatura('Nubank', '2020-01-15')]
+  // TL5-1: fonte fatura_* sem nenhuma data anterior ao mesEscolhido → heurística classifica como
+  // 'extrato', prefixo classifica como 'fatura' → divergem → aviso contendo nome da fonte (cenário F1).
+  it('TL5-1: fonte fatura_* com data não anterior ao mês de referência diverge da heurística e adiciona aviso', async () => {
+    const agora = new Date()
+    const anoCorrente = agora.getFullYear()
+    const mesCorrente = agora.getMonth() + 1
+    // Data no mesmo mês do ano seguinte — garantidamente não anterior ao mesEscolhido padrão
+    // (mês anterior ao corrente).
+    const dataNaoAnterior = `${anoCorrente + 1}-${String(mesCorrente).padStart(2, '0')}-10`
+
+    const lancamentos = [lancamentoFatura('fatura_nubank_cc', dataNaoAnterior)]
     useAppStore.setState({ lancamentos })
 
     render(<App />)
@@ -510,8 +522,8 @@ describe('App — aviso de fatura (T5)', () => {
     })
   })
 
-  // TL5-2: sem lançamentos → nenhum aviso de fatura adicionado
-  it('TL5-2: sem lançamentos, nenhum aviso de fatura é adicionado', async () => {
+  // TL5-2: sem lançamentos → nenhuma fonte para o cross-check avaliar → nenhum aviso.
+  it('TL5-2: sem lançamentos, nenhum aviso de desalinhamento é adicionado', async () => {
     useAppStore.setState({ lancamentos: [] })
 
     render(<App />)
@@ -523,17 +535,15 @@ describe('App — aviso de fatura (T5)', () => {
     })
   })
 
-  // TL5-3: lançamentos com datas NO mês de referência ou posteriores → extrato, sem aviso
-  it('TL5-3: fonte com data no mês de referência ou posterior não gera aviso de fatura', async () => {
-    // Usa mês futuro distante para garantir que a data fica no "mesmo mês" ou posterior
-    // ao mesEscolhido que o select vai mostrar (mês anterior ao corrente).
-    // Data no mês corrente ou no futuro não gera aviso.
+  // TL5-3: fonte extrato_* com data no mês de referência ou posterior → heurística também classifica
+  // como 'extrato' → concorda com o prefixo → alinhado → sem aviso.
+  it('TL5-3: fonte extrato_* com data no mês de referência ou posterior concorda com o prefixo e não gera aviso', async () => {
     const agora = new Date()
     const anoCorrente = agora.getFullYear()
     const mesCorrente = agora.getMonth() + 1
     const dataFutura = `${anoCorrente + 1}-${String(mesCorrente).padStart(2, '0')}-10`
 
-    const lancamentos = [lancamentoFatura('Itaú', dataFutura)]
+    const lancamentos = [lancamentoFatura('extrato_itau', dataFutura)]
     useAppStore.setState({ lancamentos })
 
     render(<App />)
@@ -548,10 +558,16 @@ describe('App — aviso de fatura (T5)', () => {
     expect(temAvisoFatura).toBe(false)
   })
 
-  // TL5-4: ao mudar mesEscolhido, aviso anterior da categoria fatura é substituído (sem duplicatas)
-  it('TL5-4: mudar mesEscolhido substitui aviso de fatura anterior sem duplicatas', async () => {
-    // Data bem no passado — sempre anterior a qualquer mês de referência
-    const lancamentos = [lancamentoFatura('Nubank', '2020-01-15')]
+  // TL5-4: ao mudar mesEscolhido, se a divergência heurística×prefixo persiste, o aviso anterior da
+  // categoria é substituído (sem duplicatas) — nunca duas entradas para a mesma fonte.
+  it('TL5-4: mudar mesEscolhido substitui aviso de desalinhamento anterior sem duplicatas', async () => {
+    const agora = new Date()
+    const anoCorrente = agora.getFullYear()
+    // Data em dezembro do ano seguinte ao corrente — permanece não-anterior tanto ao mesEscolhido
+    // padrão quanto ao mesEscolhido após a troca de ano para 2025 (dentro do intervalo selecionável),
+    // então a divergência (heurística 'extrato' × prefixo 'fatura') persiste nas duas rodadas.
+    const dataNaoAnterior = `${anoCorrente + 1}-12-15`
+    const lancamentos = [lancamentoFatura('fatura_nubank_cc', dataNaoAnterior)]
     useAppStore.setState({ lancamentos })
 
     render(<App />)
@@ -571,40 +587,39 @@ describe('App — aviso de fatura (T5)', () => {
     // Aguarda re-execução do efeito
     await waitFor(() => {
       const avisos = useAppStore.getState().avisos
-      // Deve haver exatamente UM aviso de fatura (sem duplicatas)
+      // Deve haver exatamente UM aviso de desalinhamento (sem duplicatas)
       const avisosDeFatura = avisos.filter((a) => a.toLowerCase().includes('fatura'))
       expect(avisosDeFatura.length).toBe(1)
     })
   })
 
-  // TL5-5: quando fonte deixa de ser fatura (mesEscolhido muda para antes das datas), aviso é removido
-  it('TL5-5: quando nenhuma fonte é fatura após mudança de mês, aviso de fatura é removido', async () => {
-    // Data no futuro distante — será fatura apenas se mesEscolhido for posterior a ela
-    // Configuramos: lançamento em 2099-06, e mesEscolhido começa no mês anterior ao corrente
-    // (que é < 2099-06), portanto a fonte é 'extrato' inicialmente.
-    // Para este teste, vamos verificar o estado inverso:
-    // lançamento em passado distante (2020-01) → fatura; depois mudamos selects para 2019-12
-    // → o lançamento fica NO mês de ref ou posterior → extrato → aviso removido
-
-    // Fatura inicial
-    const lancamentos = [lancamentoFatura('Nubank', '2020-06-15')]
+  // TL5-5: quando a mudança de mesEscolhido faz a heurística voltar a concordar com o prefixo
+  // (alinhamento), o aviso de desalinhamento é removido.
+  it('TL5-5: quando heurística volta a concordar com o prefixo após mudança de mês, aviso de desalinhamento é removido', async () => {
+    const agora = new Date()
+    const anoCorrente = agora.getFullYear()
+    // Data em janeiro do ano seguinte — não anterior ao mesEscolhido padrão (mês anterior ao
+    // corrente), então diverge do prefixo 'fatura' inicialmente (heurística 'extrato').
+    const dataNaoAnterior = `${anoCorrente + 1}-01-10`
+    const lancamentos = [lancamentoFatura('fatura_nubank_cc', dataNaoAnterior)]
     useAppStore.setState({ lancamentos })
 
     render(<App />)
 
-    // Aguarda aviso de fatura aparecer
+    // Aguarda aviso de desalinhamento aparecer
     await waitFor(() => {
       const avisos = useAppStore.getState().avisos
       expect(avisos.some((a) => a.toLowerCase().includes('fatura'))).toBe(true)
     })
 
-    // Muda mesEscolhido para 2019-12 (anterior à data do lançamento 2020-06)
-    // → 2020-06 >= 2019-12 → NOT fatura → extrato → aviso removido
+    // Muda mesEscolhido para dezembro do mesmo ano seguinte (posterior à data do lançamento,
+    // janeiro do ano seguinte) → data < mesRef → heurística volta a classificar 'fatura' →
+    // concorda com o prefixo → alinhado → aviso removido.
     const selectAno = screen.getByTestId('select-ano') as HTMLSelectElement
     const selectMes = screen.getByTestId('select-mes') as HTMLSelectElement
 
     await act(async () => {
-      fireEvent.change(selectAno, { target: { value: '2019' } })
+      fireEvent.change(selectAno, { target: { value: String(anoCorrente + 1) } })
       fireEvent.change(selectMes, { target: { value: '12' } })
     })
 

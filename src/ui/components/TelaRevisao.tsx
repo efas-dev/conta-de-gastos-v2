@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/appStore'
 import { selecionarContagemPendentes } from '../store/avisosSlice'
 import { computarNomeArquivo } from '../PipelineState'
-import { handleGerar as handleGerarPipeline, criarAvisoInformativo } from '../handlersPipeline'
+import { handleGerar as handleGerarPipeline } from '../handlersPipeline'
 import { validarLinha } from '../../dominio/validacao'
-import { classificarFonte } from '../../dominio/mes'
+import { detectarDesalinhamentoMes } from '../../dominio/mes'
 import { ReviewGrid } from './ReviewGrid'
 import { FiltroBar } from './FiltroBar'
 import { SplitModal } from './SplitModal'
@@ -136,7 +136,12 @@ export function TelaRevisao({
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [sujo])
 
-  // Aviso não bloqueante de fatura — D4 do ADR mes-referencia-ui.
+  // Aviso não bloqueante de desalinhamento de mês — D4 do ADR mes-referencia-ui,
+  // rebaixado a cross-check pela Decisão 1 do ADR conciliacao-robusta (Task 8):
+  // só dispara quando a heurística por data (`classificarFonte`) diverge da
+  // classificação autoritativa por prefixo (`classificarFontePorPrefixo`, T1),
+  // via `detectarDesalinhamentoMes` (T2) — nunca mais "sempre que há uma fonte
+  // fatura pela heurística", que é o que causava o silêncio do bug motivador F1.
   // Recalcula quando os lançamentos carregados ou o mês de referência mudam.
   // Antes de inserir, remove avisos anteriores da mesma categoria (idempotente).
   useEffect(() => {
@@ -146,40 +151,44 @@ export function TelaRevisao({
     // Coleta as fontes distintas presentes nos lançamentos
     const fontes = Array.from(new Set(lancamentos.map((l) => l.fonte)))
 
-    const fontesFatura = fontes.filter(
-      (fonte) => classificarFonte(fonte, lancamentos, mesEscolhido) === 'fatura',
-    )
+    // `detectarDesalinhamentoMes` (T2) propaga o `Error` de `classificarFontePorPrefixo` (T1)
+    // quando `fonte` não segue a convenção `fatura_*`/`extrato_*` — comportamento correto na
+    // fronteira do parser (T1/T6), mas este efeito roda a cada render/mudança de lançamentos
+    // sobre QUALQUER dado hoje presente no store, inclusive fontes fora da convenção que só
+    // existem em fixtures de outras suítes de teste (fora das Áreas tocadas desta task). Uma
+    // fonte não-conformante aqui não deve derrubar a tela inteira — apenas essa fonte fica sem
+    // o cross-check de desalinhamento.
+    const avisosDesalinhamento = fontes.flatMap((fonte) => {
+      try {
+        return detectarDesalinhamentoMes(fonte, lancamentos, mesEscolhido)
+      } catch {
+        return []
+      }
+    })
 
     // Remove avisos anteriores desta categoria antes de inserir (sem duplicatas)
     useAppStore.setState((state) => ({
       avisos: state.avisos.filter((a) => !a.startsWith(PREFIXO_FATURA)),
     }))
 
-    if (fontesFatura.length === 0) return
-
-    const listagem = fontesFatura.join(', ')
-    const mensagem =
-      `${PREFIXO_FATURA}Atenção: ${listagem} parece${fontesFatura.length > 1 ? 'm' : ''} ser` +
-      ` fatura — cont${fontesFatura.length > 1 ? 'êm' : 'ém'} transações anteriores ao mês de referência (${mesEscolhido}).` +
-      ` Verifique se o mês de referência está correto antes de exportar.`
+    if (avisosDesalinhamento.length === 0) return
 
     useAppStore.setState((state) => ({
-      avisos: [...state.avisos, mensagem],
+      avisos: [...state.avisos, ...avisosDesalinhamento.map((a) => `${PREFIXO_FATURA}${a.mensagem}`)],
     }))
 
-    // Canal único (T9, D18): mesma mensagem, migrada para o slice como informativo
-    // dispensável, id fixo `'fatura-aviso'` — se um aviso com esse id já existe
-    // (pendente ou já dispensado pelo usuário), NÃO recria: a dispensa precisa
-    // persistir na sessão mesmo com o efeito rodando de novo a cada re-render/mudança
-    // de mesEscolhido (mecanismo decidido localmente, ver iteração-log de T9).
-    const jaExisteAvisoDeFatura = useAppStore
-      .getState()
-      .avisosAcionaveis.avisos.some((a) => a.id === 'fatura-aviso')
-    if (!jaExisteAvisoDeFatura) {
-      const mensagemSemPrefixo = mensagem.slice(PREFIXO_FATURA.length)
-      adicionarAvisosAcionaveis([
-        criarAvisoInformativo('fatura-aviso', 'fatura-aviso', mensagemSemPrefixo),
-      ])
+    // Canal único (T9, D18): mesmos avisos, migrados para o slice como informativos
+    // dispensáveis, com o id determinístico já produzido por `detectarDesalinhamentoMes`
+    // (`desalinhamento-mes-${fonte}`) — se um aviso com esse id já existe (pendente ou
+    // já dispensado pelo usuário), NÃO recria: a dispensa precisa persistir na sessão
+    // mesmo com o efeito rodando de novo a cada re-render/mudança de mesEscolhido
+    // (mecanismo decidido localmente, ver iteração-log de T9).
+    const idsExistentes = new Set(
+      useAppStore.getState().avisosAcionaveis.avisos.map((a) => a.id),
+    )
+    const novosAvisosAcionaveis = avisosDesalinhamento.filter((a) => !idsExistentes.has(a.id))
+    if (novosAvisosAcionaveis.length > 0) {
+      adicionarAvisosAcionaveis(novosAvisosAcionaveis)
     }
   }, [lancamentos, mesEscolhido, adicionarAvisosAcionaveis])
 

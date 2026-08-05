@@ -190,11 +190,16 @@ describe('App — avisos legados migram para o slice como informativos dispensá
   })
 
   it('aviso "reconhecido-como-fatura" aparece no slice como informativo e é dispensável, sem duplicar em re-renders', async () => {
-    // Data bem no passado — sempre "fatura" frente a qualquer mesEscolhido default.
+    // Cross-check de desalinhamento de mês (Decisão 1, ADR conciliacao-robusta, Task 8): o aviso só
+    // dispara quando a heurística por data (`classificarFonte`) diverge da classificação autoritativa
+    // por prefixo (`classificarFontePorPrefixo`, T1) — não mais sempre que a heurística acha "fatura".
+    // Fonte `fatura_*` (prefixo autoritativo 'fatura') com data NÃO anterior a nenhum mesEscolhido
+    // default plausível (ano bem no futuro) → heurística classifica 'extrato' → diverge → aviso
+    // (cenário motivador F1: fatura sem nenhuma data anterior ao mês escolhido).
     const lancamentos = [
       {
-        fonte: 'Nubank',
-        data: '2020-01-15',
+        fonte: 'fatura_nubank_cc',
+        data: '2099-01-15',
         transcricao: 'Item de fatura',
         valor: -10,
         iniciais: '',
@@ -209,7 +214,7 @@ describe('App — avisos legados migram para o slice como informativos dispensá
     await waitFor(() => {
       const informativos = useAppStore
         .getState()
-        .avisosAcionaveis.avisos.filter((a) => a.origem === 'fatura-aviso')
+        .avisosAcionaveis.avisos.filter((a) => a.origem === 'desalinhamento-mes')
       expect(informativos).toHaveLength(1)
     })
     expect(useAppStore.getState().avisosAcionaveis.avisos[0]).toMatchObject({
@@ -222,7 +227,7 @@ describe('App — avisos legados migram para o slice como informativos dispensá
     await waitFor(() => {
       const informativos = useAppStore
         .getState()
-        .avisosAcionaveis.avisos.filter((a) => a.origem === 'fatura-aviso')
+        .avisosAcionaveis.avisos.filter((a) => a.origem === 'desalinhamento-mes')
       expect(informativos).toHaveLength(1)
     })
 
@@ -241,7 +246,7 @@ describe('App — avisos legados migram para o slice como informativos dispensá
     await waitFor(() => {
       const informativos = useAppStore
         .getState()
-        .avisosAcionaveis.avisos.filter((a) => a.origem === 'fatura-aviso')
+        .avisosAcionaveis.avisos.filter((a) => a.origem === 'desalinhamento-mes')
       expect(informativos).toHaveLength(1)
       expect(informativos[0].estado).toBe('dispensado')
     })
