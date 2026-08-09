@@ -120,16 +120,15 @@ describe('reproduzirAvisos (T09, ADR Decisão 8 — política de "produzir")', (
     // Nenhum aviso 'dispensado' remanescente em nenhum lugar da lista.
     expect(avisosRodada2.every((a) => a.estado === 'pendente')).toBe(true)
     expect(avisosRodada2.find((a) => a.id === idRodada1)?.estado).toBe('pendente')
-    // A nova detecção roda do zero sobre os DOIS lançamentos — 2 propostas de investimento +
-    // 1 aviso 'vr' + 1 aviso 'rendimentos' (ambos sempre presentes, Task 4 spec vr-despesas e
-    // Task 9 spec rendimentos).
-    expect(avisosRodada2).toHaveLength(4)
-    expect(avisosRodada2.map((a) => a.origem)).toEqual([
-      'investimento',
-      'investimento',
-      'vr',
-      'rendimentos',
-    ])
+    // A nova detecção roda do zero sobre os DOIS lançamentos — 1 proposta de investimento
+    // (agregada: um único aviso mira as duas movimentações) + 1 aviso 'vr' + 1 aviso
+    // 'rendimentos' (ambos sempre presentes, Task 4 spec vr-despesas e Task 9 spec rendimentos).
+    expect(avisosRodada2).toHaveLength(3)
+    expect(avisosRodada2.map((a) => a.origem)).toEqual(['investimento', 'vr', 'rendimentos'])
+    expect(avisosRodada2[0].mutacaoProposta).toEqual({
+      verbo: 'remover',
+      alvo: [primeiro.id, segundo.id],
+    })
     // removidos/avisoEmInspecao também resetados pela limpeza.
     expect(get().avisosAcionaveis.removidos).toEqual({})
     expect(get().avisosAcionaveis.avisoEmInspecao).toBeNull()

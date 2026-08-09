@@ -142,6 +142,51 @@ describe('detectarInvestimentoAvisos', () => {
     expect(aviso.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [42] })
   })
 
+  it('TL-27: N movimentações geram UM único aviso, mirando todos os ids de uma vez', () => {
+    const comum = lancamentoComId({ id: 1, transcricao: 'Compra mercado' })
+    const aplicacao1 = lancamentoComId({ id: 2, transcricao: 'APLICACAO CDB', valor: -200 })
+    const resgate = lancamentoComId({ id: 3, transcricao: 'RESGATE CDB', valor: 200 })
+    const aplicacao2 = lancamentoComId({ id: 4, transcricao: 'APLICACAO RDB', valor: -50 })
+    const avisos = detectarInvestimentoAvisos([comum, aplicacao1, resgate, aplicacao2])
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].mutacaoProposta).toEqual({ verbo: 'remover', alvo: [2, 3, 4] })
+    expect(avisos[0].alvo).toEqual(['2', '3', '4'])
+  })
+
+  it('TL-28: a mensagem do aviso agregado conta as movimentações por tipo', () => {
+    const avisos = detectarInvestimentoAvisos([
+      lancamentoComId({ id: 2, transcricao: 'APLICACAO CDB', valor: -200 }),
+      lancamentoComId({ id: 3, transcricao: 'RESGATE CDB', valor: 200 }),
+      lancamentoComId({ id: 4, transcricao: 'RESGATE RDB', valor: 50 }),
+    ])
+
+    expect(avisos[0].mensagem).toContain('3 movimentações de investimento')
+    expect(avisos[0].mensagem).toContain('1 aplicação')
+    expect(avisos[0].mensagem).toContain('2 resgates')
+  })
+
+  it('TL-29: o resumo agregado soma cada tipo e explica por que a remoção é proposta', () => {
+    const avisos = detectarInvestimentoAvisos([
+      lancamentoComId({ id: 2, transcricao: 'APLICACAO CDB', valor: -200 }),
+      lancamentoComId({ id: 3, transcricao: 'APLICACAO RDB', valor: -1000.5 }),
+      lancamentoComId({ id: 4, transcricao: 'RESGATE CDB', valor: 300 }),
+    ])
+
+    expect(avisos[0].resumo).toContain('R$ 1.200,50') // soma das aplicações
+    expect(avisos[0].resumo).toContain('R$ 300,00') // soma dos resgates
+    expect(avisos[0].resumo).toContain('não é gasto nem receita')
+  })
+
+  it('TL-30: com uma única movimentação a mensagem mantém a transcrição (sem contagem seca)', () => {
+    const avisos = detectarInvestimentoAvisos([
+      lancamentoComId({ id: 9, transcricao: 'APLICACAO RDB AUTOMATICO', valor: -500 }),
+    ])
+
+    expect(avisos[0].mensagem).toContain('APLICACAO RDB AUTOMATICO')
+    expect(avisos[0].mensagem).not.toContain('1 movimentações')
+  })
+
   it('TL-26: mensagem formata o valor em pt-BR, consistente com o resumo do mesmo aviso', () => {
     const aplicacao = lancamentoComId({
       id: 42,
@@ -168,14 +213,13 @@ describe('detectarInvestimentoAvisos', () => {
     expect(aviso.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [43] })
   })
 
-  it('gera um Aviso por lançamento de investimento, cada um mirando o próprio id (TL-17)', () => {
+  it('só lançamentos de investimento entram no alvo — os comuns ficam de fora (TL-17)', () => {
     const comum = lancamentoComId({ id: 1, transcricao: 'Compra mercado' })
     const aplicacao = lancamentoComId({ id: 2, transcricao: 'APLICACAO CDB', valor: -200 })
     const resgate = lancamentoComId({ id: 3, transcricao: 'RESGATE CDB', valor: 200 })
     const avisos = detectarInvestimentoAvisos([comum, aplicacao, resgate])
 
-    expect(avisos).toHaveLength(2)
-    expect(avisos.map((a) => a.mutacaoProposta?.alvo)).toEqual([[2], [3]])
+    expect(avisos[0].mutacaoProposta?.alvo).toEqual([2, 3])
   })
 
   it('Aviso.alvo (legado) contém o id como string e Aviso.permanece é sempre [] (TL-18)', () => {
@@ -221,13 +265,13 @@ describe('detectarInvestimentoAvisos', () => {
     expect(aviso.resumo).toContain('1.234,56')
   })
 
-  it('id do Aviso é determinístico e único por lançamento (TL-22)', () => {
+  it('id do Aviso é determinístico — o aviso agregado é sempre um só (TL-22)', () => {
     const aplicacao1 = lancamentoComId({ id: 5, transcricao: 'APLICACAO RDB', valor: -50 })
     const aplicacao2 = lancamentoComId({ id: 6, transcricao: 'APLICACAO RDB', valor: -50 })
     const avisos = detectarInvestimentoAvisos([aplicacao1, aplicacao2])
 
-    expect(avisos[0].id).not.toBe(avisos[1].id)
-    expect(new Set(avisos.map((a) => a.id)).size).toBe(2)
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].id).toBe('investimento')
   })
 
   it('não altera a marcação de coloração (detectarInvestimento por lançamento continua igual) (TL-23)', () => {
@@ -270,5 +314,37 @@ describe('detectarInvestimentoAvisos', () => {
     acoes.desfazer(aviso.id)
     expect(get().lancamentos).toEqual([comum, aplicacao, outroComum])
     expect(get().avisosAcionaveis.avisos[0].estado).toBe('pendente')
+  })
+
+  /**
+   * TL-31 — o mesmo ciclo de TL-24, mas com o aviso AGREGADO mirando várias linhas: uma
+   * aprovação tira todas de uma vez e um desfazer devolve todas, nas posições originais.
+   */
+  it('TL-31: aviso agregado aplica e desfaz as N linhas de uma vez, preservando a ordem', () => {
+    const comum = lancamentoComId({ id: 1, transcricao: 'Compra mercado' })
+    const aplicacao = lancamentoComId({ id: 2, transcricao: 'APLICACAO RDB', valor: -500 })
+    const outroComum = lancamentoComId({ id: 3, transcricao: 'Uber' })
+    const resgate = lancamentoComId({ id: 4, transcricao: 'RESGATE CDB', valor: 300 })
+    const lancamentos = [comum, aplicacao, outroComum, resgate]
+    const [aviso] = detectarInvestimentoAvisos(lancamentos)
+
+    let estado: StoreComAvisos = {
+      lancamentos,
+      avisosAcionaveis: { avisos: [aviso], removidos: {}, avisoEmInspecao: null },
+    }
+    const get = () => estado
+    const set = (
+      partial: Partial<StoreComAvisos> | ((s: StoreComAvisos) => Partial<StoreComAvisos>),
+    ) => {
+      const parcial = typeof partial === 'function' ? partial(estado) : partial
+      estado = { ...estado, ...parcial }
+    }
+    const acoes = criarAvisosSlice(set, get)
+
+    acoes.aplicar(aviso.id)
+    expect(get().lancamentos).toEqual([comum, outroComum])
+
+    acoes.desfazer(aviso.id)
+    expect(get().lancamentos).toEqual([comum, aplicacao, outroComum, resgate])
   })
 })
