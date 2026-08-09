@@ -40,7 +40,7 @@ describe('produzirLancamentos — pipeline completo com fatura sintética (integ
   it('NÃO despacha propostas de valor-pendente/pagamento-recebido (rewire T11) — só entrega as linhas em resultado.lancamentos', () => {
     const avisosCapturados: Aviso[] = []
 
-    const resultado = produzirLancamentos(csvAvisosPendentes, [], 'ES', undefined, [], (avisos) => {
+    const resultado = produzirLancamentos(csvAvisosPendentes, [], 'ES', [], (avisos) => {
       avisosCapturados.push(...avisos)
     })
 
@@ -85,7 +85,7 @@ describe('produzirLancamentos — pipeline completo com fatura sintética (integ
       },
     ]
 
-    produzirLancamentos(csvAvisosPendentes, [], 'ES', undefined, lancamentosExtrato, (avisos) => {
+    produzirLancamentos(csvAvisosPendentes, [], 'ES', lancamentosExtrato, (avisos) => {
       avisosCapturados.push(...avisos)
     })
 
@@ -105,7 +105,7 @@ describe('produzirLancamentos — pipeline completo com fatura sintética (integ
     const csvComLinhaMalformada = `${csvAvisosPendentes}\n2024-06-06,incompleta`
 
     const avisosCapturados: Aviso[] = []
-    const resultado = produzirLancamentos(csvComLinhaMalformada, [], 'ES', undefined, [], (avisos) => {
+    const resultado = produzirLancamentos(csvComLinhaMalformada, [], 'ES', [], (avisos) => {
       avisosCapturados.push(...avisos)
     })
 

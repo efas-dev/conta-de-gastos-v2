@@ -7,8 +7,6 @@
 import type { Lancamento, DicEntry, Aviso } from '../types'
 import { detectar } from '../parsers/index'
 import { enriquecerLancamento } from '../dominio/dicionario'
-import { detectarInvestimento } from '../dominio/investimento'
-import { detectarTransferenciaInterna } from '../dominio/transferencia'
 import { detectarConciliacao } from '../dominio/deteccoes'
 import { detectores, orquestrarDeteccao } from '../dominio/registry'
 import { aprenderDicionario } from '../dominio/aprendizado'
@@ -39,7 +37,7 @@ export function computarNomeArquivo(lancamentos: Lancamento[], iniciais: string)
 // ---------------------------------------------------------------------------
 
 /**
- * Resultado de `produzirLancamentos`: lançamentos enriquecidos com flags,
+ * Resultado de `produzirLancamentos`: lançamentos enriquecidos pelo dicionário,
  * entradas do dicionário lido e avisos acumulados durante o processamento.
  */
 export interface ResultadoProduzir {
@@ -49,12 +47,11 @@ export interface ResultadoProduzir {
 }
 
 // ---------------------------------------------------------------------------
-// Etapa 1 — Parse + enriquecimento + detecção de flags
+// Etapa 1 — Parse + enriquecimento
 // ---------------------------------------------------------------------------
 
 /**
- * Faz parse do CSV, enriquece os lançamentos com o dicionário fornecido
- * e aplica as detecções de investimento/transferência com regra de precedência.
+ * Faz parse do CSV e enriquece os lançamentos com o dicionário fornecido.
  *
  * Função pura de transformação — sem efeitos colaterais além do retorno.
  * Os avisos acumulados (linhas ignoradas) são retornados no campo `avisos`
@@ -80,7 +77,6 @@ export interface ResultadoProduzir {
  * @param csvConteudo       Conteúdo do arquivo CSV (já lido como string)
  * @param dicEntries        Entradas do dicionário já lidas, ou [] se não fornecido
  * @param iniciais          Iniciais do usuário
- * @param nomeUsuario       Nome do usuário (opcional — habilita Pix nominal em `detectarTransferenciaInterna`)
  * @param lancamentosExtrato Lançamentos do extrato a conciliar com esta fatura (opcional).
  *   Quando vazio, `detectarConciliacao` não é chamado — evita o aviso "fatura não conciliada"
  *   em importações de um único arquivo sem contraparte de extrato.
@@ -91,7 +87,6 @@ export function produzirLancamentos(
   csvConteudo: string,
   dicEntries: DicEntry[],
   iniciais: string,
-  nomeUsuario?: string,
   lancamentosExtrato: Lancamento[] = [],
   adicionarAvisos: (avisos: Aviso[]) => void = () => {},
 ): ResultadoProduzir {
@@ -126,24 +121,22 @@ export function produzirLancamentos(
     enriquecerLancamento(l, dicEntries, iniciais),
   )
 
-  // 3. Detecção de flags com regra de precedência: investimento vence transferenciaInterna
-  const lancamentosComFlags = lancamentosEnriquecidos.map((l) => {
-    const investimento = detectarInvestimento(l)
-    const transferenciaInterna =
-      investimento !== null ? false : detectarTransferenciaInterna(l, nomeUsuario)
-    return { ...l, investimento, transferenciaInterna }
-  })
-
-  // 4. Avisos acionáveis: converte conciliação em Aviso[] e despacha. Valor-pendente/
+  // 3. Avisos acionáveis: converte conciliação em Aviso[] e despacha. Valor-pendente/
   // pagamento-recebido deixaram de ser detectados aqui (T11 — ver docstring acima);
   // o call-site real (`App.tsx`, `handleProduzir`) os detecta sobre `todosLancamentos`.
+  //
+  // O antigo passo de "flags" (`investimento`/`transferenciaInterna` gravados no
+  // lançamento) saiu em 2026-08-09: os campos só alimentavam o realce colorido da grid,
+  // aposentado a pedido do usuário. Os detectores de domínio continuam vivos — o registry
+  // chama `detectarInvestimento`/`detectarTransferenciaInterna` sobre o próprio lançamento
+  // para gerar os avisos acionáveis, sem precisar da flag persistida.
   const avisosConciliacao =
     lancamentosExtrato.length > 0
-      ? detectarConciliacao(lancamentosComFlags, lancamentosExtrato)
+      ? detectarConciliacao(lancamentosEnriquecidos, lancamentosExtrato)
       : []
   adicionarAvisos([...avisosConciliacao, ...avisosInformativosMigrados])
 
-  return { lancamentos: lancamentosComFlags, dicEntries, avisos }
+  return { lancamentos: lancamentosEnriquecidos, dicEntries, avisos }
 }
 
 // ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@
  *
  * Cobre:
  *   [integration] ciclo completo via store real: aviso aparece → aplicar → some dos pendentes
- *   [integration] handleProduzir liga o callback adicionarAvisos real ao pipeline (6º argumento)
+ *   [integration] handleProduzir liga o callback adicionarAvisos real ao pipeline (5º argumento)
  *   [integration] CentralDeAvisos (sheet) renderizado também na tela de importação (T9)
  *   [integration] footer AvisoList aposentado — ausente das duas telas (T9)
  *   [integration] os 5 avisos legados migram para o slice como informativos dispensáveis (T9)
@@ -43,7 +43,7 @@ vi.mock('../ui/PipelineState', () => ({
   computarNomeArquivo: vi.fn(() => 'extrato.xlsx'),
   // Task T14 (cutover): handlersPipeline.handleProduzir agora importa reproduzirAvisos
   // de PipelineState — mock no-op preserva o comportamento anterior destes testes (que
-  // exercitam o canal avisosAcionaveis via o 6º argumento de produzirLancamentos, não
+  // exercitam o canal avisosAcionaveis via o 5º argumento de produzirLancamentos, não
   // via reproduzirAvisos/registry).
   reproduzirAvisos: vi.fn(),
 }))
@@ -392,7 +392,7 @@ describe('App — handleProduzir liga adicionarAvisos real ao pipeline (T6)', ()
     vi.unstubAllGlobals()
   })
 
-  it('produzirLancamentos recebe uma função como 6º argumento (adicionarAvisos)', async () => {
+  it('produzirLancamentos recebe uma função como 5º argumento (adicionarAvisos)', async () => {
     render(<App />)
 
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
@@ -412,12 +412,12 @@ describe('App — handleProduzir liga adicionarAvisos real ao pipeline (T6)', ()
     })
 
     const args = vi.mocked(produzirLancamentos).mock.calls[0]
-    expect(typeof args[5]).toBe('function')
+    expect(typeof args[4]).toBe('function')
   })
 
   it('avisos emitidos pelo callback injetado populam avisosAcionaveis.avisos do store real', async () => {
     vi.mocked(produzirLancamentos).mockImplementation(
-      (_csv, _dic, _iniciais, _nome, _extrato, adicionarAvisos) => {
+      (_csv, _dic, _iniciais, _extrato, adicionarAvisos) => {
         adicionarAvisos?.([propostaFicticia])
         return { lancamentos: [], dicEntries: [], avisos: [] }
       },

@@ -294,13 +294,11 @@ export function TelaRevisao({
             color: 'var(--texto-3)',
           }}
         >
-          <Swatch cor="var(--linha-atencao)" borda="var(--linha-atencao-borda)" rotulo="Precisa de atenção" />
-          <Swatch cor="var(--linha-transferencia)" borda="var(--linha-transferencia-borda)" rotulo="Transferência própria" />
-          <Swatch cor="var(--linha-investimento)" borda="var(--linha-investimento-borda)" rotulo="Investimento" />
+          {/* A legenda das cores de linha (atenção / transferência própria /
+              investimento) foi aposentada junto com o próprio realce — ver
+              `calcularTemaLinhaComInspecao` em ReviewGrid.tsx. */}
           <span
             style={{
-              paddingLeft: 14,
-              borderLeft: '1px solid var(--borda-2)',
               color: 'var(--muted)',
               whiteSpace: 'nowrap',
             }}
@@ -368,11 +366,3 @@ export function TelaRevisao({
   )
 }
 
-function Swatch({ cor, borda, rotulo }: { cor: string; borda: string; rotulo: string }) {
-  return (
-    <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-      <span style={{ width: 11, height: 11, borderRadius: 3, background: cor, border: `1px solid ${borda}` }} />
-      {rotulo}
-    </span>
-  )
-}

@@ -35,9 +35,6 @@ import {
   lerVarCSS,
   TEMA_INSPECAO_SAI,
   TEMA_INSPECAO_FICA,
-  TEMA_ERRO,
-  TEMA_TRANSFERENCIA,
-  TEMA_INVESTIMENTO,
 } from '../ReviewGrid'
 import type { Lancamento, Aviso } from '../../../types'
 
@@ -348,106 +345,45 @@ describe('derivarContextoInspecao', () => {
 // ---------------------------------------------------------------------------
 
 describe('calcularTemaLinhaComInspecao', () => {
-  const naturezasValidas = ['ALM', 'TRN']
   const contexto = derivarContextoInspecao(avisoConciliacaoFake())!
 
   it('TL-4: retorna TEMA_INSPECAO_SAI quando o índice real está em alvoSet', () => {
-    const l = lancamentoFake({ natureza: 'ALM' })
-    expect(calcularTemaLinhaComInspecao(l, 2, naturezasValidas, contexto)).toBe(TEMA_INSPECAO_SAI)
+    expect(calcularTemaLinhaComInspecao(2, contexto)).toBe(TEMA_INSPECAO_SAI)
   })
 
   it('TL-5: retorna TEMA_INSPECAO_FICA quando o índice real está em permaneceSet', () => {
-    const l = lancamentoFake({ natureza: 'ALM' })
-    expect(calcularTemaLinhaComInspecao(l, 0, naturezasValidas, contexto)).toBe(TEMA_INSPECAO_FICA)
+    expect(calcularTemaLinhaComInspecao(0, contexto)).toBe(TEMA_INSPECAO_FICA)
   })
 
-  it('TL-6 (precedência, D4): tema de inspeção vence erro/transferência/investimento', () => {
-    const lErro = lancamentoFake({ natureza: '' }) // natureza vazia -> normalmente TEMA_ERRO
-    expect(calcularTemaLinhaComInspecao(lErro, 2, naturezasValidas, contexto)).toBe(
-      TEMA_INSPECAO_SAI,
-    )
-
-    const lTransferencia = lancamentoFake({ transferenciaInterna: true })
-    expect(
-      calcularTemaLinhaComInspecao(lTransferencia, 0, naturezasValidas, contexto),
-    ).toBe(TEMA_INSPECAO_FICA)
-
-    const lInvestimento = lancamentoFake({ investimento: 'aplicacao' })
-    expect(
-      calcularTemaLinhaComInspecao(lInvestimento, 2, naturezasValidas, contexto),
-    ).toBe(TEMA_INSPECAO_SAI)
+  it('TL-7 (aposentadoria do realce permanente): sem contexto de inspeção, NENHUMA linha recebe tema', () => {
+    // Antes desta mudança, linhas com natureza vazia, transferência própria ou
+    // investimento ganhavam cor permanente. O realce agora significa só "esta linha
+    // faz parte do aviso em inspeção", então fora da inspeção o tema é sempre undefined.
+    expect(calcularTemaLinhaComInspecao(5, undefined)).toBeUndefined()
   })
 
-  it('TL-7 (regressão): sem contexto de inspeção, delega para calcularTemaLinha', () => {
-    const lErro = lancamentoFake({ natureza: '' })
-    expect(calcularTemaLinhaComInspecao(lErro, 5, naturezasValidas, undefined)).toBe(TEMA_ERRO)
-
-    const lTransferencia = lancamentoFake({ transferenciaInterna: true })
-    expect(
-      calcularTemaLinhaComInspecao(lTransferencia, 5, naturezasValidas, undefined),
-    ).toBe(TEMA_TRANSFERENCIA)
-
-    const lInvestimento = lancamentoFake({ investimento: 'resgate' })
-    expect(
-      calcularTemaLinhaComInspecao(lInvestimento, 5, naturezasValidas, undefined),
-    ).toBe(TEMA_INVESTIMENTO)
-
-    const lNormal = lancamentoFake({ natureza: 'ALM' })
-    expect(
-      calcularTemaLinhaComInspecao(lNormal, 5, naturezasValidas, undefined),
-    ).toBeUndefined()
+  it('TL-8b: índice fora do contexto não recebe tema mesmo com inspeção ativa', () => {
+    expect(calcularTemaLinhaComInspecao(99, contexto)).toBeUndefined()
   })
 
-  it('TL-18 (isenção): linha de proposta de remoção (origemEspecial) com natureza vazia NÃO recebe TEMA_ERRO fora da inspeção', () => {
-    // valor-pendente/pagamento-recebido entram na grid sem natureza; não devem
-    // destacar em pêssego permanentemente — só na inspeção do respectivo aviso.
-    const lValorPendente = lancamentoFake({ natureza: '', origemEspecial: 'valor-pendente' })
-    expect(
-      calcularTemaLinhaComInspecao(lValorPendente, 5, naturezasValidas, undefined),
-    ).toBeUndefined()
-
-    const lPagamento = lancamentoFake({ natureza: '', origemEspecial: 'pagamento-recebido' })
-    expect(
-      calcularTemaLinhaComInspecao(lPagamento, 5, naturezasValidas, undefined),
-    ).toBeUndefined()
-
-    // Durante a inspeção (índice no alvoSet), a mesma linha destaca em vermelho vivo.
-    expect(calcularTemaLinhaComInspecao(lValorPendente, 2, naturezasValidas, contexto)).toBe(
-      TEMA_INSPECAO_SAI,
-    )
-  })
-
-  it('TL-8 (robustez a ordenação/filtro por identidade, D7): casa pelo índice real, não pela posição', () => {
-    const l = lancamentoFake({ natureza: 'ALM' })
-    // A mesma linha (índice real 2) continua TEMA_INSPECAO_SAI independentemente
-    // de "onde" ela apareceria numa lista reordenada — a função não recebe posição
-    // visual, só o índice real, provando que o casamento é por identidade.
-    expect(calcularTemaLinhaComInspecao(l, 2, naturezasValidas, contexto)).toBe(TEMA_INSPECAO_SAI)
-    // Um índice real que não está nem em alvo nem em permanece nunca ganha tema de inspeção,
-    // mesmo que fosse a "primeira linha visível" após reordenação.
-    expect(calcularTemaLinhaComInspecao(l, 99, naturezasValidas, contexto)).toBeUndefined()
-  })
 
   it('TL-T8-05: retorna TEMA_INSPECAO_SAI para origem valor-pendente (revisão de D11 — T8)', () => {
     const contextoVP = derivarContextoInspecao(avisoValorPendenteFake())
-    const l = lancamentoFake({ natureza: 'ALM' })
-    expect(calcularTemaLinhaComInspecao(l, 2, naturezasValidas, contextoVP)).toBe(
+    expect(calcularTemaLinhaComInspecao(2, contextoVP)).toBe(
       TEMA_INSPECAO_SAI,
     )
   })
 
   it('TL-T8-06: retorna TEMA_INSPECAO_SAI para origem pagamento-recebido (T8)', () => {
     const contextoPR = derivarContextoInspecao(avisoPagamentoRecebidoFake())
-    const l = lancamentoFake({ natureza: 'ALM' })
-    expect(calcularTemaLinhaComInspecao(l, 2, naturezasValidas, contextoPR)).toBe(
+    expect(calcularTemaLinhaComInspecao(2, contextoPR)).toBe(
       TEMA_INSPECAO_SAI,
     )
   })
 
   it('TL-T8-11 (robustez a identidade, D7): linha fora do alvoSet de valor-pendente nunca ganha tema', () => {
     const contextoVP = derivarContextoInspecao(avisoValorPendenteFake())
-    const l = lancamentoFake({ natureza: 'ALM' })
-    expect(calcularTemaLinhaComInspecao(l, 99, naturezasValidas, contextoVP)).toBeUndefined()
+    expect(calcularTemaLinhaComInspecao(99, contextoVP)).toBeUndefined()
   })
 })
 
@@ -582,7 +518,7 @@ describe('pipeline de inspeção (integração slice -> grid)', () => {
     )
 
     const temasPorLinha = mapa.map((indiceReal, posicaoVisual) =>
-      calcularTemaLinhaComInspecao(linhas[posicaoVisual]!, indiceReal, naturezasValidas, contexto),
+      calcularTemaLinhaComInspecao(indiceReal, contexto),
     )
 
     expect(mapa).toEqual([0, 2, 1])
@@ -614,7 +550,7 @@ describe('pipeline de inspeção (integração slice -> grid)', () => {
     expect(linhas).toContain(lancamentos[1])
 
     const temasPorLinha = mapa.map((indiceReal, posicaoVisual) =>
-      calcularTemaLinhaComInspecao(linhas[posicaoVisual]!, indiceReal, naturezasValidas, contexto),
+      calcularTemaLinhaComInspecao(indiceReal, contexto),
     )
     expect(temasPorLinha[0]).toBeUndefined() // real 0, fora do alvo
     expect(temasPorLinha[1]).toBeUndefined() // real 2, fora do alvo
@@ -643,7 +579,7 @@ describe('pipeline de inspeção (integração slice -> grid)', () => {
     expect(mapa).toEqual([0, 2])
 
     const temasPorLinha = mapa.map((indiceReal, posicaoVisual) =>
-      calcularTemaLinhaComInspecao(linhas[posicaoVisual]!, indiceReal, naturezasValidas, contexto),
+      calcularTemaLinhaComInspecao(indiceReal, contexto),
     )
     expect(temasPorLinha[0]).toBeUndefined()
     expect(temasPorLinha[1]).toBe(TEMA_INSPECAO_SAI)
@@ -667,7 +603,7 @@ describe('pipeline de inspeção (integração slice -> grid)', () => {
     )
 
     const temasPorLinha = mapa.map((indiceReal, posicaoVisual) =>
-      calcularTemaLinhaComInspecao(linhas[posicaoVisual]!, indiceReal, naturezasValidas, contexto),
+      calcularTemaLinhaComInspecao(indiceReal, contexto),
     )
 
     expect(mapa).toEqual([0, 2, 1])
@@ -711,31 +647,12 @@ describe('lerVarCSS (Task T2)', () => {
 })
 
 describe('temas de linha leem variáveis CSS de :root (Task T2)', () => {
-  const VARS_TEMA = [
-    '--linha-atencao',
-    '--linha-transferencia',
-    '--linha-investimento',
-    '--insp-sai-bg',
-    '--insp-fica-bg',
-  ]
+  // Os temas `--linha-*` (atenção/transferência/investimento) saíram junto com o
+  // realce permanente aposentado em 2026-08-09; restaram só os da inspeção.
+  const VARS_TEMA = ['--insp-sai-bg', '--insp-fica-bg']
 
   afterEach(() => {
     for (const nome of VARS_TEMA) document.documentElement.style.removeProperty(nome)
-  })
-
-  it('TL-17: TEMA_ERRO.bgCell reflete --linha-atencao quando definida', () => {
-    document.documentElement.style.setProperty('--linha-atencao', '#aaaaaa')
-    expect(TEMA_ERRO.bgCell).toBe('#aaaaaa')
-  })
-
-  it('TL-18: TEMA_TRANSFERENCIA.bgCell reflete --linha-transferencia quando definida', () => {
-    document.documentElement.style.setProperty('--linha-transferencia', '#bbbbbb')
-    expect(TEMA_TRANSFERENCIA.bgCell).toBe('#bbbbbb')
-  })
-
-  it('TL-19: TEMA_INVESTIMENTO.bgCell reflete --linha-investimento quando definida', () => {
-    document.documentElement.style.setProperty('--linha-investimento', '#cccccc')
-    expect(TEMA_INVESTIMENTO.bgCell).toBe('#cccccc')
   })
 
   // Fix de contraste (2026-08-04): o fundo da linha usa a variante PÁLIDA -bg
@@ -751,17 +668,12 @@ describe('temas de linha leem variáveis CSS de :root (Task T2)', () => {
   })
 
   it('TL-22 (contrato do fallback): sem a variável definida, bgCell é string vazia — nunca um hex hardcoded substituto', () => {
-    expect(TEMA_ERRO.bgCell).toBe('')
-    expect(TEMA_TRANSFERENCIA.bgCell).toBe('')
-    expect(TEMA_INVESTIMENTO.bgCell).toBe('')
     expect(TEMA_INSPECAO_SAI.bgCell).toBe('')
     expect(TEMA_INSPECAO_FICA.bgCell).toBe('')
   })
 
   it('TL-23 (regressão, identidade): temas de inspeção continuam referências estáveis usadas por calcularTemaLinhaComInspecao', () => {
-    const naturezasValidas = ['ALM']
     const contexto = derivarContextoInspecao(avisoConciliacaoFake())!
-    const l = lancamentoFake({ natureza: 'ALM' })
-    expect(calcularTemaLinhaComInspecao(l, 2, naturezasValidas, contexto)).toBe(TEMA_INSPECAO_SAI)
+    expect(calcularTemaLinhaComInspecao(2, contexto)).toBe(TEMA_INSPECAO_SAI)
   })
 })

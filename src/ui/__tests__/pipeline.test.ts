@@ -165,70 +165,6 @@ describe('produzirLancamentos', () => {
 // 7–12. produzirLancamentos — flags de detecção com precedência
 // ---------------------------------------------------------------------------
 
-describe('produzirLancamentos — flags de detecção', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    vi.mocked(lerDicionario).mockReturnValue([])
-  })
-
-  function mockParsear(transcricao: string, valor = -100): void {
-    vi.mocked(detectar).mockReturnValue({
-      aceita: () => true,
-      parsear: vi.fn(() => ({
-        lancamentos: [
-          {
-            fonte: 'Nubank',
-            data: '2025-01-01',
-            transcricao,
-            valor,
-            iniciais: '',
-            natureza: '',
-            descricao: '',
-          },
-        ] satisfies Lancamento[],
-        linhasIgnoradas: 0,
-      })),
-    })
-  }
-
-  it('lançamento comum recebe investimento=null', () => {
-    mockParsear('Mercado')
-    const { lancamentos } = produzirLancamentos('csv', [], 'ES')
-    expect(lancamentos[0].investimento).toBe(null)
-  })
-
-  it('lançamento comum recebe transferenciaInterna=false', () => {
-    mockParsear('Mercado')
-    const { lancamentos } = produzirLancamentos('csv', [], 'ES')
-    expect(lancamentos[0].transferenciaInterna).toBe(false)
-  })
-
-  it('transcrição com APLICACAO gera investimento="aplicacao"', () => {
-    mockParsear('APLICACAO RDB', -1000)
-    const { lancamentos } = produzirLancamentos('csv', [], 'ES')
-    expect(lancamentos[0].investimento).toBe('aplicacao')
-  })
-
-  it('transcrição com RESGATE gera investimento="resgate"', () => {
-    mockParsear('RESGATE CDB', 2000)
-    const { lancamentos } = produzirLancamentos('csv', [], 'ES')
-    expect(lancamentos[0].investimento).toBe('resgate')
-  })
-
-  it('transcrição com Open Banking gera transferenciaInterna=true e investimento=null', () => {
-    mockParsear('Open Banking transferencia')
-    const { lancamentos } = produzirLancamentos('csv', [], 'ES')
-    expect(lancamentos[0].transferenciaInterna).toBe(true)
-    expect(lancamentos[0].investimento).toBe(null)
-  })
-
-  it('regra de precedência: APLICACAO + Open Banking → investimento vence, transferenciaInterna=false', () => {
-    mockParsear('APLICACAO Open Banking', -500)
-    const { lancamentos } = produzirLancamentos('csv', [], 'ES')
-    expect(lancamentos[0].investimento).toBe('aplicacao')
-    expect(lancamentos[0].transferenciaInterna).toBe(false)
-  })
-})
 
 // ---------------------------------------------------------------------------
 // T5 — produzirLancamentos converte excluidosPendentes em Aviso[] via detecções
@@ -292,7 +228,7 @@ describe('produzirLancamentos — avisos acionáveis (T5)', () => {
     const lancamentosExtrato: Lancamento[] = [
       { fonte: 'extrato', data: '2025-01-02', transcricao: 'Pagamento de fatura', valor: -150, iniciais: '', natureza: '', descricao: '' },
     ]
-    produzirLancamentos('csv', [], 'ES', undefined, lancamentosExtrato)
+    produzirLancamentos('csv', [], 'ES', lancamentosExtrato)
     expect(detectarConciliacao).toHaveBeenCalledOnce()
     const [fatura, extrato] = vi.mocked(detectarConciliacao).mock.calls[0]
     expect(fatura).toHaveLength(lancamentosMock.length)
@@ -313,14 +249,14 @@ describe('produzirLancamentos — avisos acionáveis (T5)', () => {
       { fonte: 'extrato', data: '2025-01-02', transcricao: 'Pagamento de fatura', valor: -150, iniciais: '', natureza: '', descricao: '' },
     ]
 
-    produzirLancamentos('csv', [], 'ES', undefined, lancamentosExtrato, adicionarAvisos)
+    produzirLancamentos('csv', [], 'ES', lancamentosExtrato, adicionarAvisos)
 
     expect(adicionarAvisos).toHaveBeenCalledWith([avisoConciliacaoMock])
   })
 
   it('despacha adicionarAvisos com array vazio quando nenhuma detecção retorna avisos', () => {
     const adicionarAvisos = vi.fn()
-    produzirLancamentos('csv', [], 'ES', undefined, [], adicionarAvisos)
+    produzirLancamentos('csv', [], 'ES', [], adicionarAvisos)
     expect(adicionarAvisos).toHaveBeenCalledWith([])
   })
 
@@ -334,7 +270,7 @@ describe('produzirLancamentos — avisos acionáveis (T5)', () => {
       })),
     })
     const adicionarAvisos = vi.fn()
-    produzirLancamentos('csv', [], 'ES', undefined, [], adicionarAvisos)
+    produzirLancamentos('csv', [], 'ES', [], adicionarAvisos)
 
     const avisosDespachados = vi.mocked(adicionarAvisos).mock.calls[0][0]
     const avisoLinhasIgnoradas = avisosDespachados.find((a) => a.origem === 'linhas-ignoradas')
@@ -354,7 +290,7 @@ describe('produzirLancamentos — avisos acionáveis (T5)', () => {
 
   it('o parser nunca recebe referência a adicionarAvisos nem ao store — parsear é chamado só com o conteúdo CSV', () => {
     const adicionarAvisos = vi.fn()
-    produzirLancamentos('csv', [], 'ES', undefined, [], adicionarAvisos)
+    produzirLancamentos('csv', [], 'ES', [], adicionarAvisos)
     const parserRetornado = vi.mocked(detectar).mock.results[0].value as { parsear: (c: string) => unknown }
     expect(parserRetornado.parsear).toHaveBeenCalledWith('csv')
     expect(parserRetornado.parsear).toHaveBeenCalledTimes(1)
@@ -500,73 +436,3 @@ describe('executarPipeline', () => {
 // 19–24. executarPipeline — flags de detecção (via fachada, para regressão)
 // ---------------------------------------------------------------------------
 
-describe('executarPipeline — flags de detecção', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-    vi.mocked(lerDicionario).mockReturnValue([])
-    vi.mocked(aprenderDicionario).mockImplementation((_l, dic) => dic)
-  })
-
-  function mockParsear(transcricao: string, valor = -100): void {
-    vi.mocked(detectar).mockReturnValue({
-      aceita: () => true,
-      parsear: vi.fn(() => ({
-        lancamentos: [
-          {
-            fonte: 'Nubank',
-            data: '2025-01-01',
-            transcricao,
-            valor,
-            iniciais: '',
-            natureza: '',
-            descricao: '',
-          },
-        ] satisfies Lancamento[],
-        linhasIgnoradas: 0,
-      })),
-    })
-  }
-
-  async function rodarPipeline(): Promise<Lancamento[]> {
-    await executarPipeline('', null, new Uint8Array([0]), 'ES', vi.fn(), vi.fn())
-    return vi.mocked(gerarXlsx).mock.calls[0][2] as Lancamento[]
-  }
-
-  it('lançamento comum recebe investimento=null (TL-1)', async () => {
-    mockParsear('Mercado')
-    const lancamentos = await rodarPipeline()
-    expect(lancamentos[0].investimento).toBe(null)
-  })
-
-  it('lançamento comum recebe transferenciaInterna=false (TL-2)', async () => {
-    mockParsear('Mercado')
-    const lancamentos = await rodarPipeline()
-    expect(lancamentos[0].transferenciaInterna).toBe(false)
-  })
-
-  it('transcrição com APLICACAO gera investimento="aplicacao" (TL-3)', async () => {
-    mockParsear('APLICACAO RDB', -1000)
-    const lancamentos = await rodarPipeline()
-    expect(lancamentos[0].investimento).toBe('aplicacao')
-  })
-
-  it('transcrição com RESGATE gera investimento="resgate" (TL-4)', async () => {
-    mockParsear('RESGATE CDB', 2000)
-    const lancamentos = await rodarPipeline()
-    expect(lancamentos[0].investimento).toBe('resgate')
-  })
-
-  it('transcrição com Open Banking gera transferenciaInterna=true e investimento=null (TL-5)', async () => {
-    mockParsear('Open Banking transferencia')
-    const lancamentos = await rodarPipeline()
-    expect(lancamentos[0].transferenciaInterna).toBe(true)
-    expect(lancamentos[0].investimento).toBe(null)
-  })
-
-  it('regra de precedência: APLICACAO + Open Banking → investimento vence, transferenciaInterna=false (TL-6)', async () => {
-    mockParsear('APLICACAO Open Banking', -500)
-    const lancamentos = await rodarPipeline()
-    expect(lancamentos[0].investimento).toBe('aplicacao')
-    expect(lancamentos[0].transferenciaInterna).toBe(false)
-  })
-})

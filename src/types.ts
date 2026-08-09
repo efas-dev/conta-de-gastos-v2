@@ -33,21 +33,11 @@ export interface Lancamento {
   natureza: string
   /** Descrição enriquecida do gasto (preenchida pelo dicionário ou em branco) */
   descricao: string
-  /**
-   * Indica se o lançamento é uma movimentação entre contas do próprio usuário.
-   * `true` = transferência interna (ex.: TED/Pix para conta própria, pagamento de fatura de cartão próprio).
-   * Preenchida pelo pipeline via `detectarTransferenciaInterna`; `undefined` antes do enriquecimento.
-   */
-  transferenciaInterna?: boolean
-  /**
-   * Classificação do lançamento quanto a investimentos de renda fixa/variável.
-   * `'aplicacao'` = entrada de dinheiro em investimento (débito na conta corrente).
-   * `'resgate'` = saída de investimento de volta para conta corrente (crédito).
-   * `null` = lançamento comum, sem caráter de investimento.
-   * `undefined` = campo ainda não avaliado pelo pipeline.
-   * Preenchida pelo pipeline via `detectarInvestimento`.
-   */
-  investimento?: 'aplicacao' | 'resgate' | null
+  // Os campos `transferenciaInterna` e `investimento` foram removidos em 2026-08-09:
+  // eram gravados pelo pipeline e lidos por um único consumidor — o realce colorido
+  // permanente da grid, aposentado a pedido do usuário. As detecções de domínio
+  // (`detectarTransferenciaInterna`/`detectarInvestimento`) continuam vivas e rodam sob
+  // demanda no registry, que gera os avisos acionáveis; nenhuma delas precisava da flag.
   /**
    * Marca as linhas de fatura que antes eram excluídas silenciosamente no parser
    * (`excluidosPendentes`) e agora entram em `lancamentos` como lançamentos normais

@@ -32,10 +32,6 @@ import { estadoInicialAvisos } from '../ui/store/avisosSlice'
 
 vi.mock('../ui/components/ReviewGrid', () => ({
   ReviewGrid: () => React.createElement('div', { 'data-testid': 'review-grid' }),
-  TEMA_ERRO: { bgCell: '#f9e2d6' },
-  TEMA_TRANSFERENCIA: { bgCell: '#d5e4f2' },
-  TEMA_INVESTIMENTO: { bgCell: '#dcedd3' },
-  calcularTemaLinha: vi.fn(),
   calcularSomaSelecionados: vi.fn(() => null),
 }))
 

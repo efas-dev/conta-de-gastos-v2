@@ -126,7 +126,6 @@ export async function handleProduzir(deps: DepsHandleProduzir): Promise<void> {
       csvConteudo,
       dicEntries,
       iniciais,
-      nomeUsuario || undefined,
       [],
       adicionarAvisosAcionaveis,
     )

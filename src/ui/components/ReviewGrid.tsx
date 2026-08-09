@@ -23,7 +23,6 @@ import {
 } from '@glideapps/glide-data-grid'
 import '@glideapps/glide-data-grid/dist/index.css'
 import { useAppStore, type CampoEditavel } from '../store/appStore'
-import { validarLinha } from '../../dominio/validacao'
 import type { Lancamento, Aviso } from '../../types'
 import { GhostEditorCore } from './GhostEditor'
 import { montarColagem } from './colagemGrid'
@@ -231,15 +230,6 @@ function criarTemaLinha(nomeVar: string): { readonly bgCell: string } {
   }
 }
 
-/** Linha requer atenção — natureza inválida ou ausente. Lê `--linha-atencao` (T1). */
-export const TEMA_ERRO = criarTemaLinha('--linha-atencao')
-
-/** Lançamento identificado como transferência entre contas próprias. Lê `--linha-transferencia` (T1). */
-export const TEMA_TRANSFERENCIA = criarTemaLinha('--linha-transferencia')
-
-/** Lançamento identificado como aplicação ou resgate de investimento. Lê `--linha-investimento` (T1). */
-export const TEMA_INVESTIMENTO = criarTemaLinha('--linha-investimento')
-
 /**
  * Linha "sai" durante inspeção de proposta de conciliação (D4/D5 do ADR
  * `inspecao-proposta-conciliacao`). Lê `--insp-sai-bg` (rosa pálido) como FUNDO
@@ -301,31 +291,13 @@ function criarTemaGrid() {
 // Funções puras auxiliares — exportadas para testabilidade futura (T10)
 // ---------------------------------------------------------------------------
 
-/**
- * Determina o tema visual de realce de uma linha da grid.
- *
- * Precedência: investimento > transferência interna > atenção (validação).
- * A classificação de domínio vence a atenção — assim o usuário VÊ que a linha é
- * uma transferência própria ou um investimento mesmo antes de preencher a Natureza
- * (essas linhas em geral nem precisam de classificação manual). O vermelho de
- * atenção fica reservado para linhas comuns com Natureza vazia ou inválida.
- * Retorna `undefined` para linhas sem realce especial.
- */
-export function calcularTemaLinha(
-  l: Lancamento,
-  naturezasValidas: string[],
-): typeof TEMA_ERRO | typeof TEMA_TRANSFERENCIA | typeof TEMA_INVESTIMENTO | undefined {
-  // Linhas de proposta de remoção (valor-pendente/pagamento-recebido, marcadas por
-  // `origemEspecial` — D16/D17) não são lançamentos a classificar: ficam neutras e
-  // NÃO recebem o realce de atenção por Natureza vazia. Só destacam (vermelho vivo,
-  // TEMA_INSPECAO_SAI) enquanto o usuário inspeciona o respectivo aviso — o realce
-  // some quando ele sai da inspeção. Mesma isenção que investimento/transferência.
-  if (l.origemEspecial != null) return undefined
-  if (l.investimento != null) return TEMA_INVESTIMENTO
-  if (l.transferenciaInterna === true) return TEMA_TRANSFERENCIA
-  if (validarLinha(l, naturezasValidas)) return TEMA_ERRO
-  return undefined
-}
+// O realce permanente de linha por categoria (atenção / transferência própria /
+// investimento) e sua legenda foram APOSENTADOS em 2026-08-09, a pedido do usuário:
+// o que essas cores sinalizavam passou a ser tratado pelo algoritmo de sugestão de
+// natureza (que já preenche as linhas) e pelos avisos acionáveis de investimento e
+// transferência interna (que propõem a remoção da linha). O realce só sobrevive no
+// modo inspeção de aviso — ver `calcularTemaLinhaComInspecao` logo abaixo, que é
+// temporário e sai quando o usuário fecha a inspeção.
 
 // ---------------------------------------------------------------------------
 // Inspeção de proposta (Task T4, estendida por T8 — ADR `inspecao-proposta-conciliacao`)
@@ -379,29 +351,21 @@ export function indicesEnvolvidos(aviso: Aviso | undefined): number[] {
  * `inspecao-proposta-conciliacao`).
  *
  * Casa por identidade — o índice REAL do lançamento em `lancamentos`, nunca a posição
- * visual/ordenada — o que torna o destaque robusto a filtro/ordenação ativos (D7). Quando o
- * índice real está em `alvoSet`/`permaneceSet` do contexto, o tema de inspeção tem precedência
- * sobre erro/transferência/investimento (D4). Sem contexto (`undefined` — nenhuma inspeção de
- * conciliação ativa), delega integralmente para `calcularTemaLinha` (regressão preservada).
+ * visual/ordenada — o que torna o destaque robusto a filtro/ordenação ativos (D7). Fora da
+ * inspeção nenhuma linha recebe realce: com a aposentadoria do realce permanente por
+ * categoria (2026-08-09), a cor no grid passou a significar uma coisa só — "esta linha faz
+ * parte do aviso que você está inspecionando agora".
  */
 export function calcularTemaLinhaComInspecao(
-  l: Lancamento,
   indiceReal: number,
-  naturezasValidas: string[],
   contextoInspecao: ContextoInspecaoConciliacao | undefined,
-):
-  | typeof TEMA_INSPECAO_SAI
-  | typeof TEMA_INSPECAO_FICA
-  | typeof TEMA_ERRO
-  | typeof TEMA_TRANSFERENCIA
-  | typeof TEMA_INVESTIMENTO
-  | undefined {
+): typeof TEMA_INSPECAO_SAI | typeof TEMA_INSPECAO_FICA | undefined {
   if (contextoInspecao) {
     const id = String(indiceReal)
     if (contextoInspecao.alvoSet.has(id)) return TEMA_INSPECAO_SAI
     if (contextoInspecao.permaneceSet.has(id)) return TEMA_INSPECAO_FICA
   }
-  return calcularTemaLinha(l, naturezasValidas)
+  return undefined
 }
 
 /**
@@ -493,14 +457,11 @@ export interface ReviewGridProps {
  * - Somente leitura: Fonte, Data, Transcrição
  * - Editáveis: Iniciais, Natureza, Descrição, Valor (D7 do ADR)
  *
- * Realces visuais via `getRowThemeOverride`:
- * - Vermelho (`TEMA_ERRO`): linhas onde `validarLinha` retorna `true`.
- * - Azul (`TEMA_TRANSFERENCIA`): lançamentos com `transferenciaInterna === true`.
- * - Verde (`TEMA_INVESTIMENTO`): lançamentos com `investimento != null`.
+ * Realce visual via `getRowThemeOverride` — só o da inspeção de aviso:
  * - Vermelho/verde-menta (`TEMA_INSPECAO_SAI`/`TEMA_INSPECAO_FICA`): enquanto uma proposta de
  *   origem `'conciliacao'`, `'valor-pendente'` ou `'pagamento-recebido'` está em inspeção
- *   (`avisosAcionaveis.avisoEmInspecao`), com precedência sobre os três temas acima (Task T4/T8,
- *   D4/D16/D17 do ADR `inspecao-proposta-conciliacao`). Só `'conciliacao'` tem o papel "fica"
+ *   (`avisosAcionaveis.avisoEmInspecao`) — Task T4/T8, D4/D16/D17 do ADR
+ *   `inspecao-proposta-conciliacao`. Só `'conciliacao'` tem o papel "fica"
  *   (verde-menta); as outras duas têm sempre `permanece: []`, então só produzem "sai" (vermelho).
  *   Linhas envolvidas ocultas pelo filtro ativo são reveladas enquanto a inspeção dura (D8) e a
  *   grid rola até a linha "sai" (D3). Revisão de T4/D11 pela Task T8: `'valor-pendente'`/
@@ -515,7 +476,6 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   const lancamentos = useAppStore((s) => s.lancamentos)
   const lancamentosVisiveis = useAppStore((s) => s.lancamentosVisiveis)
   const mapaIndiceVisualReal = useAppStore((s) => s.mapaIndiceVisualReal)
-  const naturezasValidas = useAppStore((s) => s.naturezasValidas)
   const editarCelula = useAppStore((s) => s.editarCelula)
   const preencherIntervalo = useAppStore((s) => s.preencherIntervalo)
   const dicEntries = useAppStore((s) => s.dicEntries)
@@ -900,18 +860,17 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   )
 
   // -----------------------------------------------------------------
-  // getRowThemeOverride: realce visual por linha (D2 do ADR; D4/D7 — inspeção
-  // de conciliação tem precedência, Task T4)
+  // getRowThemeOverride: realce visual por linha — hoje só o da inspeção de
+  // aviso (D4/D7, Task T4). O realce permanente por categoria foi aposentado.
   // -----------------------------------------------------------------
 
   const getRowThemeOverride: GetRowThemeCallback = useCallback(
     (row) => {
-      const l = lancamentosExibidos[row]
-      if (!l) return undefined
+      if (!lancamentosExibidos[row]) return undefined
       const indiceReal = mapaExibidoReal[row] ?? row
-      return calcularTemaLinhaComInspecao(l, indiceReal, naturezasValidas, contextoInspecao)
+      return calcularTemaLinhaComInspecao(indiceReal, contextoInspecao)
     },
-    [lancamentosExibidos, mapaExibidoReal, naturezasValidas, contextoInspecao],
+    [lancamentosExibidos, mapaExibidoReal, contextoInspecao],
   )
 
   // -----------------------------------------------------------------

@@ -33,14 +33,14 @@
   --insp-fica: #3e9c78;
   --insp-fica-bg: #daeee4;
 
-  /* Realces de linha (validação / transferência / investimento).
-     Matizes bem separados para distinção fácil, mantendo o tom sereno. */
+  /* Nomes herdados do realce permanente de linha do grid (atenção/transferência/
+     investimento), aposentado em 2026-08-09. As três variáveis abaixo sobreviveram
+     porque outros componentes já as usavam: `.arquivo.erro`, `.icone-aviso.proposta`,
+     `.icone-aviso.info` e `.alerta-export`. As três órfãs (--linha-transferencia-borda,
+     --linha-investimento, --linha-investimento-borda) saíram junto com o realce. */
   --linha-atencao: #f9e2d6; /* pêssego/terracota */
   --linha-atencao-borda: #ecc3ad;
   --linha-transferencia: #d5e4f2; /* azul */
-  --linha-transferencia-borda: #b3cce4;
-  --linha-investimento: #dcedd3; /* verde */
-  --linha-investimento-borda: #bcd9ac;
 
   /* Bordas */
   --borda: #e1dcd1;
