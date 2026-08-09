@@ -173,7 +173,7 @@ export function TelaImportacao({
         const reconhecido = await ehDicionario(bytes)
         if (reconhecido) {
           if (dicCarregado) {
-            const mensagem = `${arquivo.name}: dicionário substituído — último vence`
+            const mensagem = `${arquivo.name}: dicionário substituído: último vence`
             addAviso(mensagem)
             adicionarAvisosAcionaveis([
               criarAvisoInformativo(crypto.randomUUID(), 'dic-ultimo-vence', mensagem),
@@ -192,7 +192,7 @@ export function TelaImportacao({
             setSaldoAnterior(saldoDoDic)
           }
         } else {
-          const mensagem = `${arquivo.name}: arquivo .xlsx não reconhecido como dicionário — ignorado`
+          const mensagem = `${arquivo.name}: arquivo .xlsx não reconhecido como dicionário, ignorado`
           addAviso(mensagem)
           adicionarAvisosAcionaveis([
             criarAvisoInformativo(crypto.randomUUID(), 'xlsx-nao-reconhecido', mensagem),
@@ -200,7 +200,7 @@ export function TelaImportacao({
         }
       } catch {
         // best-effort: erro silenciado — não quebra o fluxo
-        const mensagem = `${arquivo.name}: erro ao processar arquivo .xlsx — ignorado`
+        const mensagem = `${arquivo.name}: erro ao processar arquivo .xlsx, ignorado`
         addAviso(mensagem)
         adicionarAvisosAcionaveis([
           criarAvisoInformativo(crypto.randomUUID(), 'erro-processar-xlsx', mensagem),
@@ -321,7 +321,7 @@ export function TelaImportacao({
           <div style={{ fontSize: 22, fontWeight: 800, color: 'var(--verde)' }}>
             Solte os arquivos aqui
           </div>
-          <div className="rotulo">CSV, TXT ou dicionário .xlsx — em qualquer lugar da tela</div>
+          <div className="rotulo">CSV, TXT ou dicionário .xlsx, em qualquer lugar da tela</div>
         </div>
       )}
 

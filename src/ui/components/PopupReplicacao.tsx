@@ -43,7 +43,7 @@ export function PopupReplicacao() {
       }}
     >
       <div style={{ fontSize: 14, color: 'var(--texto)' }}>
-        <strong>Replicar classificação</strong> — {n} {n === 1 ? 'outra linha igual' : 'outras linhas iguais'} a{' '}
+        <strong>Replicar classificação:</strong> {n} {n === 1 ? 'outra linha igual' : 'outras linhas iguais'} a{' '}
         <span style={{ color: 'var(--texto-2)' }}>«{sugestao.exemplo}»</span> sem classificar. Aplicar{' '}
         <strong style={{ color: 'var(--verde)' }}>{classificacao}</strong> a {n === 1 ? 'ela' : 'todas'}?
       </div>

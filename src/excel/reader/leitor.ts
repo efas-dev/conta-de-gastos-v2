@@ -27,7 +27,7 @@ export function lerDicionario(
   onAviso?: (msg: string) => void,
 ): DicEntry[] {
   if (bytes.length === 0) {
-    onAviso?.('Arquivo .xlsx vazio — dicionário ignorado')
+    onAviso?.('Arquivo .xlsx vazio, dicionário ignorado')
     return []
   }
 
@@ -45,7 +45,7 @@ export function lerDicionario(
 
   const workbookBytes = zip['xl/workbook.xml']
   if (!workbookBytes) {
-    onAviso?.('Arquivo .xlsx sem xl/workbook.xml — dicionário ignorado')
+    onAviso?.('Arquivo .xlsx sem xl/workbook.xml, dicionário ignorado')
     return []
   }
 
@@ -72,7 +72,7 @@ export function lerDicionario(
   }
 
   if (!dicionarioRid) {
-    onAviso?.('Aba "Dicionario" não encontrada no .xlsx — dicionário ignorado')
+    onAviso?.('Aba "Dicionario" não encontrada no .xlsx, dicionário ignorado')
     return []
   }
 
@@ -80,7 +80,7 @@ export function lerDicionario(
 
   const relsBytes = zip['xl/_rels/workbook.xml.rels']
   if (!relsBytes) {
-    onAviso?.('Arquivo .xlsx sem xl/_rels/workbook.xml.rels — dicionário ignorado')
+    onAviso?.('Arquivo .xlsx sem xl/_rels/workbook.xml.rels, dicionário ignorado')
     return []
   }
 

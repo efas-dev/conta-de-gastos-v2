@@ -230,10 +230,10 @@ function CartaoProposta({
       {emInspecao && !ehVR && !ehRendimentos && (
         <div className="legenda-insp" aria-label="Papéis da proposta">
           <span aria-label="Papel: sai">
-            Sai{aviso.alvo.length > 0 ? ` — ${aviso.alvo.length} lançamento(s)` : ''}
+            Sai{aviso.alvo.length > 0 ? `: ${aviso.alvo.length} lançamento(s)` : ''}
           </span>
           {aviso.origem === 'conciliacao' && (
-            <span aria-label="Papel: fica">Fica — {aviso.permanece.length} lançamento(s)</span>
+            <span aria-label="Papel: fica">Fica: {aviso.permanece.length} lançamento(s)</span>
           )}
           {aviso.resumo && <p aria-label="Resumo da regra" style={{ margin: 0 }}>{aviso.resumo}</p>}
         </div>

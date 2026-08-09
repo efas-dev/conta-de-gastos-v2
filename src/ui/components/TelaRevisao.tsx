@@ -302,7 +302,7 @@ export function TelaRevisao({
               color: 'var(--muted)',
               whiteSpace: 'nowrap',
             }}
-            title="Os dados vivem apenas nesta aba — exporte antes de fechar ou recarregar."
+            title="Os dados vivem apenas nesta aba. Exporte antes de fechar ou recarregar."
           >
             Só nesta aba · exporte antes de fechar
           </span>

@@ -151,7 +151,7 @@ export function FormRendimentos({ mesRef }: FormRendimentosProps) {
         </label>
 
         <p style={{ fontSize: 12, color: 'var(--texto-3)', margin: 0 }}>
-          Inclua caixinhas, porquinhos, cofrinhos e demais aplicações — some os valores separados por
+          Inclua caixinhas, porquinhos, cofrinhos e demais aplicações. Some os valores separados por
           &quot;+&quot; (ex.: &quot;100+50+20&quot;).
         </p>
       </div>

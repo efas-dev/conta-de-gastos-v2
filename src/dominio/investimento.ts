@@ -132,7 +132,7 @@ export function detectarInvestimentoAvisos(lancamentos: Lancamento[]): Aviso[] {
       alvo: ids.map(String),
       permanece: [],
       resumo:
-        `${partesResumo.join(' · ')}. Aplicar e resgatar não é gasto nem receita — o dinheiro ` +
+        `${partesResumo.join(' · ')}. Aplicar e resgatar não é gasto nem receita: o dinheiro ` +
         `só muda de lugar entre as suas contas. Aprovar remove ` +
         `${movimentacoes.length === 1 ? 'a linha' : `as ${movimentacoes.length} linhas`} da planilha.`,
       estado: 'pendente',

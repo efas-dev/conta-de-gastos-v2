@@ -281,7 +281,7 @@ function avisoValorPendenteFake(overrides: Partial<Aviso> = {}): Aviso {
     mensagem: 'Valor pendente',
     alvo: ['2'],
     permanece: [],
-    resumo: 'Valor pendente do mês anterior: R$ 100,00 — resíduo da fatura passada, não é gasto do mês',
+    resumo: 'Valor pendente do mês anterior: R$ 100,00. É o que ficou em aberto na fatura passada.',
     estado: 'pendente',
     ...overrides,
   }
@@ -296,7 +296,7 @@ function avisoPagamentoRecebidoFake(overrides: Partial<Aviso> = {}): Aviso {
     mensagem: 'Pagamento recebido',
     alvo: ['2'],
     permanece: [],
-    resumo: 'Pagamento recebido: R$ 100,00 — crédito referente à quitação da fatura anterior, não é gasto do mês',
+    resumo: 'Pagamento recebido: R$ 100,00. É a quitação da fatura anterior.',
     estado: 'pendente',
     ...overrides,
   }

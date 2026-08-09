@@ -60,8 +60,8 @@ function formatarResumoConciliacao(
   const sujeito = parcial ? 'Parte dos itens desta fatura já entrou' : 'Os itens desta fatura já entraram'
   return (
     `${sujeito} na planilha, um a um (somam R$ ${formatarReais(somaFaturaCentavos)}). ` +
-    `Esta linha do extrato é o pagamento desses mesmos gastos (R$ ${formatarReais(pagamentoCentavos)}) — ` +
-    `manter as duas contaria tudo duas vezes. Aprovar remove só a linha do extrato.`
+    `Esta linha do extrato é o pagamento desses mesmos gastos (R$ ${formatarReais(pagamentoCentavos)}). ` +
+    `Manter as duas contaria tudo duas vezes. Aprovar remove só a linha do extrato.`
   )
 }
 
@@ -81,11 +81,11 @@ const ROTULO_ORIGEM_ESPECIAL: Record<'valor-pendente' | 'pagamento-recebido', st
  */
 const COMPLEMENTO_RESUMO_ORIGEM_ESPECIAL: Record<'valor-pendente' | 'pagamento-recebido', string> = {
   'valor-pendente':
-    'é o que ficou em aberto na fatura passada, que o Nubank repete no começo desta. ' +
+    'É o que ficou em aberto na fatura passada, que o Nubank repete no começo desta. ' +
     'Não é uma compra deste mês: em geral se anula com o "Pagamento recebido" de mesmo valor. ' +
     'Aprovar tira a linha da planilha.',
   'pagamento-recebido':
-    'é a quitação da fatura anterior, que o Nubank lança dentro desta fatura. ' +
+    'É a quitação da fatura anterior, que o Nubank lança dentro desta fatura. ' +
     'Não é gasto nem receita deste mês: em geral se anula com o "Valor pendente do mês anterior". ' +
     'Aprovar tira a linha da planilha.',
 }
@@ -129,7 +129,7 @@ function detectarPorOrigemEspecial(
         : `${rotulo}: ${valorFormatado} ("${lancamento.transcricao}").`,
       alvo: [String(index)],
       permanece: [],
-      resumo: `${rotulo}: R$ ${formatarReais(valorCentavos)} — ${COMPLEMENTO_RESUMO_ORIGEM_ESPECIAL[origem]}`,
+      resumo: `${rotulo}: R$ ${formatarReais(valorCentavos)}. ${COMPLEMENTO_RESUMO_ORIGEM_ESPECIAL[origem]}`,
       estado: 'pendente',
     })
   })
@@ -300,7 +300,7 @@ export function detectarConciliacao(
     return [
       avisoInformativoComCandidatos(
         'conciliacao-ambiguidade-total',
-        `${candidatosTotal.length} lançamentos do extrato têm o valor exato desta fatura — não dá para saber qual é o pagamento dela. Escolha qual remover para não contar os mesmos gastos duas vezes.`,
+        `${candidatosTotal.length} lançamentos do extrato têm o valor exato desta fatura. Não dá para saber qual é o pagamento dela: escolha qual remover para não contar os mesmos gastos duas vezes.`,
         candidatosTotal.map(({ lancamento }) => lancamento),
       ),
     ]
@@ -336,7 +336,7 @@ export function detectarConciliacao(
     return [
       avisoInformativoComCandidatos(
         'conciliacao-ambiguidade-subconjunto',
-        `${candidatosSubset.length} lançamentos do extrato batem com algum grupo de itens desta fatura — não dá para saber qual é o pagamento dela. Escolha qual remover para não contar os mesmos gastos duas vezes.`,
+        `${candidatosSubset.length} lançamentos do extrato batem com algum grupo de itens desta fatura. Não dá para saber qual é o pagamento dela: escolha qual remover para não contar os mesmos gastos duas vezes.`,
         candidatosSubset.map(({ lancamento }) => lancamento),
       ),
     ]

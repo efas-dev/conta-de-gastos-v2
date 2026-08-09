@@ -70,7 +70,7 @@ export function SplitModal({ lancamento, indice, onClose }: SplitModalProps) {
         <h2 className="modal-titulo">Rateio de lançamento</h2>
         <p style={{ margin: '8px 0 20px', fontSize: 14.5 }}>
           <strong>{lancamento.transcricao}</strong>
-          {' — '}
+          {' · '}
           <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
             {lancamento.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
           </span>
@@ -145,9 +145,11 @@ function Linha({
         className={`valor ${valor !== undefined && valor < 0 ? 'neg' : 'pos'}`}
         style={{ textAlign: 'right', minWidth: 96 }}
       >
+        {/* Sem valor digitado, a célula fica vazia: o travessão que antes marcava
+            a ausência era o único traço restante nos textos da interface. */}
         {valor !== undefined
           ? valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-          : '—'}
+          : ''}
       </span>
       {onRemove ? (
         <button aria-label={`Remover alvo ${i + 1}`} onClick={onRemove} className="btn sec mini icone">

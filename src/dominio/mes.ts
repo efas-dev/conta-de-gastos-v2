@@ -118,7 +118,7 @@ export function classificarFontePorPrefixo(
   }
 
   throw new Error(
-    `classificarFontePorPrefixo: prefixo de fonte desconhecido "${fonte}" — esperado "fatura_*", "extrato_*", "form_vr" ou "form_rendimentos"`,
+    `classificarFontePorPrefixo: prefixo de fonte desconhecido "${fonte}". Esperado "fatura_*", "extrato_*", "form_vr" ou "form_rendimentos"`,
   )
 }
 
@@ -153,7 +153,7 @@ export function detectarDesalinhamentoMes(
       id: `desalinhamento-mes-${fonte}`,
       tipo: 'informativo',
       origem: 'desalinhamento-mes',
-      mensagem: `Aviso: mês de referência "${mesRef}" pode estar desalinhado com a fonte "${fonte}" — classificação por prefixo indica "${porPrefixo}", mas nenhum lançamento da fonte corresponde a essa data em relação ao mês escolhido.`,
+      mensagem: `Aviso: mês de referência "${mesRef}" pode estar desalinhado com a fonte "${fonte}". A classificação por prefixo indica "${porPrefixo}", mas nenhum lançamento da fonte corresponde a essa data em relação ao mês escolhido.`,
       alvo: [],
       permanece: [],
       estado: 'pendente',

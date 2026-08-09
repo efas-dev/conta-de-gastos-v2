@@ -107,7 +107,7 @@ export async function handleProduzir(deps: DepsHandleProduzir): Promise<void> {
     modelo = new Uint8Array(await resp.arrayBuffer())
   } catch (err) {
     console.error('[handlersPipeline] Falha ao carregar Modelo.xlsx:', err)
-    const mensagem = 'Erro ao carregar Modelo.xlsx — verifique o servidor'
+    const mensagem = 'Erro ao carregar Modelo.xlsx: verifique o servidor'
     addAviso(mensagem)
     adicionarAvisosAcionaveis([
       criarAvisoInformativo(crypto.randomUUID(), 'erro-modelo-xlsx', mensagem),

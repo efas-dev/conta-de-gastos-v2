@@ -43,7 +43,7 @@ export function ExportModal({ fase, nome, pendentes, onConfirmar, onFechar, onCo
             {pendentes > 0 && (
               <div className="alerta-export">
                 <IconeAlerta />
-                {pendentes} lançamento{pendentes > 1 ? 's' : ''} ainda sem natureza — {pendentes > 1 ? 'irão' : 'irá'} em
+                {pendentes} lançamento{pendentes > 1 ? 's' : ''} ainda sem natureza: {pendentes > 1 ? 'irão' : 'irá'} em
                 branco e o Excel {pendentes > 1 ? 'os marcará' : 'o marcará'} em vermelho.
               </div>
             )}
