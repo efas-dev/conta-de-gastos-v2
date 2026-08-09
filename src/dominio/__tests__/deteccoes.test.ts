@@ -261,13 +261,35 @@ describe('detectarConciliacao', () => {
     ])
   })
 
-  it('sem casamento algum gera aviso informativo "fatura não conciliada" (TL-8)', () => {
+  it('sem casamento algum gera aviso informativo dizendo que o pagamento não foi achado (TL-8)', () => {
     const fatura = [lancamento({ transcricao: 'Item A', valor: -200 })]
     const extrato = [lancamento({ transcricao: 'Outro débito qualquer', valor: -999 })]
     const avisos = detectarConciliacao(fatura, extrato)
     expect(avisos).toHaveLength(1)
     expect(avisos[0].tipo).toBe('informativo')
-    expect(avisos[0].mensagem).toContain('fatura não conciliada')
+    expect(avisos[0].mensagem).toContain('pagamento desta fatura')
+    expect(avisos[0].mensagem).toContain('Nada foi removido')
+  })
+
+  it('TL-21: os três informativos explicam o risco de contar os gastos duas vezes', () => {
+    const faturaAmbigua = [lancamento({ transcricao: 'Item A', valor: -200 })]
+    const extratoAmbiguo = [
+      lancamento({ transcricao: 'Pagamento de fatura', valor: -200, id: 30 }),
+      lancamento({ transcricao: 'Pagamento de fatura (duplicado)', valor: -200, id: 31 }),
+    ]
+    const [ambiguidade] = detectarConciliacao(faturaAmbigua, extratoAmbiguo)
+    expect(ambiguidade.mensagem).toContain('duas vezes')
+
+    // Fora da tolerância de R$ 0,05, dentro da faixa de 10% → candidatos próximos.
+    const [proximos] = detectarConciliacao(faturaAmbigua, [
+      lancamento({ transcricao: 'Pagamento quase igual', valor: -205, id: 42 }),
+    ])
+    expect(proximos.mensagem).toContain('duas vezes')
+
+    const [semCasamento] = detectarConciliacao(faturaAmbigua, [
+      lancamento({ transcricao: 'Outro débito qualquer', valor: -999 }),
+    ])
+    expect(semCasamento.mensagem).toContain('duas vezes')
   })
 
   it('casamento total: permanece contém todos os ids da fatura e resumo formatado (TL-10)', () => {
@@ -282,9 +304,35 @@ describe('detectarConciliacao', () => {
     const avisos = detectarConciliacao(fatura, extrato)
     expect(avisos).toHaveLength(1)
     expect(avisos[0].permanece).toEqual(['0', '1'])
-    expect(avisos[0].resumo).toBe(
-      'somatório da fatura R$ 150,30 ↔ pagamento R$ 150,32, diferença ≤ R$ 0,05',
-    )
+    // O resumo mostra os dois lados do casamento (itens da fatura ↔ pagamento no extrato)
+    // e diz por que a remoção é proposta: sem ela, os mesmos gastos entram duas vezes.
+    expect(avisos[0].resumo).toContain('R$ 150,30')
+    expect(avisos[0].resumo).toContain('R$ 150,32')
+    expect(avisos[0].resumo).toContain('duas vezes')
+  })
+
+  it('TL-19: proposta de casamento total explica a duplicidade e diz que só a linha do extrato sai', () => {
+    const fatura = [lancamento({ transcricao: 'Item A', valor: -100 })]
+    const extrato = [lancamento({ transcricao: 'Pagamento de fatura', valor: -100 })]
+    const avisos = detectarConciliacao(fatura, extrato)
+
+    expect(avisos[0].mensagem).toContain('Pagamento de fatura')
+    expect(avisos[0].mensagem).toContain('R$ 100,00')
+    expect(avisos[0].resumo).toContain('um a um')
+    expect(avisos[0].resumo).toContain('só a linha do extrato')
+  })
+
+  it('TL-20: no casamento parcial o resumo diz que só PARTE dos itens da fatura foi coberta', () => {
+    const fatura = [
+      lancamento({ transcricao: 'Item A', valor: -100 }),
+      lancamento({ transcricao: 'Item B', valor: -50.3 }),
+      lancamento({ transcricao: 'Item C', valor: -30 }),
+    ]
+    const extrato = [lancamento({ transcricao: 'Pagamento parcial', valor: -130 })]
+    const avisos = detectarConciliacao(fatura, extrato)
+
+    expect(avisos[0].resumo).toContain('Parte dos itens')
+    expect(avisos[0].resumo).toContain('R$ 130,00')
   })
 
   it('fallback subset-sum: permanece contém só os ids do subconjunto casado e resumo correspondente (TL-11)', () => {
@@ -300,9 +348,8 @@ describe('detectarConciliacao', () => {
     const avisos = detectarConciliacao(fatura, extrato)
     expect(avisos).toHaveLength(1)
     expect(avisos[0].permanece).toEqual(['0', '2'])
-    expect(avisos[0].resumo).toBe(
-      'somatório da fatura R$ 130,00 ↔ pagamento R$ 130,00, diferença ≤ R$ 0,05',
-    )
+    expect(avisos[0].resumo).toContain('R$ 130,00')
+    expect(avisos[0].resumo).toContain('duas vezes')
   })
 
   it('sem casamento: permanece vazio e resumo undefined (TL-12)', () => {
@@ -350,7 +397,7 @@ describe('detectarConciliacao', () => {
     const avisos = detectarConciliacao(fatura, extrato)
     expect(avisos).toHaveLength(1)
     expect(avisos[0].tipo).toBe('informativo')
-    expect(avisos[0].mensagem).toContain('fatura não conciliada')
+    expect(avisos[0].mensagem).toContain('pagamento desta fatura')
     expect(avisos[0].candidatos).toBeUndefined()
   })
 
