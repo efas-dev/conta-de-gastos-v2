@@ -54,10 +54,23 @@ const ROTULO_ORIGEM_ESPECIAL: Record<'valor-pendente' | 'pagamento-recebido', st
   'pagamento-recebido': 'Pagamento recebido',
 }
 
-/** Trecho final do resumo — reforça que o valor não é gasto/receita do mês corrente. */
+/**
+ * Explicação exibida no resumo do aviso. As duas linhas são uma particularidade do CSV do
+ * Nubank, que abre a fatura repetindo o saldo que ficou em aberto no ciclo anterior e, em
+ * seguida, o crédito da quitação desse saldo. Quando o usuário não atrasa a fatura, as duas
+ * se anulam (mesmo valor, sinais opostos) — daí "em geral": com atraso entram multa e juros
+ * e os módulos deixam de coincidir, mas nenhuma das duas linhas é gasto do mês corrente.
+ * O texto nomeia a contraparte para que o usuário entenda o par ao tratar cada aviso.
+ */
 const COMPLEMENTO_RESUMO_ORIGEM_ESPECIAL: Record<'valor-pendente' | 'pagamento-recebido', string> = {
-  'valor-pendente': 'resíduo da fatura passada, não é gasto do mês',
-  'pagamento-recebido': 'crédito referente à quitação da fatura anterior, não é gasto do mês',
+  'valor-pendente':
+    'é o que ficou em aberto na fatura passada, que o Nubank repete no começo desta. ' +
+    'Não é uma compra deste mês: em geral se anula com o "Pagamento recebido" de mesmo valor. ' +
+    'Aprovar tira a linha da planilha.',
+  'pagamento-recebido':
+    'é a quitação da fatura anterior, que o Nubank lança dentro desta fatura. ' +
+    'Não é gasto nem receita deste mês: em geral se anula com o "Valor pendente do mês anterior". ' +
+    'Aprovar tira a linha da planilha.',
 }
 
 /**
@@ -83,12 +96,20 @@ function detectarPorOrigemEspecial(
 
     const rotulo = ROTULO_ORIGEM_ESPECIAL[origem]
     const valorCentavos = Math.abs(paraCentavos(lancamento.valor))
+    const valorFormatado = `R$ ${formatarReais(valorCentavos)}`
+
+    // A transcrição só entra quando acrescenta informação: no caso comum ela é idêntica ao
+    // rótulo da origem ("Valor pendente do mês anterior"), e repeti-la só polui o título.
+    const transcricaoRedundante =
+      lancamento.transcricao.trim().toLocaleLowerCase('pt-BR') === rotulo.toLocaleLowerCase('pt-BR')
 
     avisos.push({
       id: `${origem}-${index}`,
       tipo: 'proposta',
       origem,
-      mensagem: `${rotulo}: "${lancamento.transcricao}" (R$ ${Math.abs(lancamento.valor).toFixed(2)}).`,
+      mensagem: transcricaoRedundante
+        ? `${rotulo}: ${valorFormatado}.`
+        : `${rotulo}: ${valorFormatado} ("${lancamento.transcricao}").`,
       alvo: [String(index)],
       permanece: [],
       resumo: `${rotulo}: R$ ${formatarReais(valorCentavos)} — ${COMPLEMENTO_RESUMO_ORIGEM_ESPECIAL[origem]}`,

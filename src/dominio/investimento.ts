@@ -86,7 +86,9 @@ export function detectarInvestimentoAvisos(lancamentos: Lancamento[]): Aviso[] {
       id: `investimento-${lancamento.id}`,
       tipo: 'proposta',
       origem: 'investimento',
-      mensagem: `${rotulo}: "${lancamento.transcricao}" (R$ ${Math.abs(lancamento.valor).toFixed(2)}). Deseja remover esse lançamento?`,
+      // Valor em pt-BR (vírgula decimal, separador de milhar) — o mesmo `formatarReais` do
+      // `resumo` logo abaixo, para que os dois números do aviso não divirjam de formato.
+      mensagem: `${rotulo}: "${lancamento.transcricao}" (R$ ${formatarReais(valorCentavos)}). Deseja remover esse lançamento?`,
       alvo: [String(lancamento.id)],
       permanece: [],
       resumo: `${rotulo}: R$ ${formatarReais(valorCentavos)}`,

@@ -142,6 +142,19 @@ describe('detectarInvestimentoAvisos', () => {
     expect(aviso.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [42] })
   })
 
+  it('TL-26: mensagem formata o valor em pt-BR, consistente com o resumo do mesmo aviso', () => {
+    const aplicacao = lancamentoComId({
+      id: 42,
+      transcricao: 'APLICACAO RDB AUTOMATICO',
+      valor: -4049.2,
+    })
+    const [aviso] = detectarInvestimentoAvisos([aplicacao])
+
+    expect(aviso.mensagem).toContain('R$ 4.049,20')
+    expect(aviso.mensagem).not.toContain('4049.20')
+    expect(aviso.resumo).toContain('R$ 4.049,20')
+  })
+
   it('gera um Aviso tipo proposta com mutacaoProposta remover [id] para um resgate (TL-16)', () => {
     const resgate = lancamentoComId({
       id: 43,
@@ -189,7 +202,9 @@ describe('detectarInvestimentoAvisos', () => {
     const [aviso] = detectarInvestimentoAvisos([aplicacao])
 
     expect(aviso.mensagem).toContain('APLICACAO RDB AUTOMATICO')
-    expect(aviso.mensagem).toContain('1234.56')
+    // Mensagem e resumo passaram a compartilhar o formato pt-BR (antes a mensagem usava
+    // `toFixed(2)`, "1234.56", divergindo do resumo no mesmo card) — ver TL-26.
+    expect(aviso.mensagem).toContain('1.234,56')
     expect(aviso.resumo).toContain('1.234,56')
   })
 
@@ -202,7 +217,7 @@ describe('detectarInvestimentoAvisos', () => {
     const [aviso] = detectarInvestimentoAvisos([resgate])
 
     expect(aviso.mensagem).toContain('RESGATE RDB AUTOMATICO')
-    expect(aviso.mensagem).toContain('1234.56')
+    expect(aviso.mensagem).toContain('1.234,56')
     expect(aviso.resumo).toContain('1.234,56')
   })
 

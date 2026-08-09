@@ -70,6 +70,40 @@ describe('detectarValorPendente', () => {
     ]
     expect(detectarValorPendente(lancamentos)).toHaveLength(0)
   })
+
+  it('TL-10: mensagem formata o valor em pt-BR (vírgula decimal e separador de milhar)', () => {
+    const lancamentos = [
+      lancamento({ transcricao: 'Valor pendente do mês anterior', valor: -3043.64, origemEspecial: 'valor-pendente' }),
+    ]
+    const avisos = detectarValorPendente(lancamentos)
+    expect(avisos[0].mensagem).toContain('R$ 3.043,64')
+    expect(avisos[0].mensagem).not.toContain('3043.64')
+  })
+
+  it('TL-11: mensagem não repete a transcrição quando ela é igual ao rótulo da origem', () => {
+    const lancamentos = [
+      lancamento({ transcricao: 'Valor pendente do mês anterior', valor: -120.5, origemEspecial: 'valor-pendente' }),
+    ]
+    const avisos = detectarValorPendente(lancamentos)
+    expect(avisos[0].mensagem).toBe('Valor pendente do mês anterior: R$ 120,50.')
+  })
+
+  it('TL-12: mensagem preserva a transcrição entre aspas quando ela difere do rótulo', () => {
+    const lancamentos = [
+      lancamento({ transcricao: 'Saldo restante da fatura', valor: -120.5, origemEspecial: 'valor-pendente' }),
+    ]
+    const avisos = detectarValorPendente(lancamentos)
+    expect(avisos[0].mensagem).toContain('"Saldo restante da fatura"')
+  })
+
+  it('TL-13: resumo explica que o valor em geral se anula com o pagamento recebido', () => {
+    const lancamentos = [
+      lancamento({ transcricao: 'Valor pendente do mês anterior', valor: -120.5, origemEspecial: 'valor-pendente' }),
+    ]
+    const avisos = detectarValorPendente(lancamentos)
+    expect(avisos[0].resumo).toContain('Pagamento recebido')
+    expect(avisos[0].resumo).toContain('anula')
+  })
 })
 
 describe('detectarPagamentoRecebido', () => {
@@ -111,6 +145,23 @@ describe('detectarPagamentoRecebido', () => {
     const avisos = detectarPagamentoRecebido(lancamentos)
     expect(avisos).toHaveLength(2)
     expect(avisos.map((a) => a.alvo[0])).toEqual(['0', '2'])
+  })
+
+  it('TL-14: mensagem formata o valor em pt-BR e não repete a transcrição igual ao rótulo', () => {
+    const lancamentos = [
+      lancamento({ transcricao: 'Pagamento recebido', valor: 3043.64, origemEspecial: 'pagamento-recebido' }),
+    ]
+    const avisos = detectarPagamentoRecebido(lancamentos)
+    expect(avisos[0].mensagem).toBe('Pagamento recebido: R$ 3.043,64.')
+  })
+
+  it('TL-15: resumo explica que o crédito em geral se anula com o valor pendente', () => {
+    const lancamentos = [
+      lancamento({ transcricao: 'Pagamento recebido', valor: 300, origemEspecial: 'pagamento-recebido' }),
+    ]
+    const avisos = detectarPagamentoRecebido(lancamentos)
+    expect(avisos[0].resumo).toContain('Valor pendente do mês anterior')
+    expect(avisos[0].resumo).toContain('anula')
   })
 })
 
