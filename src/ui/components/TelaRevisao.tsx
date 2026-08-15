@@ -73,6 +73,8 @@ export function TelaRevisao({
   const undo = useAppStore((s) => s.undo)
   const redo = useAppStore((s) => s.redo)
   const marcarLimpo = useAppStore((s) => s.marcarLimpo)
+  const historico = useAppStore((s) => s.historico)
+  const futuro = useAppStore((s) => s.futuro)
 
   /** Índice do lançamento que abriu o SplitModal (null = modal fechado). */
   const [splitIndice, setSplitIndice] = useState<number | null>(null)
@@ -234,17 +236,18 @@ export function TelaRevisao({
         <button
           type="button"
           className="btn sec icone"
-          disabled={lancamentos.length === 0}
+          disabled={historico.length === 0}
           onClick={undo}
-          title="Desfazer (Ctrl+Z)"
+          title="Desfazer edição da grid (Ctrl+Z)"
         >
           <IconeDesfazer />
         </button>
         <button
           type="button"
           className="btn sec icone"
+          disabled={futuro.length === 0}
           onClick={redo}
-          title="Refazer (Ctrl+Shift+Z)"
+          title="Refazer edição da grid (Ctrl+Shift+Z)"
         >
           <IconeRefazer />
         </button>
