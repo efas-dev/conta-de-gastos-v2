@@ -119,6 +119,16 @@ describe('FormVR — caminho válido, integração com a store real (TL-71, TL-7
   })
 })
 
+describe('FormVR — classes oficiais (B1)', () => {
+  it('os três campos por despesa (valor, natureza, descrição) usam a classe .input', () => {
+    render(<FormVR mesRef="2026-07" />)
+
+    expect(screen.getByLabelText('Valor da despesa 1')).toHaveClass('input')
+    expect(screen.getByLabelText('Natureza da despesa 1')).toHaveClass('input')
+    expect(screen.getByLabelText('Descrição da despesa 1')).toHaveClass('input')
+  })
+})
+
 describe('FormVR — caminhos inválidos, sem crash (TL-74, TL-75, TL-76, TL-77, TL-78)', () => {
   it('formulário vazio (0 despesas) bloqueia com mensagem de erro e não insere lançamento', () => {
     render(<FormVR mesRef="2026-07" />)
