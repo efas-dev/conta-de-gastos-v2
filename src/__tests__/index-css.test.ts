@@ -25,12 +25,9 @@ describe('src/index.css — fundação de tokens do protótipo Claude Design (Ta
     '.btn.cta',
     '.btn.icone',
     '.btn.mini',
-    '.btn.ver',
     '.badge',
     '.badge.peach',
     '.badge.inline',
-    '.chip',
-    '.chip.on',
     '.chip-sujo',
     '.ponto',
     '.painel',
@@ -65,10 +62,6 @@ describe('src/index.css — fundação de tokens do protótipo Claude Design (Ta
     '.sel-mini',
     '.logo',
     '.logo.mini',
-    '.gtab',
-    '.filtros',
-    '.filtro-grupo',
-    '.divisor',
     '.btn-limpar',
     '.banner-inspecao',
     '.tag-insp',
@@ -116,21 +109,5 @@ describe('src/index.css — fundação de tokens do protótipo Claude Design (Ta
 
   it('contém o styling de scrollbar do protótipo', () => {
     expect(css).toContain('::-webkit-scrollbar');
-  });
-
-  it.each([
-    '.dc-titulo',
-    '.dc-subtitulo',
-    '.dc-rotulo',
-    '.dc-opcional',
-    '.dc-card',
-    '.dc-input',
-    '.dc-btn',
-    '.dc-btn-secundario',
-    '.dc-btn-primario',
-    '.dc-btn-cta',
-    '.dc-pill-privado',
-  ])('não remove a classe %s existente', (classe) => {
-    expect(css).toContain(classe);
   });
 });

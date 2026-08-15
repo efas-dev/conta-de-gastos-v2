@@ -78,121 +78,12 @@ body {
   background: #cfdccf;
 }
 
-/* Tipografia utilitária */
-.dc-titulo {
-  margin: 0;
-  font-size: 32px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-}
-.dc-subtitulo {
-  margin: 14px 0 0;
-  font-size: 16px;
-  line-height: 1.6;
-  color: var(--texto-3);
-}
-.dc-rotulo {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--texto-2);
-}
-.dc-opcional {
-  color: var(--muted-2);
-  font-weight: 600;
-}
-
-/* Card / superfície */
-.dc-card {
-  background: var(--superficie);
-  border: 1px solid var(--borda);
-  border-radius: var(--raio-card);
-  overflow: hidden;
-  box-shadow: var(--sombra-card);
-}
-
-/* Inputs */
-.dc-input {
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  padding: 12px 14px;
-  border: 1px solid var(--borda-3);
-  border-radius: var(--raio-campo);
-  background: var(--branco);
-  color: var(--texto);
-  outline: none;
-  width: 100%;
-  transition: border-color 0.15s;
-}
-.dc-input::placeholder {
-  color: var(--muted-2);
-  font-weight: 500;
-}
-.dc-input:focus {
-  border-color: var(--verde);
-}
-
-/* Botões */
-.dc-btn {
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  border-radius: 10px;
-  padding: 10px 15px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
-}
-.dc-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.dc-btn-secundario {
-  color: var(--texto-2);
-  background: var(--branco);
-  border: 1px solid var(--borda-3);
-}
-.dc-btn-secundario:hover:not(:disabled) {
-  border-color: #b9b2a4;
-}
-.dc-btn-primario {
-  color: var(--superficie);
-  background: var(--verde);
-  border: 1px solid var(--verde);
-  box-shadow: var(--sombra-verde);
-}
-.dc-btn-primario:hover:not(:disabled) {
-  background: var(--verde-hover);
-}
-.dc-btn-cta {
-  font-size: 16px;
-  padding: 16px;
-  border-radius: var(--raio-botao);
-  width: 100%;
-}
-
-/* Pill "dados nunca saem" */
-.dc-pill-privado {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--verde-suave);
-  border: 1px solid var(--verde-borda);
-  color: var(--verde-texto);
-  padding: 7px 13px;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
 /* ===========================================================================
    Sistema de classes do protótipo Claude Design (Task T1).
    Fonte: prototipo/Conta de Gastos - Redesign.html, bloco <style>.
-   Convivem com as classes .dc-* acima até T11 migrar os call-sites.
+   A família .dc-* (protótipo original) foi removida em C1 (spec
+   patches-ui-ux) — todos os call-sites já haviam migrado para as classes
+   abaixo.
    =========================================================================== */
 
 a {
@@ -327,7 +218,6 @@ a:hover {
   cursor: not-allowed;
 }
 .btn,
-.chip,
 .pill-privado {
   white-space: nowrap;
 }
@@ -370,20 +260,6 @@ a:hover {
 .btn.mini.icone {
   padding: 5px 7px;
 }
-.btn.ver {
-  background: none;
-  border: none;
-  color: var(--azul);
-  gap: 5px;
-}
-.btn.ver:hover {
-  color: var(--texto);
-}
-.btn.ver.on {
-  color: var(--texto);
-  font-weight: 800;
-}
-
 .badge {
   position: absolute;
   top: -7px;
@@ -706,58 +582,6 @@ select.input {
   padding: 2px 0;
 }
 
-.filtros {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 18px;
-  border-bottom: 1px solid var(--borda-2);
-  flex-shrink: 0;
-  flex-wrap: wrap;
-}
-.filtro-grupo {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-}
-.divisor {
-  width: 1px;
-  height: 16px;
-  background: var(--borda-3);
-}
-.chip {
-  font-family: inherit;
-  padding: 2.5px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--borda-2);
-  background: none;
-  color: var(--texto-3);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.12s;
-}
-.chip:hover {
-  border-color: #b9b2a4;
-}
-.chip.on {
-  background: var(--verde);
-  border-color: var(--verde);
-  color: #faf8f3;
-}
-.chip.estado.on .sw {
-  border-color: rgba(250, 248, 243, 0.7);
-}
-.sw {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  border: 1px solid;
-  display: inline-block;
-}
 .btn-limpar {
   border: none;
   background: none;
@@ -806,80 +630,11 @@ select.input {
   overflow: auto;
   background: var(--superficie);
 }
-.gtab {
-  border-collapse: separate;
-  border-spacing: 0;
-  width: 100%;
-  table-layout: fixed;
-  font-size: 13.5px;
-}
-.gtab th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--barra);
-  color: var(--muted);
-  font-size: 11.5px;
-  font-weight: 700;
-  text-align: left;
-  padding: 9px 13px;
-  border-bottom: 1px solid var(--borda);
-  cursor: pointer;
-  user-select: none;
-  white-space: nowrap;
-}
-.gtab th:hover {
-  color: var(--texto-2);
-}
-.gtab th.ro {
-  background: #efece4;
-}
 .sort-ind {
   display: inline-block;
   width: 10px;
   color: var(--verde);
   font-weight: 800;
-}
-.gtab td {
-  padding: 8px 13px;
-  border-bottom: 1px solid var(--borda-2);
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  height: 39px;
-}
-.gtab td.ro {
-  background: rgba(0, 0, 0, 0.022);
-  color: var(--texto-3);
-}
-.gtab td.edit {
-  cursor: text;
-}
-.gtab td.edit:hover {
-  box-shadow: inset 0 0 0 1.5px var(--verde-borda);
-  border-radius: 2px;
-}
-.gtab td.num {
-  text-align: right;
-}
-.gtab td.marcador {
-  text-align: center;
-  color: var(--muted-2);
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  background: var(--barra);
-  border-right: 1px solid var(--borda-2);
-  user-select: none;
-  padding: 8px 4px;
-}
-.gtab td.marcador:hover {
-  color: var(--verde);
-}
-.gtab td.marcador.sel {
-  background: var(--verde);
-  color: #faf8f3;
 }
 tr.insp-sai td {
   background: var(--insp-sai-bg);

@@ -46,13 +46,14 @@ describe('src/index.css — Task A1: 5 regras novas do patch de UI/UX', () => {
     expect(css).toMatch(/--verde-texto:\s*#4e6a53/);
   });
 
-  it('as 4 regras que usavam o hex repetido agora usam var(--verde-texto)', () => {
+  it('as regras que usavam o hex repetido agora usam var(--verde-texto)', () => {
+    // .dc-pill-privado usava o mesmo hex em A1, mas foi removida em C1 (CSS
+    // morto, sem call-site) — as 3 regras restantes continuam migradas.
     const regraPillPrivado = css.match(/(?<!dc-)\.pill-privado\s*\{([^}]*)\}/);
-    const regraDcPillPrivado = css.match(/\.dc-pill-privado\s*\{([^}]*)\}/);
     const regraTagExtrato = css.match(/\.tag-tipo\.extrato\s*\{([^}]*)\}/);
     const regraValorPos = css.match(/\.valor\.pos\s*\{([^}]*)\}/);
 
-    for (const regra of [regraPillPrivado, regraDcPillPrivado, regraTagExtrato, regraValorPos]) {
+    for (const regra of [regraPillPrivado, regraTagExtrato, regraValorPos]) {
       expect(regra).not.toBeNull();
       expect(regra?.[1]).toMatch(/color:\s*var\(--verde-texto\)/);
     }
