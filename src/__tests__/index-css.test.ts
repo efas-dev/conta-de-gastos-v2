@@ -5,6 +5,49 @@ import { resolve } from 'node:path';
 
 const css = readFileSync(resolve(__dirname, '../index.css'), 'utf-8');
 
+/**
+ * Confirma que `seletor` existe como seletor CSS de verdade em `folha` — não como substring de um
+ * seletor mais longo. `.chip` NÃO deve casar dentro de `.chip-sujo`, mas DEVE casar em `.chip {`,
+ * `.btn, .chip {` ou `.chip:hover`. A fronteira proibida é qualquer caractere de identificador
+ * ([\w-]) logo antes ou logo depois do seletor buscado — isso barra extensões do nome (`-sujo`) sem
+ * barrar continuações legítimas de seletor (`,`, `:`, `.`, espaço, chave, fim de string).
+ */
+function cssHasSelector(folha: string, seletor: string): boolean {
+  const escapado = seletor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(?<![\\w-])${escapado}(?![\\w-])`);
+  return regex.test(folha);
+}
+
+describe('cssHasSelector — matcher de seletor real (Task D1)', () => {
+  it('casa um seletor simples que aparece isolado seguido de chave', () => {
+    expect(cssHasSelector('.chip {\n  color: red;\n}', '.chip')).toBe(true);
+  });
+
+  it('NÃO casa um seletor simples dentro de outro seletor que o contém como prefixo textual', () => {
+    expect(cssHasSelector('.chip-sujo {\n  color: red;\n}', '.chip')).toBe(false);
+  });
+
+  it('NÃO casa `.btn` dentro de `.btn-remover`', () => {
+    expect(cssHasSelector('.btn-remover {\n  color: red;\n}', '.btn')).toBe(false);
+  });
+
+  it('casa seletor composto exato', () => {
+    expect(cssHasSelector('.btn.pri {\n  color: red;\n}', '.btn.pri')).toBe(true);
+  });
+
+  it('NÃO casa seletor composto quando o CSS tem um terceiro qualificador colado', () => {
+    expect(cssHasSelector('.btn.pri-especial {\n  color: red;\n}', '.btn.pri')).toBe(false);
+  });
+
+  it('casa quando o seletor aparece numa lista separada por vírgula', () => {
+    expect(cssHasSelector('.btn, .chip {\n  color: red;\n}', '.chip')).toBe(true);
+  });
+
+  it('casa quando o seletor é seguido de pseudo-classe', () => {
+    expect(cssHasSelector('.aba:hover {\n  color: red;\n}', '.aba')).toBe(true);
+  });
+});
+
 describe('src/index.css — fundação de tokens do protótipo Claude Design (Task T1)', () => {
   it('contém as variáveis novas de cor de inspeção e terracota suave', () => {
     expect(css).toContain('--insp-sai: #c94f46');
@@ -103,11 +146,16 @@ describe('src/index.css — fundação de tokens do protótipo Claude Design (Ta
     '.dica-dic',
     '.alerta-export',
     '.arquivo-nome',
-  ])('contém a classe %s copiada do protótipo', (classe) => {
-    expect(css).toContain(classe);
+  ])('contém a classe %s copiada do protótipo, como seletor real (não substring)', (classe) => {
+    expect(cssHasSelector(css, classe)).toBe(true);
   });
 
   it('contém o styling de scrollbar do protótipo', () => {
     expect(css).toContain('::-webkit-scrollbar');
+  });
+
+  it('não confunde `.chip-sujo` (real) com um resquício de `.chip` (removido em C1) — prova contra o CSS de produção', () => {
+    expect(cssHasSelector(css, '.chip-sujo')).toBe(true);
+    expect(cssHasSelector(css, '.chip')).toBe(false);
   });
 });
