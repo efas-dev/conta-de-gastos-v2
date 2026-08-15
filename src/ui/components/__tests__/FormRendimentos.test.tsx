@@ -191,6 +191,31 @@ describe('FormRendimentos — validação de conta corrente (T10-FR-11)', () => 
   })
 })
 
+describe('FormRendimentos — classes oficiais e placeholders (B1)', () => {
+  it('campo "Conta corrente" usa a classe .input e o placeholder "Ex.: 1234,56"', () => {
+    render(<FormRendimentos mesRef="2026-07" />)
+
+    const campo = screen.getByLabelText('Conta corrente')
+    expect(campo).toHaveClass('input')
+    expect(campo).toHaveAttribute('placeholder', 'Ex.: 1234,56')
+  })
+
+  it('campo "Aplicações" usa a classe .input e mantém o placeholder "Ex.: 100+50+20"', () => {
+    render(<FormRendimentos mesRef="2026-07" />)
+
+    const campo = screen.getByLabelText('Aplicações')
+    expect(campo).toHaveClass('input')
+    expect(campo).toHaveAttribute('placeholder', 'Ex.: 100+50+20')
+  })
+
+  it('os dois campos usam os wrappers .campo e os rótulos usam a classe .rotulo', () => {
+    render(<FormRendimentos mesRef="2026-07" />)
+
+    expect(document.querySelectorAll('.campo').length).toBe(2)
+    expect(document.querySelectorAll('.rotulo').length).toBe(2)
+  })
+})
+
 describe('FormRendimentos — aviso ausente (T10-FR-12)', () => {
   it('aviso rendimentos ausente na store não lança exceção ao confirmar (best-effort)', () => {
     useAppStore.setState({

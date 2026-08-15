@@ -124,29 +124,26 @@ export function FormRendimentos({ mesRef }: FormRendimentosProps) {
       <div className="painel-secao">Rendimentos do mês</div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 13 }}>
-          Conta corrente
+        <label className="campo">
+          <span className="rotulo">Conta corrente</span>
           <input
+            className="input"
             aria-label="Conta corrente"
-            placeholder="Saldo da conta corrente"
+            placeholder="Ex.: 1234,56"
             value={contaCorrente}
             onChange={(e) => setContaCorrente(e.target.value)}
           />
         </label>
 
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 13 }}>
-          Aplicações
+        <label className="campo">
+          <span className="rotulo">Aplicações</span>
           <input
+            className="input"
             aria-label="Aplicações"
             placeholder='Ex.: 100+50+20'
             value={aplicacoes}
             data-soma-valida={somaValidaAttr}
             onChange={(e) => setAplicacoes(e.target.value)}
-            style={
-              somaValidaAttr === 'true'
-                ? { borderColor: 'var(--verde)', background: 'var(--verde-suave)' }
-                : undefined
-            }
           />
         </label>
 
