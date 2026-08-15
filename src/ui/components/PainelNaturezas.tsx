@@ -69,8 +69,9 @@ export function ordenarNaturezas(
  * lançamento correspondente omite o número. Ordem: RR primeiro, demais por
  * |soma| decrescente (ajuste 2026-08-02).
  *
- * Quando a lista é vazia, o componente renderiza `null` — mesmo padrão
- * anterior de "nada montado sem conteúdo".
+ * Quando a lista é vazia, o componente renderiza `.painel-vazio` explicando o
+ * que houve (nenhuma natureza carregada) e o que fazer (importar um
+ * extrato/fatura) — em vez de `return null` (Task B6).
  */
 export function PainelNaturezas({ naturezas }: PainelNaturezasProps) {
   const lancamentos = useAppStore((s) => s.lancamentos)
@@ -81,7 +82,12 @@ export function PainelNaturezas({ naturezas }: PainelNaturezasProps) {
   const ordenadas = useMemo(() => ordenarNaturezas(naturezas, somas), [naturezas, somas])
 
   if (naturezas.length === 0) {
-    return null
+    return (
+      <div className="painel-vazio">
+        <p style={{ margin: 0 }}>Nenhuma natureza carregada ainda.</p>
+        <p style={{ margin: 0 }}>Importe um extrato ou fatura para ver as naturezas aqui.</p>
+      </div>
+    )
   }
 
   return (

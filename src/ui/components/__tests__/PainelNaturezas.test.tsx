@@ -31,10 +31,24 @@ beforeEach(() => {
   useAppStore.setState({ lancamentos: [], filtroNaturezas: [] })
 })
 
-describe('PainelNaturezas — lista vazia (TL-01)', () => {
-  it('com naturezas vazia, o componente renderiza null (sem toggle, sem aside)', () => {
+describe('PainelNaturezas — lista vazia (TL-01, TL-05, TL-06)', () => {
+  it('TL-01: com naturezas vazia, renderiza .painel-vazio em vez de nada (container.firstChild não é null)', () => {
     const { container } = render(<PainelNaturezas naturezas={[]} />)
-    expect(container).toBeEmptyDOMElement()
+    expect(container.firstChild).not.toBeNull()
+    expect(container.querySelector('.painel-vazio')).not.toBeNull()
+  })
+
+  it('TL-05: .painel-vazio traz uma linha do que houve e uma linha do que fazer', () => {
+    render(<PainelNaturezas naturezas={[]} />)
+    expect(screen.getByText('Nenhuma natureza carregada ainda.')).toBeInTheDocument()
+    expect(
+      screen.getByText('Importe um extrato ou fatura para ver as naturezas aqui.'),
+    ).toBeInTheDocument()
+  })
+
+  it('TL-06: com naturezas vazia, não renderiza nenhum cartão .nat-item', () => {
+    const { container } = render(<PainelNaturezas naturezas={[]} />)
+    expect(container.querySelectorAll('.nat-item')).toHaveLength(0)
   })
 })
 
