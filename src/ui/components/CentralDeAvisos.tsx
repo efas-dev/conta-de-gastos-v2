@@ -4,7 +4,7 @@
 // ADR: see spec/vr-despesas.adr.md
 // ADR: see spec/rendimentos.adr.md
 
-import { useState } from 'react'
+import { useState, type KeyboardEvent } from 'react'
 import { useAppStore } from '../store/appStore'
 import type { Aviso } from '../../types'
 import { defaultMes } from '../../dominio/mes'
@@ -74,7 +74,14 @@ export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
   // antes da Task 7-bis.
   const mesRefEfetivo = mesRef ?? defaultMes()
 
-  if (avisos.length === 0) return null
+  if (avisos.length === 0) {
+    return (
+      <div className="painel-vazio">
+        <p style={{ margin: 0 }}>Nenhum aviso pendente no momento.</p>
+        <p style={{ margin: 0 }}>Novos avisos aparecem aqui conforme você importa ou revisa lançamentos.</p>
+      </div>
+    )
+  }
 
   // Informativos dispensados saem da lista (T9, D18) — sem "Desfazer" para este tipo,
   // diferente das propostas (D14): dispensar um informativo é definitivo na sessão.
@@ -120,7 +127,7 @@ export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
                 </div>
                 <div style={{ display: 'flex', marginTop: 8 }}>
                   <button type="button" className="btn sec mini" onClick={() => dispensar(aviso.id)}>
-                    Dispensar
+                    OK, entendi
                   </button>
                 </div>
               </li>
@@ -212,9 +219,28 @@ function CartaoProposta({
     entrarInspecao(aviso.id)
   }
 
+  // Teclado real (Task B3, patches-ui-ux): Enter e Espaço disparam a mesma ação do clique — o
+  // card já é interativo (toggle de inspeção ou abre FormVR/FormRendimentos), só faltava o
+  // suporte a teclado equivalente ao `onClick` existente. Guarda `e.target === e.currentTarget`
+  // (paridade com o `stopPropagation` usado no `onClick` dos botões filhos, ver `AcoesProposta`
+  // abaixo): sem ela, ativar um botão interno (ex.: "Aplicar") via teclado também dispararia a
+  // ação do card, porque o evento `keydown` do botão faz bubbling até este `<li>` independente do
+  // `stopPropagation` do `onClick` sintético do botão.
+  function aoTeclarNoCard(e: KeyboardEvent<HTMLLIElement>) {
+    if (e.target !== e.currentTarget) return
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      aoClicarNoCard()
+    }
+  }
+
   return (
     <li
       onClick={aoClicarNoCard}
+      onKeyDown={aoTeclarNoCard}
+      role="button"
+      tabIndex={0}
+      aria-label={aviso.mensagem}
       className={
         'card-aviso' +
         (emInspecao || formVRVisivel || formRendimentosVisivel ? ' inspecionando' : '') +
@@ -261,18 +287,24 @@ function CartaoProposta({
 /** Botões de ação de uma proposta — variam conforme `aviso.estado`. */
 function AcoesProposta({ aviso, aplicar, desfazer, dispensar }: AcoesPropostaProps) {
   if (aviso.estado === 'pendente') {
+    // Avisos `origem==='vr'`/`'rendimentos'` (Task B3, patches-ui-ux): o botão afirmativo some
+    // daqui — quem aplica a proposta é o botão "Aplicar" do próprio `FormVR`/`FormRendimentos`
+    // (ver `CartaoProposta` acima), não este componente. "Dispensar" continua disponível.
+    const afirmativoSuprimido = aviso.origem === 'vr' || aviso.origem === 'rendimentos'
     return (
       <>
-        <button
-          type="button"
-          className="btn sec mini"
-          onClick={(e) => {
-            e.stopPropagation()
-            aplicar(aviso.id)
-          }}
-        >
-          Aprovar
-        </button>
+        {!afirmativoSuprimido && (
+          <button
+            type="button"
+            className="btn pri mini"
+            onClick={(e) => {
+              e.stopPropagation()
+              aplicar(aviso.id)
+            }}
+          >
+            Aplicar
+          </button>
+        )}
         <button
           type="button"
           className="btn sec mini"
@@ -287,7 +319,7 @@ function AcoesProposta({ aviso, aplicar, desfazer, dispensar }: AcoesPropostaPro
     )
   }
 
-  // 'aplicado' e 'dispensado' — ambos reversíveis via "Desfazer" (D14).
+  // 'aplicado' e 'dispensado' — ambos reversíveis via "Reverter" (D14).
   if (aviso.estado === 'aplicado' || aviso.estado === 'dispensado') {
     return (
       <button
@@ -298,7 +330,7 @@ function AcoesProposta({ aviso, aplicar, desfazer, dispensar }: AcoesPropostaPro
           desfazer(aviso.id)
         }}
       >
-        Desfazer
+        Reverter
       </button>
     )
   }
