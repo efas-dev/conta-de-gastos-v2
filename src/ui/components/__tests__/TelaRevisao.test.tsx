@@ -348,6 +348,21 @@ describe('TelaRevisao', () => {
 
     expect(preventDefaultSpy).not.toHaveBeenCalled()
   })
+
+  it('não renderiza mais o badge peach de pendentes no botão Exportar, mesmo com lançamentos pendentes (Task B7b)', () => {
+    // natureza vazia com dados preenchidos → validarLinha retorna true (pendente)
+    estado.lancamentos = [lan({ natureza: '' })]
+    render(<TelaRevisao {...props()} />)
+
+    const botaoExportar = screen.getByText('Exportar .xlsx').closest('button')!
+    expect(botaoExportar.querySelector('.badge.peach')).toBeNull()
+  })
+
+  it('não renderiza mais a faixa "Só nesta aba · exporte antes de fechar" (aviso de zero-retenção migrou para o chip-sujo em B8, Task B7b)', () => {
+    render(<TelaRevisao {...props()} />)
+
+    expect(screen.queryByText('Só nesta aba · exporte antes de fechar')).toBeNull()
+  })
 })
 
 // ---------------------------------------------------------------------------

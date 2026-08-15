@@ -264,54 +264,11 @@ export function TelaRevisao({
           className="btn pri"
           onClick={() => setExportFase('confirmar')}
           disabled={!podaGerar}
-          style={{ position: 'relative' }}
         >
           <IconeExportar />
           Exportar .xlsx
-          {lancamentosPendentes > 0 && <span className="badge peach">{lancamentosPendentes}</span>}
         </button>
       </ToolbarRevisao>
-
-      {/* Legenda de cores e lembrete de zero-retenção. A linha de filterchips
-          foi aposentada (hotfix 2026-08-02): o filtro por natureza vive nos
-          cartões da colinha do PainelLateral. */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 22,
-          padding: '8px 28px 10px',
-          flexWrap: 'wrap',
-        }}
-      >
-        <span
-          style={{
-            marginLeft: 'auto',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 14,
-            flexShrink: 0,
-            // Mesma fonte dos chips de filtro (.chip = 12px), na mesma linha,
-            // alinhada à direita — pedido do usuário.
-            fontSize: 12,
-            fontWeight: 600,
-            color: 'var(--texto-3)',
-          }}
-        >
-          {/* A legenda das cores de linha (atenção / transferência própria /
-              investimento) foi aposentada junto com o próprio realce — ver
-              `calcularTemaLinhaComInspecao` em ReviewGrid.tsx. */}
-          <span
-            style={{
-              color: 'var(--muted)',
-              whiteSpace: 'nowrap',
-            }}
-            title="Os dados vivem apenas nesta aba. Exporte antes de fechar ou recarregar."
-          >
-            Só nesta aba · exporte antes de fechar
-          </span>
-        </span>
-      </div>
 
       {/* Corpo: grid + painel lateral lado a lado (Task T11 — item 4 das
           frases de intenção: painel lateral empurra a grid em vez de
