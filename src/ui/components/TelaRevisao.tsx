@@ -94,7 +94,8 @@ export function TelaRevisao({
 
   const lancamentosPendentes = lancamentos.filter((l) => validarLinha(l, naturezasValidas)).length
 
-  const nomeArquivoExport = computarNomeArquivo(lancamentos, iniciais)
+  // Preview do nome no modal de exportação — pelo mês de referência (ver handleGerar).
+  const nomeArquivoExport = computarNomeArquivo(lancamentos, iniciais, mesEscolhido)
 
   // ---------------------------------------------------------------------------
   // Atalhos de teclado (estilo Google Sheets) — desfazer/refazer

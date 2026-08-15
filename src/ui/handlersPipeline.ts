@@ -201,7 +201,9 @@ export function handleGerar(deps: DepsHandleGerar): void {
   const blob = new Blob([xlsxBytes.slice()], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   })
-  const nome = computarNomeArquivo(lancamentos, iniciais)
+  // Nome pelo mês de REFERÊNCIA (mesma autoridade de B3/Ref.), nunca pela data
+  // do primeiro lançamento — que numa fatura é do mês anterior (daria M-1).
+  const nome = computarNomeArquivo(lancamentos, iniciais, mesEscolhido)
 
   const url = URL.createObjectURL(blob)
   const a = anchorRef.current
