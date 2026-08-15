@@ -127,6 +127,13 @@ vi.mock('../BannerInspecao', () => ({
   BannerInspecao: ({ aviso }: { aviso: Aviso | null }) =>
     React.createElement('div', { 'data-testid': 'banner-inspecao', 'data-aviso': aviso?.id ?? '' }),
 }))
+let propsSeletorMesReferencia: Record<string, unknown> | null = null
+vi.mock('../SeletorMesReferencia', () => ({
+  SeletorMesReferencia: (props: Record<string, unknown>) => {
+    propsSeletorMesReferencia = props
+    return React.createElement('span', { 'data-testid': 'seletor-mes-referencia' })
+  },
+}))
 vi.mock('../ExportModal', () => ({
   ExportModal: ({
     fase,
@@ -185,6 +192,7 @@ beforeEach(() => {
     historico: [],
     futuro: [],
   }
+  propsSeletorMesReferencia = null
   vi.clearAllMocks()
 })
 
@@ -362,6 +370,17 @@ describe('TelaRevisao', () => {
     render(<TelaRevisao {...props()} />)
 
     expect(screen.queryByText('Só nesta aba · exporte antes de fechar')).toBeNull()
+  })
+
+  it('não repassa mais a prop morta "usuarioEditou" para o SeletorMesReferencia (Task B7c)', () => {
+    render(<TelaRevisao {...props({ mesEscolhido: '2024-03', usuarioEditouMes: true })} />)
+
+    expect(screen.getByTestId('seletor-mes-referencia')).toBeInTheDocument()
+    expect(propsSeletorMesReferencia).not.toBeNull()
+    expect(propsSeletorMesReferencia).not.toHaveProperty('usuarioEditou')
+    // mesEscolhido/onChange permanecem inalterados
+    expect(propsSeletorMesReferencia).toMatchObject({ mesEscolhido: '2024-03' })
+    expect(typeof propsSeletorMesReferencia?.onChange).toBe('function')
   })
 })
 

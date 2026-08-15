@@ -255,7 +255,6 @@ export function TelaRevisao({
           <span className="grupo-mes-rotulo">Mês ref.</span>
           <SeletorMesReferencia
             mesEscolhido={mesEscolhido}
-            usuarioEditou={usuarioEditouMes}
             onChange={onMudarMes}
           />
         </span>
