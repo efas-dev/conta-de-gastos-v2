@@ -133,18 +133,58 @@ describe('SplitModal — ações dos botões', () => {
 })
 
 describe('SplitModal — classes do design system (T1)', () => {
-  it('TL-11: overlay usa a classe "overlay", sem style inline', () => {
-    render(<SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />)
-    const overlay = screen.getByRole('dialog')
+  it('TL-11: overlay usa a classe "overlay", sem style inline e sem role/aria-* (TL-d)', () => {
+    const { container } = render(
+      <SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />,
+    )
+    const overlay = container.querySelector('.overlay') as HTMLElement
     expect(overlay).toHaveClass('overlay')
     expect(overlay).not.toHaveAttribute('style')
+    expect(overlay).not.toHaveAttribute('role')
+    expect(overlay).not.toHaveAttribute('aria-modal')
+    expect(overlay).not.toHaveAttribute('aria-label')
   })
 
   it('TL-12: container do modal usa a classe "modal", sem style inline', () => {
     render(<SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />)
-    const modal = screen.getByRole('dialog').firstElementChild as HTMLElement
+    const modal = screen.getByRole('dialog')
     expect(modal).toHaveClass('modal')
     expect(modal).not.toHaveAttribute('style')
+  })
+
+  it('TL-c: role="dialog"/aria-modal/aria-label estão no .modal, não no .overlay', () => {
+    render(<SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />)
+    const modal = screen.getByRole('dialog')
+    expect(modal).toHaveClass('modal')
+    expect(modal).toHaveAttribute('aria-modal', 'true')
+    expect(modal).toHaveAttribute('aria-label', 'Rateio de lançamento')
+  })
+
+  it('TL-d: clicar no overlay ainda chama onClose (comportamento preservado)', () => {
+    const onClose = vi.fn()
+    const { container } = render(
+      <SplitModal lancamento={lancamentoDuplo} indice={0} onClose={onClose} />,
+    )
+    const overlay = container.querySelector('.overlay') as HTMLElement
+    fireEvent.click(overlay)
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('TL-e: pressionar Escape com o modal montado chama onClose', () => {
+    const onClose = vi.fn()
+    render(<SplitModal lancamento={lancamentoDuplo} indice={0} onClose={onClose} />)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('TL-f: o listener de Escape é removido ao desmontar (sem disparo após unmount)', () => {
+    const onClose = vi.fn()
+    const { unmount } = render(
+      <SplitModal lancamento={lancamentoDuplo} indice={0} onClose={onClose} />,
+    )
+    unmount()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it('TL-13: título usa a classe "modal-titulo"', () => {
@@ -174,9 +214,21 @@ describe('SplitModal — classes do design system (T1)', () => {
     expect(botao).toHaveClass('pri')
   })
 
-  it('TL-17: botão "+ Adicionar alvo" usa a classe "btn-limpar"', () => {
+  it('TL-17: botão "+ Adicionar alvo" usa a classe "btn-texto" (TL-b)', () => {
     render(<SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />)
-    expect(screen.getByText(/Adicionar alvo/)).toHaveClass('btn-limpar')
+    const botao = screen.getByText(/Adicionar alvo/)
+    expect(botao).toHaveClass('btn-texto')
+    expect(botao).not.toHaveClass('btn-limpar')
+  })
+
+  it('TL-a: rótulos "Iniciais" e "Valor" usam a classe "rotulo", não "dc-rotulo"', () => {
+    render(<SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />)
+    const rotuloIniciais = screen.getByText('Iniciais')
+    const rotuloValor = screen.getByText('Valor')
+    expect(rotuloIniciais).toHaveClass('rotulo')
+    expect(rotuloIniciais).not.toHaveClass('dc-rotulo')
+    expect(rotuloValor).toHaveClass('rotulo')
+    expect(rotuloValor).not.toHaveClass('dc-rotulo')
   })
 
   it('TL-18: botão de remover alvo usa as classes "btn sec mini icone"', () => {
