@@ -1,5 +1,7 @@
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
 
+import { useEffect } from 'react'
+
 export interface ExportModalProps {
   /** Fase corrente do modal: confirmação antes de gerar ou tela de sucesso após gerar. */
   fase: 'confirmar' | 'feito'
@@ -30,9 +32,25 @@ export interface ExportModalProps {
 export function ExportModal({ fase, nome, pendentes, onConfirmar, onFechar, onContinuar }: ExportModalProps) {
   const fecharOverlay = fase === 'confirmar' ? onContinuar : onFechar
 
+  useEffect(() => {
+    function aoTeclar(evento: KeyboardEvent) {
+      if (evento.key === 'Escape') {
+        fecharOverlay()
+      }
+    }
+    document.addEventListener('keydown', aoTeclar)
+    return () => document.removeEventListener('keydown', aoTeclar)
+  }, [fecharOverlay])
+
   return (
     <div className="overlay" onClick={fecharOverlay}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={fase === 'confirmar' ? 'Exportar planilha' : 'Planilha exportada'}
+        onClick={(e) => e.stopPropagation()}
+      >
         {fase === 'confirmar' ? (
           <>
             <h2 className="modal-titulo">Exportar planilha</h2>
