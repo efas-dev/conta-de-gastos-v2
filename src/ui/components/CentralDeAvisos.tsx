@@ -243,7 +243,8 @@ function CartaoProposta({
       aria-label={aviso.mensagem}
       className={
         'card-aviso' +
-        (emInspecao || formVRVisivel || formRendimentosVisivel ? ' inspecionando' : '') +
+        (emInspecao ? ' inspecionando' : '') +
+        (formVRVisivel || formRendimentosVisivel ? ' expandido' : '') +
         (aviso.estado !== 'pendente' ? ' resolvido' : '')
       }
       style={{ cursor: 'pointer' }}

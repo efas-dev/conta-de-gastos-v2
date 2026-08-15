@@ -643,3 +643,69 @@ describe('CentralDeAvisos — aviso rendimentos abre FormRendimentos em vez do t
     expect(spyGerarLancamentoRendimento).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), '2026-03')
   })
 })
+
+describe('CentralDeAvisos — distinção "inspecionando" vs "expandido" (Task B16, emenda patches-ui-ux)', () => {
+  function propostaVR(parcial: Partial<Aviso> = {}): Aviso {
+    return proposta({
+      id: 'vr',
+      origem: 'vr',
+      mensagem: 'Registre as despesas pagas com VR neste mês.',
+      alvo: [],
+      permanece: [],
+      ...parcial,
+    })
+  }
+
+  function propostaRendimentos(parcial: Partial<Aviso> = {}): Aviso {
+    return proposta({
+      id: 'rendimentos',
+      origem: 'rendimentos',
+      mensagem: 'Informe o saldo real para lançar os rendimentos do mês.',
+      alvo: [],
+      permanece: [],
+      ...parcial,
+    })
+  }
+
+  it('B16-01: com o FormVR aberto, o card recebe "expandido" e NÃO recebe "inspecionando"', () => {
+    avisosMock = [propostaVR()]
+    render(<CentralDeAvisos />)
+
+    const mensagem = screen.getByText('Registre as despesas pagas com VR neste mês.')
+    fireEvent.click(mensagem)
+
+    const card = mensagem.closest('li') as HTMLElement
+    expect(card.className).toContain('expandido')
+    expect(card.className).not.toContain('inspecionando')
+  })
+
+  it('B16-02: com o FormRendimentos aberto, o card recebe "expandido" e NÃO recebe "inspecionando"', () => {
+    avisosMock = [propostaRendimentos()]
+    render(<CentralDeAvisos />)
+
+    const mensagem = screen.getByText('Informe o saldo real para lançar os rendimentos do mês.')
+    fireEvent.click(mensagem)
+
+    const card = mensagem.closest('li') as HTMLElement
+    expect(card.className).toContain('expandido')
+    expect(card.className).not.toContain('inspecionando')
+  })
+
+  it('B16-03: um card em inspeção (sem form aberto) recebe "inspecionando" e NÃO recebe "expandido"', () => {
+    avisosMock = [proposta({ id: 'prop-1' })]
+    avisoEmInspecaoMock = 'prop-1'
+    render(<CentralDeAvisos />)
+
+    const card = screen.getByText('Fatura conciliável com pagamento do extrato.').closest('li') as HTMLElement
+    expect(card.className).toContain('inspecionando')
+    expect(card.className).not.toContain('expandido')
+  })
+
+  it('B16-04: card resolvido (estado aplicado) continua recebendo "resolvido"', () => {
+    avisosMock = [proposta({ id: 'prop-1', estado: 'aplicado' })]
+    render(<CentralDeAvisos />)
+
+    const card = screen.getByText('Fatura conciliável com pagamento do extrato.').closest('li') as HTMLElement
+    expect(card.className).toContain('resolvido')
+  })
+})
