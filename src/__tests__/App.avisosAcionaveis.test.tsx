@@ -234,7 +234,7 @@ describe('App — avisos legados migram para o slice como informativos dispensá
     // Dispensar via UI — sheet ainda na tela de revisão (emRevisao=true por padrão do resetarStore).
     fireEvent.click(screen.getByRole('button', { name: /^avisos/i }))
     const idAviso = useAppStore.getState().avisosAcionaveis.avisos[0].id
-    fireEvent.click(screen.getByRole('button', { name: /dispensar/i }))
+    fireEvent.click(screen.getByRole('button', { name: /ok, entendi/i }))
 
     await waitFor(() => {
       const aviso = useAppStore.getState().avisosAcionaveis.avisos.find((a) => a.id === idAviso)
@@ -362,18 +362,19 @@ describe('App — ciclo completo aviso → aplicar via store real (T6)', () => {
     fireEvent.click(screen.getByRole('button', { name: /^avisos/i }))
 
     // Escopo restrito à seção "Propostas" — o topo da tela de revisão já tem
-    // botões "Desfazer"/"Refazer" de undo/redo do grid, com o mesmo nome acessível.
+    // botões "Desfazer"/"Refazer" de undo/redo do grid, com nome acessível
+    // parecido ("Reverter" não colide, mas "Desfazer" colidiria).
     const secaoPropostas = screen.getByRole('region', { name: 'Propostas' })
-    expect(within(secaoPropostas).getByRole('button', { name: /aprovar/i })).toBeInTheDocument()
+    expect(within(secaoPropostas).getByRole('button', { name: /^aplicar$/i })).toBeInTheDocument()
 
-    fireEvent.click(within(secaoPropostas).getByRole('button', { name: /aprovar/i }))
+    fireEvent.click(within(secaoPropostas).getByRole('button', { name: /^aplicar$/i }))
 
     await waitFor(() => {
       expect(useAppStore.getState().avisosAcionaveis.avisos[0].estado).toBe('aplicado')
     })
-    // Não há mais botão "Aprovar" pendente para esse aviso — vira "Desfazer"
-    expect(within(secaoPropostas).queryByRole('button', { name: /aprovar/i })).toBeNull()
-    expect(within(secaoPropostas).getByRole('button', { name: /desfazer/i })).toBeInTheDocument()
+    // Não há mais botão "Aplicar" pendente para esse aviso — vira "Reverter"
+    expect(within(secaoPropostas).queryByRole('button', { name: /^aplicar$/i })).toBeNull()
+    expect(within(secaoPropostas).getByRole('button', { name: /reverter/i })).toBeInTheDocument()
   })
 })
 

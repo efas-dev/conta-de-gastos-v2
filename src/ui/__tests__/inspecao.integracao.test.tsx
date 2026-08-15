@@ -369,14 +369,14 @@ describe('CentralDeAvisos conectado ao store real — Aprovar/Dispensar/Desfazer
 
     render(<CentralDeAvisos />)
 
-    fireEvent.click(screen.getByRole('button', { name: /aprovar/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^aplicar$/i }))
     expect(useAppStore.getState().lancamentos.map((l) => l.transcricao)).toEqual([
       'Fatura item A',
       'Fatura item B',
     ])
     expect(useAppStore.getState().avisosAcionaveis.avisos[0].estado).toBe('aplicado')
 
-    fireEvent.click(screen.getByRole('button', { name: /desfazer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /reverter/i }))
     expect(useAppStore.getState().lancamentos.map((l) => l.transcricao)).toEqual([
       'Fatura item A',
       'Fatura item B',
@@ -397,7 +397,7 @@ describe('CentralDeAvisos conectado ao store real — Aprovar/Dispensar/Desfazer
     expect(useAppStore.getState().avisosAcionaveis.avisos[0].estado).toBe('dispensado')
     expect(useAppStore.getState().lancamentos).toBe(lancamentosAntes)
 
-    fireEvent.click(screen.getByRole('button', { name: /desfazer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /reverter/i }))
     expect(useAppStore.getState().avisosAcionaveis.avisos[0].estado).toBe('pendente')
     expect(useAppStore.getState().lancamentos).toBe(lancamentosAntes)
   })

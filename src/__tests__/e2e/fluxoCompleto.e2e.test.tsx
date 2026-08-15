@@ -228,7 +228,7 @@ describe('E2E — Task T17: jornada completa ponta a ponta', () => {
 
     const cardConciliacao = cardPorTexto(/pagamento de fatura/i)
     await act(async () => {
-      fireEvent.click(within(cardConciliacao).getByRole('button', { name: /aprovar/i }))
+      fireEvent.click(within(cardConciliacao).getByRole('button', { name: /^aplicar$/i }))
     })
 
     await waitFor(() => {
@@ -240,9 +240,9 @@ describe('E2E — Task T17: jornada completa ponta a ponta', () => {
     ).toBe(false)
     expect(useAppStore.getState().lancamentos).toHaveLength(5)
 
-    // ---- 3. Desfazer — restaura a linha na posição original ----------------
+    // ---- 3. Reverter — restaura a linha na posição original ----------------
     await act(async () => {
-      fireEvent.click(within(cardPorTexto(/pagamento de fatura/i)).getByRole('button', { name: /desfazer/i }))
+      fireEvent.click(within(cardPorTexto(/pagamento de fatura/i)).getByRole('button', { name: /reverter/i }))
     })
 
     await waitFor(() => {
@@ -376,7 +376,7 @@ describe('E2E — Task T17: jornada completa ponta a ponta', () => {
 
     await act(async () => {
       fireEvent.click(
-        within(cardPorTexto(/pagamento de fatura/i)).getByRole('button', { name: /aprovar/i }),
+        within(cardPorTexto(/pagamento de fatura/i)).getByRole('button', { name: /^aplicar$/i }),
       )
     })
 

@@ -230,9 +230,9 @@ describe('E2E — Task 7: import fatura+extrato → avisos → conciliação →
     expect(lancamentosAntes.some((l) => /pagamento de fatura/i.test(l.transcricao))).toBe(true)
 
     abrirCentralDeAvisos()
-    const botaoAprovar = within(cardConciliacao()).getByRole('button', { name: /aprovar/i })
+    const botaoAplicar = within(cardConciliacao()).getByRole('button', { name: /^aplicar$/i })
     await act(async () => {
-      fireEvent.click(botaoAprovar)
+      fireEvent.click(botaoAplicar)
     })
 
     await waitFor(() => {
@@ -265,9 +265,9 @@ describe('E2E — Task 7: import fatura+extrato → avisos → conciliação →
     })
 
     abrirCentralDeAvisos()
-    const botaoAprovar = within(cardConciliacao()).getByRole('button', { name: /aprovar/i })
+    const botaoAplicar = within(cardConciliacao()).getByRole('button', { name: /^aplicar$/i })
     await act(async () => {
-      fireEvent.click(botaoAprovar)
+      fireEvent.click(botaoAplicar)
     })
 
     await waitFor(() => {

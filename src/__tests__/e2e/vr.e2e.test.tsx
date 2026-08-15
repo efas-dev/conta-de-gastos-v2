@@ -283,10 +283,10 @@ describe('E2E — Task 9: fluxo completo VR (F7) + F6/D6 (recomposição não pr
       expect(avisoVR?.estado).toBe('aplicado')
     })
 
-    // ---- 5. Desfazer remove exatamente as N+1 --------------------------------
+    // ---- 5. Reverter remove exatamente as N+1 --------------------------------
     const cardVRAplicado = cardPorTexto(/despesas da casa pagas com vale-refeição/i)
     await act(async () => {
-      fireEvent.click(within(cardVRAplicado).getByRole('button', { name: /desfazer/i }))
+      fireEvent.click(within(cardVRAplicado).getByRole('button', { name: /reverter/i }))
     })
 
     await waitFor(() => {
