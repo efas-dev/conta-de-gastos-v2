@@ -1,5 +1,6 @@
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
 
+import { useAppStore } from '../store/appStore'
 import type { Aviso } from '../../types'
 
 export interface BannerInspecaoProps {
@@ -25,8 +26,19 @@ export interface BannerInspecaoProps {
  * Retorna `null` quando não há aviso em inspeção (mesmo padrão de
  * `AvisoList.tsx`/`PainelNaturezas.tsx`/`CentralDeAvisos.tsx` — nada
  * montado sem conteúdo).
+ *
+ * Revisão da Task B9 (D8/D9 do ADR `patches-ui-ux`): a presença de filtro ativo é
+ * derivada direto do store (`filtroFontes`/`filtroNaturezas`/`filtroSoIncompletos`),
+ * sem prop nova — e o sufixo de texto deixa de afirmar "filtros suspensos" (nunca foi
+ * verdade: `aplicarRevelacaoInspecao` em `ReviewGrid.tsx` só anexa as linhas do aviso
+ * ao final da lista já filtrada/ordenada, sem suspender filtro nem ordenação).
  */
 export function BannerInspecao({ aviso, onAprovar, onDispensar, onFechar }: BannerInspecaoProps) {
+  const filtroFontes = useAppStore((s) => s.filtroFontes)
+  const filtroNaturezas = useAppStore((s) => s.filtroNaturezas)
+  const filtroSoIncompletos = useAppStore((s) => s.filtroSoIncompletos)
+  const filtroAtivo = filtroFontes.length > 0 || filtroNaturezas.length > 0 || filtroSoIncompletos
+
   if (!aviso) return null
 
   return (
@@ -43,7 +55,11 @@ export function BannerInspecao({ aviso, onAprovar, onDispensar, onFechar }: Bann
           <span style={{ color: 'var(--texto-3)' }}>{aviso.permanece.length} linhas</span>
         </>
       )}
-      <span style={{ color: 'var(--muted)', fontSize: 12 }}>· filtros suspensos</span>
+      {filtroAtivo && (
+        <span style={{ color: 'var(--muted)', fontSize: 12 }}>
+          · linhas do aviso reveladas apesar do filtro ativo
+        </span>
+      )}
       <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
         <button type="button" className="btn sec mini" onClick={() => onAprovar(aviso.id)}>
           <IconeCheck />

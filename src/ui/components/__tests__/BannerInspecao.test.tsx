@@ -1,8 +1,9 @@
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
 
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { BannerInspecao } from '../BannerInspecao'
+import { useAppStore } from '../../store/appStore'
 import type { Aviso } from '../../../types'
 
 function criarAviso(overrides: Partial<Aviso> = {}): Aviso {
@@ -17,6 +18,10 @@ function criarAviso(overrides: Partial<Aviso> = {}): Aviso {
     ...overrides,
   }
 }
+
+beforeEach(() => {
+  useAppStore.setState({ filtroFontes: [], filtroNaturezas: [], filtroSoIncompletos: false })
+})
 
 describe('BannerInspecao', () => {
   it('TL-01: retorna null quando aviso é null', () => {
@@ -85,9 +90,32 @@ describe('BannerInspecao', () => {
     expect(container.querySelector('.tag-insp.fica')).toBeNull()
   })
 
-  it('TL-06: renderiza "· filtros suspensos"', () => {
+  it('TL-06 (revisão D9): sem filtro ativo no store, não renderiza texto sobre filtro', () => {
+    useAppStore.setState({ filtroFontes: [], filtroNaturezas: [], filtroSoIncompletos: false })
     render(<BannerInspecao aviso={criarAviso()} onAprovar={vi.fn()} onDispensar={vi.fn()} onFechar={vi.fn()} />)
-    expect(screen.getByText('· filtros suspensos')).toBeInTheDocument()
+    expect(screen.queryByText('· filtros suspensos')).toBeNull()
+    expect(screen.queryByText(/filtro/i)).toBeNull()
+  })
+
+  it('TL-06b (revisão D9): filtroFontes ativo no store, renderiza texto verdadeiro (nunca "filtros suspensos")', () => {
+    useAppStore.setState({ filtroFontes: ['extrato_nubank'], filtroNaturezas: [], filtroSoIncompletos: false })
+    render(<BannerInspecao aviso={criarAviso()} onAprovar={vi.fn()} onDispensar={vi.fn()} onFechar={vi.fn()} />)
+    expect(screen.queryByText('· filtros suspensos')).toBeNull()
+    expect(screen.getByText(/revelad/i)).toBeInTheDocument()
+  })
+
+  it('TL-06c (revisão D9): filtroNaturezas ativo no store, renderiza texto verdadeiro', () => {
+    useAppStore.setState({ filtroFontes: [], filtroNaturezas: ['ALM'], filtroSoIncompletos: false })
+    render(<BannerInspecao aviso={criarAviso()} onAprovar={vi.fn()} onDispensar={vi.fn()} onFechar={vi.fn()} />)
+    expect(screen.queryByText('· filtros suspensos')).toBeNull()
+    expect(screen.getByText(/revelad/i)).toBeInTheDocument()
+  })
+
+  it('TL-06d (revisão D9): filtroSoIncompletos ativo no store, renderiza texto verdadeiro', () => {
+    useAppStore.setState({ filtroFontes: [], filtroNaturezas: [], filtroSoIncompletos: true })
+    render(<BannerInspecao aviso={criarAviso()} onAprovar={vi.fn()} onDispensar={vi.fn()} onFechar={vi.fn()} />)
+    expect(screen.queryByText('· filtros suspensos')).toBeNull()
+    expect(screen.getByText(/revelad/i)).toBeInTheDocument()
   })
 
   it('TL-07: botão Aprovar dispara onAprovar(aviso.id)', () => {
