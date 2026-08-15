@@ -105,6 +105,29 @@ describe('computarNomeArquivo', () => {
   it('retorna nome genérico quando lista de lançamentos está vazia', () => {
     expect(computarNomeArquivo([], 'ES')).toBe('exportacao-ES.xlsx')
   })
+
+  // Regressão (2026-08-04): o nome saía com o mês do PRIMEIRO lançamento, não o
+  // mês de referência. Numa fatura (compras do mês anterior) isso dava M-1:
+  // ref 2026-07 gerava "2026-06-ES.xlsx". O mês de referência é a autoridade.
+  it('TLNOME-1: usa o mês de REFERÊNCIA, não a data do primeiro lançamento', () => {
+    const lancamentos: Lancamento[] = [
+      // fatura: compras de junho, mas o mês de referência é julho
+      { fonte: 'fatura_nubank_cc', data: '2026-06-15', transcricao: 'A', valor: -10, iniciais: '', natureza: '', descricao: '' },
+      { fonte: 'fatura_nubank_cc', data: '2026-06-20', transcricao: 'B', valor: -20, iniciais: '', natureza: '', descricao: '' },
+    ]
+    expect(computarNomeArquivo(lancamentos, 'ES', '2026-07')).toBe('2026-07-ES.xlsx')
+  })
+
+  it('TLNOME-2: com mês de referência, nomeia mesmo sem lançamentos', () => {
+    expect(computarNomeArquivo([], 'ES', '2026-07')).toBe('2026-07-ES.xlsx')
+  })
+
+  it('TLNOME-3: sem mês de referência, mantém o fallback pela data (compatibilidade)', () => {
+    const lancamentos: Lancamento[] = [
+      { fonte: 'Nubank', data: '2025-03-15', transcricao: 'A', valor: -10, iniciais: '', natureza: '', descricao: '' },
+    ]
+    expect(computarNomeArquivo(lancamentos, 'ES', '')).toBe('2025-03-ES.xlsx')
+  })
 })
 
 // ---------------------------------------------------------------------------

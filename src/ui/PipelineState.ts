@@ -20,10 +20,24 @@ import { gerarXlsx } from '../excel/writer/gerador'
 /**
  * Computa o nome do arquivo gerado: `AAAA-MM-INICIAIS.xlsx`.
  *
- * O mês/ano é derivado do campo `data` (YYYY-MM-DD) do primeiro lançamento.
- * Se a lista estiver vazia, retorna um nome genérico `exportacao-INICIAIS.xlsx`.
+ * O mês/ano vem do **mês de referência** (`mesReferencia`, formato `YYYY-MM`) —
+ * a mesma autoridade que alimenta `B3` e a coluna `Ref.` do .xlsx. Antes o mês
+ * era derivado da data do PRIMEIRO lançamento, o que produzia M-1 sempre que o
+ * lote começava por uma fatura (cujas compras são do mês anterior): referência
+ * 2026-07 gerava `2026-06-ES.xlsx` (bug reportado em 2026-08-04).
+ *
+ * Fallbacks, nessa ordem: sem `mesReferencia` válido, usa a data do primeiro
+ * lançamento (comportamento legado, preservado para a fachada de testes E2E);
+ * sem lançamentos, retorna `exportacao-INICIAIS.xlsx`.
  */
-export function computarNomeArquivo(lancamentos: Lancamento[], iniciais: string): string {
+export function computarNomeArquivo(
+  lancamentos: Lancamento[],
+  iniciais: string,
+  mesReferencia?: string,
+): string {
+  if (mesReferencia !== undefined && /^\d{4}-\d{2}$/.test(mesReferencia)) {
+    return `${mesReferencia}-${iniciais}.xlsx`
+  }
   if (lancamentos.length === 0) {
     return `exportacao-${iniciais}.xlsx`
   }
