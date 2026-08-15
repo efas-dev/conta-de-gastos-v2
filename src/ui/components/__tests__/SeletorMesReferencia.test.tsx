@@ -63,4 +63,43 @@ describe('SeletorMesReferencia', () => {
     expect(screen.getByLabelText('Mês de referência')).toBeInTheDocument()
     expect(screen.getByLabelText('Ano de referência')).toBeInTheDocument()
   })
+
+  it('cada opção do select de mês exibe o número e o nome abreviado em pt-BR', () => {
+    render(<SeletorMesReferencia mesEscolhido="2024-03" onChange={vi.fn()} />)
+
+    const select = screen.getByTestId('select-mes') as HTMLSelectElement
+    const textos = Array.from(select.options).map((o) => o.textContent)
+    expect(textos).toEqual([
+      '01 · jan',
+      '02 · fev',
+      '03 · mar',
+      '04 · abr',
+      '05 · mai',
+      '06 · jun',
+      '07 · jul',
+      '08 · ago',
+      '09 · set',
+      '10 · out',
+      '11 · nov',
+      '12 · dez',
+    ])
+  })
+
+  it('o valor de cada option do select de mês permanece o número puro (não muda o contrato de exportação)', () => {
+    render(<SeletorMesReferencia mesEscolhido="2024-03" onChange={vi.fn()} />)
+
+    const select = screen.getByTestId('select-mes') as HTMLSelectElement
+    const valores = Array.from(select.options).map((o) => o.value)
+    expect(valores).toEqual(['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'])
+  })
+})
+
+describe('SeletorMesReferenciaProps', () => {
+  it('a interface de props não declara mais usuarioEditou (prop morta removida — Task B11)', async () => {
+    const fs = await import('node:fs')
+    const path = await import('node:path')
+    const caminho = path.resolve(__dirname, '../SeletorMesReferencia.tsx')
+    const codigoFonte = fs.readFileSync(caminho, 'utf-8')
+    expect(codigoFonte).not.toMatch(/usuarioEditou/)
+  })
 })

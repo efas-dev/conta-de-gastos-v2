@@ -11,6 +11,21 @@
 
 const MESES = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'] as const
 
+const NOMES_MES_ABREVIADOS: Record<(typeof MESES)[number], string> = {
+  '01': 'jan',
+  '02': 'fev',
+  '03': 'mar',
+  '04': 'abr',
+  '05': 'mai',
+  '06': 'jun',
+  '07': 'jul',
+  '08': 'ago',
+  '09': 'set',
+  '10': 'out',
+  '11': 'nov',
+  '12': 'dez',
+}
+
 function anosDisponiveis(): number[] {
   const anoCorrente = new Date().getFullYear()
   const anos: number[] = []
@@ -23,8 +38,6 @@ function anosDisponiveis(): number[] {
 interface SeletorMesReferenciaProps {
   mesEscolhido: string // formato YYYY-MM
   onChange: (novoMes: string) => void
-  /** Flag de controle — quando true, T4 não sobrescreverá a escolha (D7 do ADR) */
-  usuarioEditou?: boolean
 }
 
 /**
@@ -55,7 +68,7 @@ export function SeletorMesReferencia({ mesEscolhido, onChange }: SeletorMesRefer
         aria-label="Mês de referência"
       >
         {MESES.map((m) => (
-          <option key={m} value={m}>{m}</option>
+          <option key={m} value={m}>{`${m} · ${NOMES_MES_ABREVIADOS[m]}`}</option>
         ))}
       </select>
       <select
