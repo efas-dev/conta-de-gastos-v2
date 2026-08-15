@@ -82,11 +82,6 @@ vi.mock('../../store/appStore', () => {
   return { useAppStore }
 })
 
-vi.mock('../../store/avisosSlice', () => ({
-  selecionarContagemPendentes: (s: EstadoMock) =>
-    s.avisosAcionaveis.avisos.filter((a) => a.tipo === 'proposta' && a.estado === 'pendente').length,
-}))
-
 vi.mock('../../PipelineState', () => ({
   computarNomeArquivo: vi.fn(() => '2024-03-ES.xlsx'),
 }))
@@ -169,7 +164,6 @@ function lan(overrides: Partial<Lancamento> = {}): Lancamento {
 function props(overrides: Partial<React.ComponentProps<typeof TelaRevisao>> = {}) {
   return {
     mesEscolhido: '2024-03',
-    usuarioEditouMes: false,
     onMudarMes: vi.fn(),
     modeloBytes: new Uint8Array([1, 2, 3]),
     anchorRef: { current: null },
@@ -372,12 +366,13 @@ describe('TelaRevisao', () => {
     expect(screen.queryByText('Só nesta aba · exporte antes de fechar')).toBeNull()
   })
 
-  it('não repassa mais a prop morta "usuarioEditou" para o SeletorMesReferencia (Task B7c)', () => {
-    render(<TelaRevisao {...props({ mesEscolhido: '2024-03', usuarioEditouMes: true })} />)
+  it('não repassa a prop morta "usuarioEditou" para o SeletorMesReferencia (Task B7c; prop removida da interface na B15)', () => {
+    render(<TelaRevisao {...props({ mesEscolhido: '2024-03' })} />)
 
     expect(screen.getByTestId('seletor-mes-referencia')).toBeInTheDocument()
     expect(propsSeletorMesReferencia).not.toBeNull()
     expect(propsSeletorMesReferencia).not.toHaveProperty('usuarioEditou')
+    expect(propsSeletorMesReferencia).not.toHaveProperty('usuarioEditouMes')
     // mesEscolhido/onChange permanecem inalterados
     expect(propsSeletorMesReferencia).toMatchObject({ mesEscolhido: '2024-03' })
     expect(typeof propsSeletorMesReferencia?.onChange).toBe('function')

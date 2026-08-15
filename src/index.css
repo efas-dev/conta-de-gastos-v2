@@ -582,7 +582,7 @@ select.input {
   padding: 2px 0;
 }
 
-.btn-limpar {
+.btn-texto {
   border: none;
   background: none;
   color: var(--verde);
@@ -592,7 +592,7 @@ select.input {
   font-family: inherit;
   padding: 0;
 }
-.btn-limpar:hover {
+.btn-texto:hover {
   color: var(--verde-hover);
 }
 

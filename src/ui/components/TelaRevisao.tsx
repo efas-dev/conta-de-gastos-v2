@@ -4,7 +4,6 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/appStore'
-import { selecionarContagemPendentes } from '../store/avisosSlice'
 import { computarNomeArquivo } from '../PipelineState'
 import { handleGerar as handleGerarPipeline } from '../handlersPipeline'
 import { validarLinha } from '../../dominio/validacao'
@@ -22,8 +21,6 @@ import { IconeDesfazer, IconeRefazer, IconeExportar } from './Icones'
 interface TelaRevisaoProps {
   /** Mês de referência escolhido — estado compartilhado com `TelaImportacao` (D9 do ADR mes-referencia-ui). */
   mesEscolhido: string
-  /** Flag de edição manual do mês — compartilhada com `TelaImportacao` (D7 do ADR). */
-  usuarioEditouMes: boolean
   /** Atualiza `mesEscolhido` e marca `usuarioEditouMes=true` — mesmo handler usado por `TelaImportacao`. */
   onMudarMes: (novoMes: string) => void
   /** Bytes do Modelo.xlsx, carregados em `TelaImportacao` no "Produzir" e reusados no "Gerar". */
@@ -50,7 +47,6 @@ interface TelaRevisaoProps {
  */
 export function TelaRevisao({
   mesEscolhido,
-  usuarioEditouMes,
   onMudarMes,
   modeloBytes,
   anchorRef,
@@ -63,7 +59,6 @@ export function TelaRevisao({
   const naturezasValidas = useAppStore((s) => s.naturezasValidas)
   const naturezasRicas = useAppStore((s) => s.naturezasRicas)
   const avisosAcionaveis = useAppStore((s) => s.avisosAcionaveis)
-  const contagemAvisosPendentes = useAppStore(selecionarContagemPendentes)
   const sujo = useAppStore((s) => s.sujo)
 
   const adicionarAvisosAcionaveis = useAppStore((s) => s.adicionarAvisos)

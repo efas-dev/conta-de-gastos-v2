@@ -103,7 +103,6 @@ export function App() {
       {emRevisao && (
         <TelaRevisao
           mesEscolhido={mesEscolhido}
-          usuarioEditouMes={usuarioEditouMes}
           onMudarMes={handleMudarMes}
           modeloBytes={modeloBytes}
           anchorRef={anchorRef}

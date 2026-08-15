@@ -62,7 +62,7 @@ describe('src/index.css — fundação de tokens do protótipo Claude Design (Ta
     '.sel-mini',
     '.logo',
     '.logo.mini',
-    '.btn-limpar',
+    '.btn-texto',
     '.banner-inspecao',
     '.tag-insp',
     '.tag-insp.sai',
