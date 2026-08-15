@@ -55,9 +55,12 @@ export function ToolbarRevisao({ children }: ToolbarRevisaoProps) {
           </span>
         </span>
         {sujo && (
-          <span className="chip-sujo" title="Os dados vivem apenas nesta aba. Exporte antes de fechar.">
+          <span
+            className="chip-sujo"
+            title="Os dados vivem apenas nesta aba. Exporte antes de fechar ou recarregar."
+          >
             <span className="ponto" />
-            não exportado
+            não exportado · só nesta aba
           </span>
         )}
       </div>

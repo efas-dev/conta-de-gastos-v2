@@ -105,6 +105,30 @@ describe('ToolbarRevisao', () => {
     expect(container.querySelector('.chip-sujo')).toBeFalsy()
   })
 
+  it('chip-sujo exibe um texto visível curto do aviso de zero-retenção', () => {
+    mockStore.lancamentos = []
+    mockStore.naturezasValidas = []
+    mockStore.sujo = true
+
+    const { container } = render(<ToolbarRevisao />)
+
+    const chip = container.querySelector('.chip-sujo') as HTMLElement
+    expect(chip.textContent).toContain('só nesta aba')
+  })
+
+  it('chip-sujo carrega o title com o texto completo do aviso de zero-retenção', () => {
+    mockStore.lancamentos = []
+    mockStore.naturezasValidas = []
+    mockStore.sujo = true
+
+    const { container } = render(<ToolbarRevisao />)
+
+    const chip = container.querySelector('.chip-sujo') as HTMLElement
+    expect(chip.getAttribute('title')).toBe(
+      'Os dados vivem apenas nesta aba. Exporte antes de fechar ou recarregar.'
+    )
+  })
+
   it('renderiza a estrutura .toolbar.compacta / .progresso / .prog-barra / .prog-fill', () => {
     mockStore.lancamentos = []
     mockStore.naturezasValidas = []
