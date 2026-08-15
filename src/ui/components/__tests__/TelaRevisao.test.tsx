@@ -26,6 +26,10 @@ interface EstadoMock {
   sujo: boolean
   /** Sugestão de replicação (item 36) — re-integrada na nova composição via `PopupReplicacao`. */
   sugestaoReplicacao: SugestaoReplicacao | null
+  /** Pilha de undo — controla o `disabled` do botão "Desfazer" (Task B7a). */
+  historico: unknown[]
+  /** Pilha de redo — controla o `disabled` do botão "Refazer" (Task B7a). */
+  futuro: unknown[]
 }
 
 let estado: EstadoMock
@@ -178,6 +182,8 @@ beforeEach(() => {
     avisosAcionaveis: { avisos: [], removidos: {}, avisoEmInspecao: null },
     sujo: false,
     sugestaoReplicacao: null,
+    historico: [],
+    futuro: [],
   }
   vi.clearAllMocks()
 })
@@ -292,11 +298,33 @@ describe('TelaRevisao', () => {
     expect(undo).not.toHaveBeenCalled()
   })
 
-  it('botão "Desfazer" fica desabilitado quando não há lançamentos', () => {
-    estado.lancamentos = []
+  it('botão "Desfazer edição da grid (Ctrl+Z)" fica desabilitado quando o histórico está vazio (Task B7a)', () => {
+    estado.historico = []
     render(<TelaRevisao {...props()} />)
 
-    expect(screen.getByTitle('Desfazer (Ctrl+Z)')).toBeDisabled()
+    expect(screen.getByTitle('Desfazer edição da grid (Ctrl+Z)')).toBeDisabled()
+  })
+
+  it('botão "Desfazer edição da grid (Ctrl+Z)" fica habilitado quando há entradas no histórico, mesmo sem lançamentos (Task B7a)', () => {
+    estado.lancamentos = []
+    estado.historico = [{}]
+    render(<TelaRevisao {...props()} />)
+
+    expect(screen.getByTitle('Desfazer edição da grid (Ctrl+Z)')).toBeEnabled()
+  })
+
+  it('botão "Refazer edição da grid (Ctrl+Shift+Z)" fica desabilitado quando o futuro está vazio (Task B7a)', () => {
+    estado.futuro = []
+    render(<TelaRevisao {...props()} />)
+
+    expect(screen.getByTitle('Refazer edição da grid (Ctrl+Shift+Z)')).toBeDisabled()
+  })
+
+  it('botão "Refazer edição da grid (Ctrl+Shift+Z)" fica habilitado quando há entradas no futuro (Task B7a)', () => {
+    estado.futuro = [{}]
+    render(<TelaRevisao {...props()} />)
+
+    expect(screen.getByTitle('Refazer edição da grid (Ctrl+Shift+Z)')).toBeEnabled()
   })
 
   it('quando sujo=true, o beforeunload é interceptado (preventDefault chamado)', () => {
