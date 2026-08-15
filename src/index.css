@@ -26,6 +26,7 @@
   --terracota: #b4654a;
   --terracota-suave: #f7ece6;
   --azul: #5b7a94;
+  --verde-texto: #4e6a53;
 
   /* Cores de inspeção (avisos acionáveis: "sai" / "fica") */
   --insp-sai: #c94f46;
@@ -181,7 +182,7 @@ body {
   gap: 8px;
   background: var(--verde-suave);
   border: 1px solid var(--verde-borda);
-  color: #4e6a53;
+  color: var(--verde-texto);
   padding: 7px 13px;
   border-radius: 20px;
   font-size: 13px;
@@ -276,7 +277,7 @@ a:hover {
   gap: 7px;
   background: var(--verde-suave);
   border: 1px solid var(--verde-borda);
-  color: #4e6a53;
+  color: var(--verde-texto);
   padding: 6px 12px;
   border-radius: 20px;
   font-size: 12.5px;
@@ -298,6 +299,7 @@ a:hover {
 }
 
 .btn {
+  position: relative;
   font-family: inherit;
   font-size: 13.5px;
   font-weight: 700;
@@ -310,6 +312,15 @@ a:hover {
   gap: 7px;
   transition: background 0.15s, border-color 0.15s, opacity 0.15s;
   border: 1px solid transparent;
+}
+
+.btn:focus-visible,
+.aba:focus-visible,
+.nat-item:focus-visible,
+.btn-remover:focus-visible,
+.cartao-dic:focus-visible {
+  outline: 2px solid var(--verde);
+  outline-offset: 2px;
 }
 .btn:disabled {
   opacity: 0.45;
@@ -421,6 +432,10 @@ a:hover {
 }
 .input:focus {
   border-color: var(--verde);
+}
+.input[data-soma-valida='true'] {
+  border-color: var(--verde);
+  background: var(--verde-suave);
 }
 select.input {
   cursor: pointer;
@@ -557,7 +572,7 @@ select.input {
 }
 .tag-tipo.extrato {
   background: var(--verde-suave);
-  color: #4e6a53;
+  color: var(--verde-texto);
   border: 1px solid var(--verde-borda);
 }
 
@@ -893,7 +908,7 @@ tr.insp-fica td.ro {
   color: var(--terracota);
 }
 .valor.pos {
-  color: #4e6a53;
+  color: var(--verde-texto);
 }
 .valor .moeda {
   opacity: 0.65;
@@ -1037,6 +1052,10 @@ tr.insp-fica td.ro {
 }
 .card-aviso.resolvido {
   opacity: 0.65;
+}
+.card-aviso.expandido {
+  border-color: var(--verde-borda);
+  background: var(--verde-suave);
 }
 .icone-aviso {
   width: 24px;
