@@ -15,6 +15,18 @@ const ARIA_LABEL_POR_TIPO: Record<FonteRotuloProps['tipo'], string> = {
 }
 
 /**
+ * Rótulo humano exibido no badge (Task B12): `fatura`/`extrato` já são palavras legíveis
+ * e permanecem como estão; `form_vr`/`form_rendimentos` são identificadores internos que
+ * nunca devem chegar crus à tela — viram "VR" e "rendimentos" respectivamente.
+ */
+const RÓTULO_POR_TIPO: Record<FonteRotuloProps['tipo'], string> = {
+  fatura: 'fatura',
+  extrato: 'extrato',
+  form_vr: 'VR',
+  form_rendimentos: 'rendimentos',
+}
+
+/**
  * Exibe o rótulo visual "fatura", "extrato", "form_vr" ou "form_rendimentos" ao lado do nome da
  * fonte.
  *
@@ -32,8 +44,8 @@ export function FonteRotulo({ fonte, tipo }: FonteRotuloProps) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
       <span>{fonte}</span>
-      <span role="status" aria-label={ARIA_LABEL_POR_TIPO[tipo]} className={'tag-tipo ' + tipo}>
-        {tipo}
+      <span aria-label={ARIA_LABEL_POR_TIPO[tipo]} className={'tag-tipo ' + tipo}>
+        {RÓTULO_POR_TIPO[tipo]}
       </span>
     </span>
   )

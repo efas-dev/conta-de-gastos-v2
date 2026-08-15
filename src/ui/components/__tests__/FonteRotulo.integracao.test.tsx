@@ -120,14 +120,11 @@ describe('FonteRotulo — sem regressão de classificação (Task 9, D1 do ADR c
       const porPrefixo = classificarFontePorPrefixo(fonte)
       expect(porPrefixo).toBe(tipoEsperado)
 
-      render(<FonteRotulo fonte={fonte} tipo={porPrefixo} />)
+      const { container } = render(<FonteRotulo fonte={fonte} tipo={porPrefixo} />)
 
       expect(screen.getByText(tipoEsperado)).toBeInTheDocument()
-      expect(
-        screen.getByRole('status', {
-          name: tipoEsperado === 'fatura' ? 'tipo fatura' : 'tipo extrato',
-        }),
-      ).toBeInTheDocument()
+      const badgeEsperado = tipoEsperado === 'fatura' ? 'tipo fatura' : 'tipo extrato'
+      expect(container.querySelector(`.tag-tipo[aria-label="${badgeEsperado}"]`)).toBeInTheDocument()
 
       // Referência muda de comportamento com mesRef/lancamentos só para provar, abaixo,
       // que os fixtures DESALINHADO de fato divergem — não usada para decidir o rótulo.
