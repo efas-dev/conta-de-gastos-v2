@@ -89,11 +89,14 @@ beforeEach(() => {
   spyGerarLancamentoRendimento.mockClear()
 })
 
-describe('CentralDeAvisos — lista vazia (TL-05)', () => {
-  it('renderiza null quando avisosAcionaveis.avisos está vazio', () => {
+describe('CentralDeAvisos — lista vazia (TL-13, Task B3)', () => {
+  it('renderiza .painel-vazio com duas linhas (o que houve / o que fazer) quando avisosAcionaveis.avisos está vazio', () => {
     avisosMock = []
     const { container } = render(<CentralDeAvisos />)
-    expect(container).toBeEmptyDOMElement()
+
+    const painelVazio = container.querySelector('.painel-vazio')
+    expect(painelVazio).toBeInTheDocument()
+    expect(painelVazio?.children).toHaveLength(2)
   })
 })
 
@@ -114,21 +117,23 @@ describe('CentralDeAvisos — conteúdo puro, sem toggle/overlay (TL-06, TL-12)'
   })
 })
 
-describe('CentralDeAvisos — rótulos e ações por estado de proposta (TL-07, TL-08)', () => {
-  it('proposta pendente exibe "Aprovar" e "Dispensar"', () => {
+describe('CentralDeAvisos — rótulos e ações por estado de proposta (TL-07, TL-08, TL5-TL8 Task B3)', () => {
+  it('proposta pendente exibe "Aplicar" (classe btn pri mini) e "Dispensar"', () => {
     avisosMock = [proposta({ estado: 'pendente' })]
     render(<CentralDeAvisos />)
 
-    expect(screen.getByRole('button', { name: /aprovar/i })).toBeInTheDocument()
+    const botaoAplicar = screen.getByRole('button', { name: /^aplicar$/i })
+    expect(botaoAplicar).toBeInTheDocument()
+    expect(botaoAplicar.className).toBe('btn pri mini')
     expect(screen.getByRole('button', { name: /dispensar/i })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /desfazer/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /reverter/i })).toBeNull()
   })
 
-  it('clicar em "Aprovar" chama aplicar(id) com o id do aviso', () => {
+  it('clicar em "Aplicar" chama aplicar(id) com o id do aviso', () => {
     avisosMock = [proposta({ id: 'prop-xyz', estado: 'pendente' })]
     render(<CentralDeAvisos />)
 
-    fireEvent.click(screen.getByRole('button', { name: /aprovar/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^aplicar$/i }))
     expect(mockAplicar).toHaveBeenCalledWith('prop-xyz')
   })
 
@@ -140,21 +145,21 @@ describe('CentralDeAvisos — rótulos e ações por estado de proposta (TL-07, 
     expect(mockDispensar).toHaveBeenCalledWith('prop-xyz')
   })
 
-  it('proposta aplicada exibe "Desfazer" e chama desfazer(id) ao clicar', () => {
+  it('proposta aplicada exibe "Reverter" e chama desfazer(id) ao clicar', () => {
     avisosMock = [proposta({ id: 'prop-xyz', estado: 'aplicado' })]
     render(<CentralDeAvisos />)
 
-    const botaoDesfazer = screen.getByRole('button', { name: /desfazer/i })
-    fireEvent.click(botaoDesfazer)
+    const botaoReverter = screen.getByRole('button', { name: /reverter/i })
+    fireEvent.click(botaoReverter)
     expect(mockDesfazer).toHaveBeenCalledWith('prop-xyz')
   })
 
-  it('proposta dispensada também exibe "Desfazer" e chama desfazer(id) ao clicar', () => {
+  it('proposta dispensada também exibe "Reverter" e chama desfazer(id) ao clicar', () => {
     avisosMock = [proposta({ id: 'prop-xyz', estado: 'dispensado' })]
     render(<CentralDeAvisos />)
 
-    const botaoDesfazer = screen.getByRole('button', { name: /desfazer/i })
-    fireEvent.click(botaoDesfazer)
+    const botaoReverter = screen.getByRole('button', { name: /reverter/i })
+    fireEvent.click(botaoReverter)
     expect(mockDesfazer).toHaveBeenCalledWith('prop-xyz')
   })
 
@@ -166,28 +171,28 @@ describe('CentralDeAvisos — rótulos e ações por estado de proposta (TL-07, 
     render(<CentralDeAvisos />)
 
     const itemB = screen.getByText('Proposta B').closest('li') as HTMLElement
-    fireEvent.click(within(itemB).getByRole('button', { name: /aprovar/i }))
+    fireEvent.click(within(itemB).getByRole('button', { name: /^aplicar$/i }))
 
     expect(mockAplicar).toHaveBeenCalledWith('prop-b')
     expect(mockAplicar).not.toHaveBeenCalledWith('prop-a')
   })
 })
 
-describe('CentralDeAvisos — informativos (TL-09)', () => {
-  it('aviso informativo nunca exibe "Aprovar"/"Desfazer" — só é dispensável', () => {
+describe('CentralDeAvisos — informativos (TL-09, TL9 Task B3)', () => {
+  it('aviso informativo nunca exibe "Aplicar"/"Reverter" — só é dispensável', () => {
     avisosMock = [informativo({ estado: 'pendente' })]
     render(<CentralDeAvisos />)
 
-    expect(screen.queryByRole('button', { name: /aprovar/i })).toBeNull()
-    expect(screen.queryByRole('button', { name: /desfazer/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^aplicar$/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /reverter/i })).toBeNull()
   })
 
-  it('aviso informativo pendente exibe "Dispensar" e clicar chama dispensar(id)', () => {
+  it('aviso informativo pendente exibe "OK, entendi" e clicar chama dispensar(id)', () => {
     avisosMock = [informativo({ id: 'info-xyz', estado: 'pendente' })]
     render(<CentralDeAvisos />)
 
-    const botaoDispensar = screen.getByRole('button', { name: /dispensar/i })
-    fireEvent.click(botaoDispensar)
+    const botaoOk = screen.getByRole('button', { name: /ok, entendi/i })
+    fireEvent.click(botaoOk)
     expect(mockDispensar).toHaveBeenCalledWith('info-xyz')
   })
 
@@ -221,11 +226,11 @@ describe('CentralDeAvisos — modo inspeção (TL-10, TL-11)', () => {
     expect(mockEntrarInspecao).not.toHaveBeenCalled()
   })
 
-  it('clicar em "Aprovar" não dispara o toggle de inspeção (stopPropagation)', () => {
+  it('clicar em "Aplicar" não dispara o toggle de inspeção (stopPropagation)', () => {
     avisosMock = [proposta({ id: 'prop-1', estado: 'pendente' })]
     render(<CentralDeAvisos />)
 
-    fireEvent.click(screen.getByRole('button', { name: /aprovar/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^aplicar$/i }))
 
     expect(mockAplicar).toHaveBeenCalledWith('prop-1')
     expect(mockEntrarInspecao).not.toHaveBeenCalled()
@@ -243,11 +248,11 @@ describe('CentralDeAvisos — modo inspeção (TL-10, TL-11)', () => {
     expect(mockSairInspecao).not.toHaveBeenCalled()
   })
 
-  it('clicar em "Desfazer" não dispara o toggle de inspeção (stopPropagation)', () => {
+  it('clicar em "Reverter" não dispara o toggle de inspeção (stopPropagation)', () => {
     avisosMock = [proposta({ id: 'prop-1', estado: 'aplicado' })]
     render(<CentralDeAvisos />)
 
-    fireEvent.click(screen.getByRole('button', { name: /desfazer/i }))
+    fireEvent.click(screen.getByRole('button', { name: /reverter/i }))
 
     expect(mockDesfazer).toHaveBeenCalledWith('prop-1')
     expect(mockEntrarInspecao).not.toHaveBeenCalled()
@@ -327,6 +332,96 @@ describe('CentralDeAvisos — modo inspeção (TL-10, TL-11)', () => {
     expect(within(itemA).queryByLabelText('Resumo da regra')).toBeNull()
     expect(within(itemB).getByLabelText('Papel: sai')).toBeInTheDocument()
     expect(within(itemB).getByLabelText('Resumo da regra')).toHaveTextContent('resumo de B')
+  })
+})
+
+describe('CentralDeAvisos — teclado real no card interativo (TL1-TL4, Task B3)', () => {
+  it('TL1: o <li> do card de proposta tem role="button" e tabIndex=0', () => {
+    avisosMock = [proposta({ id: 'prop-1' })]
+    render(<CentralDeAvisos />)
+
+    const card = screen.getByText('Fatura conciliável com pagamento do extrato.').closest('li') as HTMLElement
+    expect(card).toHaveAttribute('role', 'button')
+    expect(card).toHaveAttribute('tabIndex', '0')
+  })
+
+  it('TL2: Enter no card fora de inspeção chama entrarInspecao(id), igual ao clique', () => {
+    avisosMock = [proposta({ id: 'prop-1' })]
+    render(<CentralDeAvisos />)
+
+    const card = screen.getByText('Fatura conciliável com pagamento do extrato.').closest('li') as HTMLElement
+    fireEvent.keyDown(card, { key: 'Enter' })
+
+    expect(mockEntrarInspecao).toHaveBeenCalledWith('prop-1')
+    expect(mockSairInspecao).not.toHaveBeenCalled()
+  })
+
+  it('TL3: Espaço no card já em inspeção chama sairInspecao(), igual ao clique', () => {
+    avisosMock = [proposta({ id: 'prop-1' })]
+    avisoEmInspecaoMock = 'prop-1'
+    render(<CentralDeAvisos />)
+
+    const card = screen.getByText('Fatura conciliável com pagamento do extrato.').closest('li') as HTMLElement
+    fireEvent.keyDown(card, { key: ' ' })
+
+    expect(mockSairInspecao).toHaveBeenCalled()
+    expect(mockEntrarInspecao).not.toHaveBeenCalled()
+  })
+
+  it('TL4: outra tecla no card não dispara entrarInspecao nem sairInspecao', () => {
+    avisosMock = [proposta({ id: 'prop-1' })]
+    render(<CentralDeAvisos />)
+
+    const card = screen.getByText('Fatura conciliável com pagamento do extrato.').closest('li') as HTMLElement
+    fireEvent.keyDown(card, { key: 'a' })
+
+    expect(mockEntrarInspecao).not.toHaveBeenCalled()
+    expect(mockSairInspecao).not.toHaveBeenCalled()
+  })
+
+  it('TL14: Enter com o evento originado no botão "Aplicar" (bubbling) não dispara a ação do card', () => {
+    avisosMock = [proposta({ id: 'prop-1' })]
+    render(<CentralDeAvisos />)
+
+    const botaoAplicar = screen.getByRole('button', { name: /^aplicar$/i })
+    fireEvent.keyDown(botaoAplicar, { key: 'Enter' })
+
+    expect(mockEntrarInspecao).not.toHaveBeenCalled()
+    expect(mockSairInspecao).not.toHaveBeenCalled()
+  })
+})
+
+describe('CentralDeAvisos — avisos vr/rendimentos suprimem o botão afirmativo (TL10-TL12, Task B3)', () => {
+  it('TL10: proposta pendente com origem "vr" não renderiza o botão "Aplicar"', () => {
+    avisosMock = [
+      proposta({ id: 'vr', origem: 'vr', estado: 'pendente', mensagem: 'Registre as despesas pagas com VR neste mês.' }),
+    ]
+    render(<CentralDeAvisos />)
+
+    expect(screen.queryByRole('button', { name: /^aplicar$/i })).toBeNull()
+  })
+
+  it('TL11: proposta pendente com origem "rendimentos" não renderiza o botão "Aplicar"', () => {
+    avisosMock = [
+      proposta({
+        id: 'rendimentos',
+        origem: 'rendimentos',
+        estado: 'pendente',
+        mensagem: 'Informe o saldo real para lançar os rendimentos do mês.',
+      }),
+    ]
+    render(<CentralDeAvisos />)
+
+    expect(screen.queryByRole('button', { name: /^aplicar$/i })).toBeNull()
+  })
+
+  it('TL12: proposta pendente com origem "vr" ainda renderiza "Dispensar"', () => {
+    avisosMock = [
+      proposta({ id: 'vr', origem: 'vr', estado: 'pendente', mensagem: 'Registre as despesas pagas com VR neste mês.' }),
+    ]
+    render(<CentralDeAvisos />)
+
+    expect(screen.getByRole('button', { name: /dispensar/i })).toBeInTheDocument()
   })
 })
 
