@@ -119,6 +119,56 @@ describe('ExportModal', () => {
       expect(onContinuar).toHaveBeenCalledTimes(1)
     })
 
+    it('TL-B5-01: .modal tem role="dialog", aria-modal="true" e aria-label não vazio', () => {
+      const { container } = render(
+        <ExportModal
+          fase="confirmar"
+          nome="2026-08-ES.xlsx"
+          pendentes={0}
+          onConfirmar={vi.fn()}
+          onFechar={vi.fn()}
+          onContinuar={vi.fn()}
+        />,
+      )
+      const modal = container.querySelector('.modal')
+      expect(modal).not.toBeNull()
+      expect(modal?.getAttribute('role')).toBe('dialog')
+      expect(modal?.getAttribute('aria-modal')).toBe('true')
+      expect(modal?.getAttribute('aria-label')).toBeTruthy()
+    })
+
+    it('TL-B5-02: tecla Escape na fase confirmar dispara onContinuar()', () => {
+      const onContinuar = vi.fn()
+      render(
+        <ExportModal
+          fase="confirmar"
+          nome="2026-08-ES.xlsx"
+          pendentes={0}
+          onConfirmar={vi.fn()}
+          onFechar={vi.fn()}
+          onContinuar={onContinuar}
+        />,
+      )
+      fireEvent.keyDown(document, { key: 'Escape' })
+      expect(onContinuar).toHaveBeenCalledTimes(1)
+    })
+
+    it('TL-B5-04: tecla diferente de Escape (Enter) não dispara onContinuar()', () => {
+      const onContinuar = vi.fn()
+      render(
+        <ExportModal
+          fase="confirmar"
+          nome="2026-08-ES.xlsx"
+          pendentes={0}
+          onConfirmar={vi.fn()}
+          onFechar={vi.fn()}
+          onContinuar={onContinuar}
+        />,
+      )
+      fireEvent.keyDown(document, { key: 'Enter' })
+      expect(onContinuar).not.toHaveBeenCalled()
+    })
+
     it('TL-10 (confirmar): clique dentro do .modal não propaga para o .overlay', () => {
       const onContinuar = vi.fn()
       const { container } = render(
@@ -183,6 +233,22 @@ describe('ExportModal', () => {
         />,
       )
       fireEvent.click(screen.getByText('Fechar'))
+      expect(onFechar).toHaveBeenCalledTimes(1)
+    })
+
+    it('TL-B5-03: tecla Escape na fase feito dispara onFechar()', () => {
+      const onFechar = vi.fn()
+      render(
+        <ExportModal
+          fase="feito"
+          nome="2026-08-ES.xlsx"
+          pendentes={0}
+          onConfirmar={vi.fn()}
+          onFechar={onFechar}
+          onContinuar={vi.fn()}
+        />,
+      )
+      fireEvent.keyDown(document, { key: 'Escape' })
       expect(onFechar).toHaveBeenCalledTimes(1)
     })
 
