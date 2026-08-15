@@ -123,8 +123,8 @@ vi.mock('../Cabecalho', () => ({
     React.createElement('div', { 'data-testid': 'cabecalho', 'data-etapa': etapa }),
 }))
 vi.mock('../PainelLateral', () => ({
-  PainelLateral: ({ aba }: { aba: string | null }) =>
-    React.createElement('div', { 'data-testid': 'painel-lateral', 'data-aba': aba }),
+  PainelLateral: ({ aba, mesRef }: { aba: string | null; mesRef?: string }) =>
+    React.createElement('div', { 'data-testid': 'painel-lateral', 'data-aba': aba, 'data-mesref': mesRef }),
 }))
 vi.mock('../CartaoDicionario', () => ({
   CartaoDicionario: () => React.createElement('div', { 'data-testid': 'cartao-dicionario' }),
@@ -301,6 +301,26 @@ describe('TelaImportacao', () => {
 
     rerender(<TelaImportacao {...props({ painel: 'naturezas' })} />)
     expect(screen.getByTestId('painel-lateral')).toBeInTheDocument()
+  })
+
+  // Task B13b (spec patches-ui-ux, F14): PainelLateral passa a receber o mês de
+  // referência escolhido na tela de importação.
+  it('PainelLateral recebe mesRef igual a mesEscolhido (Task B13b)', () => {
+    render(<TelaImportacao {...props({ painel: 'naturezas', mesEscolhido: '2024-05' })} />)
+
+    expect(screen.getByTestId('painel-lateral')).toHaveAttribute('data-mesref', '2024-05')
+  })
+
+  // Task B13b (spec patches-ui-ux, F14): o overlay fixo do PainelLateral passa a
+  // ficar abaixo do cabeçalho (top: 61, em vez de top: 0) com box-shadow, em vez
+  // de encostar no topo da tela.
+  it('overlay fixo do PainelLateral fica abaixo do cabeçalho com box-shadow (Task B13b)', () => {
+    render(<TelaImportacao {...props({ painel: 'naturezas' })} />)
+
+    const overlay = screen.getByTestId('painel-lateral').parentElement as HTMLElement
+    expect(overlay.style.position).toBe('fixed')
+    expect(overlay.style.top).toBe('61px')
+    expect(overlay.style.boxShadow).toBe('-14px 0 34px -20px rgba(44,42,38,.4)')
   })
 
   // Task T14 (spec fundacao-operacoes): cutover do registry — o wrapper local
