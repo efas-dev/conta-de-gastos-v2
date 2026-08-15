@@ -1,5 +1,5 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
-// ADR: see spec/patches-ui-ux.adr.md
+// ADR: see Docs/specs/patches-ui-ux.adr.md
 
 import { useEffect, useState } from 'react'
 import type { Lancamento } from '../../types'

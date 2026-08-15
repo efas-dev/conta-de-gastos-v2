@@ -1,5 +1,5 @@
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
-// ADR: see spec/patches-ui-ux.adr.md
+// ADR: see Docs/specs/patches-ui-ux.adr.md
 
 interface DicionarioCarregado {
   /** Nome do arquivo `.xlsx` carregado (ex.: "2026-05-ES.xlsx"). */

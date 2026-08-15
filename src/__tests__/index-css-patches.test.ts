@@ -1,4 +1,4 @@
-// ADR: see spec/patches-ui-ux.adr.md
+// ADR: see Docs/specs/patches-ui-ux.adr.md
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

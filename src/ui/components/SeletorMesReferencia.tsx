@@ -1,6 +1,6 @@
 // ADR: see spec/fundacao-operacoes.adr.md
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
-// ADR: see spec/patches-ui-ux.adr.md
+// ADR: see Docs/specs/patches-ui-ux.adr.md
 
 /**
  * `SeletorMesReferencia` — dois selects controlados (mês + ano) — D5 do ADR

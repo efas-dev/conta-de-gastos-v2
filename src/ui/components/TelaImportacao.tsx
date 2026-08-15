@@ -1,7 +1,7 @@
 // ADR: see spec/fundacao-operacoes.adr.md
 // ADR: see spec/conciliacao-robusta.adr.md
 // ADR: see spec/rendimentos.adr.md
-// ADR: see spec/patches-ui-ux.adr.md
+// ADR: see Docs/specs/patches-ui-ux.adr.md
 
 import { useRef, useState } from 'react'
 import { useAppStore } from '../store/appStore'

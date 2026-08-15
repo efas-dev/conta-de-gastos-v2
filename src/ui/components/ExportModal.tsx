@@ -1,5 +1,5 @@
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
-// ADR: see spec/patches-ui-ux.adr.md
+// ADR: see Docs/specs/patches-ui-ux.adr.md
 
 import { useEffect } from 'react'
 
