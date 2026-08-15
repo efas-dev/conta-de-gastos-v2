@@ -508,8 +508,23 @@ export function TelaImportacao({
         // componente/abas, só a posição de ancoragem muda (`position:fixed`
         // aplicado neste wrapper, não no componente em si — T5 removeu
         // `position:fixed` do componente).
-        <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, zIndex: 40 }}>
-          <PainelLateral aba={painel} setAba={setPainel} naturezas={naturezasDescritas} fechavel />
+        <div
+          style={{
+            position: 'fixed',
+            top: 61,
+            right: 0,
+            bottom: 0,
+            zIndex: 40,
+            boxShadow: '-14px 0 34px -20px rgba(44,42,38,.4)',
+          }}
+        >
+          <PainelLateral
+            aba={painel}
+            setAba={setPainel}
+            naturezas={naturezasDescritas}
+            fechavel
+            mesRef={mesEscolhido}
+          />
         </div>
       )}
     </div>
