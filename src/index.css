@@ -2,6 +2,7 @@
    Direção visual "Conta de Gastos" — importada do handoff do Claude Design.
    Paleta calma/serena em tons terrosos, fonte Manrope. */
 /* ADR: see Docs/specs/redesign-frontend-claude-design.adr.md */
+/* ADR: see spec/patches-ui-ux.adr.md */
 
 :root {
   /* Superfícies */

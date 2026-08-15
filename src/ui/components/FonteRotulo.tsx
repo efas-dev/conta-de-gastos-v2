@@ -1,6 +1,7 @@
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
 // ADR: see spec/vr-despesas.adr.md
 // ADR: see spec/rendimentos.adr.md
+// ADR: see spec/patches-ui-ux.adr.md
 
 interface FonteRotuloProps {
   fonte: string

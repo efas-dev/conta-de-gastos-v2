@@ -1,4 +1,5 @@
 // ADR: see spec/rendimentos.adr.md
+// ADR: see spec/patches-ui-ux.adr.md
 
 import { useState } from 'react'
 import { useAppStore } from '../store/appStore'

@@ -1,5 +1,6 @@
 // ADR: see Docs/specs/colinha-naturezas.adr.md
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
+// ADR: see spec/patches-ui-ux.adr.md
 
 import { useMemo } from 'react'
 import { useAppStore } from '../store/appStore'

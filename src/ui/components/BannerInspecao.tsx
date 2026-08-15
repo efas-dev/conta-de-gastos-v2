@@ -1,4 +1,5 @@
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
+// ADR: see spec/patches-ui-ux.adr.md
 
 import { useAppStore } from '../store/appStore'
 import type { Aviso } from '../../types'
