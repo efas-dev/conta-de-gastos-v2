@@ -26,12 +26,17 @@ interface CartaoDicionarioProps {
 export function CartaoDicionario({ dicionario, onCarregar }: CartaoDicionarioProps) {
   const carregado = dicionario !== null
 
+  function aoPressionarTecla(evento: React.KeyboardEvent<HTMLDivElement>) {
+    if (evento.key === 'Enter' || evento.key === ' ') {
+      onCarregar()
+    }
+  }
+
   return (
     <div
       className={'cartao-dic' + (carregado ? ' carregado' : '')}
       onClick={carregado ? undefined : onCarregar}
-      role="button"
-      tabIndex={0}
+      {...(carregado ? {} : { role: 'button', tabIndex: 0, onKeyDown: aoPressionarTecla })}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <span className="icone-arq">
