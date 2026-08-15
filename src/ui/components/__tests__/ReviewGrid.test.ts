@@ -484,6 +484,29 @@ describe('aplicarRevelacaoInspecao', () => {
     expect(resultado.linhas).toBe(lancamentosVisiveis)
     expect(resultado.mapa).toBe(mapaIndiceVisualReal)
   })
+
+  it('TL-B9-01 (regressão, D9): anexa linhasOcultas ao FINAL de lancamentosVisiveis, sem suspender filtro/ordenação', () => {
+    // lancamentosVisiveis já reflete filtro+ordenação ativos: só os índices reais 2 e 0,
+    // NESSA ordem (ordenação ativa que não corresponde à ordem natural dos índices).
+    const lancamentosVisiveis = [lancamentos[2], lancamentos[0]]
+    const mapaIndiceVisualReal = [2, 0]
+    // Índice real 1 é o único envolvido ausente do filtro ativo.
+    const indicesReaisEnvolvidos = [0, 1, 2]
+
+    const resultado = aplicarRevelacaoInspecao(
+      lancamentos,
+      lancamentosVisiveis,
+      mapaIndiceVisualReal,
+      indicesReaisEnvolvidos,
+    )
+
+    // A ordem/filtro de lancamentosVisiveis não é alterada — os 2 primeiros elementos do
+    // resultado são exatamente lancamentosVisiveis, na mesma ordem (nunca suspensos).
+    expect(resultado.linhas.slice(0, lancamentosVisiveis.length)).toEqual(lancamentosVisiveis)
+    // A linha oculta (índice real 1) é ANEXADA ao final, não inserida no meio nem no início.
+    expect(resultado.linhas).toEqual([...lancamentosVisiveis, lancamentos[1]])
+    expect(resultado.mapa).toEqual([...mapaIndiceVisualReal, 1])
+  })
 })
 
 // ---------------------------------------------------------------------------
