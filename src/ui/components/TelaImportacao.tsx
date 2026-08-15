@@ -377,7 +377,9 @@ export function TelaImportacao({
                 <div style={{ marginTop: 14, fontSize: 16.5, fontWeight: 700 }}>
                   Arraste extratos e faturas aqui
                 </div>
-                <div className="rotulo">ou clique para escolher · CSV ou TXT · vários de uma vez</div>
+                <div className="rotulo">
+                  ou solte em qualquer lugar da tela · CSV, TXT ou .xlsx do mês anterior · vários de uma vez
+                </div>
               </label>
 
               {/* Lista de arquivos selecionados */}

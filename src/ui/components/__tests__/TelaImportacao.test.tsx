@@ -185,6 +185,16 @@ describe('TelaImportacao', () => {
     expect(screen.getByTestId('cabecalho')).toHaveAttribute('data-etapa', '0')
   })
 
+  // Task B13a (spec patches-ui-ux, F2): copy do dropzone declara a liberdade do
+  // drag-and-drop em qualquer lugar da tela e a aceitação de .xlsx do mês anterior.
+  it('dropzone exibe a copy "ou solte em qualquer lugar da tela · CSV, TXT ou .xlsx do mês anterior · vários de uma vez" (Task B13a)', () => {
+    render(<TelaImportacao {...props()} />)
+
+    expect(
+      screen.getByText('ou solte em qualquer lugar da tela · CSV, TXT ou .xlsx do mês anterior · vários de uma vez'),
+    ).toBeInTheDocument()
+  })
+
   it('CTA "Produzir revisão" fica desabilitado sem iniciais e sem arquivos', () => {
     render(<TelaImportacao {...props()} />)
 
