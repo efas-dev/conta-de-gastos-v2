@@ -7,7 +7,7 @@ import type { Aviso } from '../../types'
 export interface BannerInspecaoProps {
   /** Aviso atualmente em modo inspeção, ou `null`/`undefined` quando nenhum está em inspeção. */
   aviso: Aviso | null | undefined
-  /** Callback disparado ao clicar em "Aprovar" — recebe o id do aviso. */
+  /** Callback disparado ao clicar em "Aplicar" — recebe o id do aviso. */
   onAprovar: (id: string) => void
   /** Callback disparado ao clicar em "Dispensar" — recebe o id do aviso. */
   onDispensar: (id: string) => void
@@ -62,9 +62,9 @@ export function BannerInspecao({ aviso, onAprovar, onDispensar, onFechar }: Bann
         </span>
       )}
       <span style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
-        <button type="button" className="btn sec mini" onClick={() => onAprovar(aviso.id)}>
+        <button type="button" className="btn pri mini" onClick={() => onAprovar(aviso.id)}>
           <IconeCheck />
-          Aprovar
+          Aplicar
         </button>
         <button type="button" className="btn sec mini" onClick={() => onDispensar(aviso.id)}>
           Dispensar
