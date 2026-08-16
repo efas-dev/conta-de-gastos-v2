@@ -160,3 +160,45 @@ describe('src/index.css — fundação de tokens do protótipo Claude Design (Ta
     expect(cssHasSelector(css, '.chip')).toBe(false);
   });
 });
+
+/**
+ * Extrai o corpo de um bloco de regra CSS (`seletor { ... }`) pelo seletor exato, sem casar
+ * seletores compostos que o contenham como prefixo (ex.: `.aba` não deve casar `.aba.on`).
+ */
+function cssBlockBody(folha: string, seletor: string): string {
+  const escapado = seletor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(?<![\\w-])${escapado}(?![\\w-])\\s*\\{([^}]*)\\}`);
+  const match = folha.match(regex);
+  return match ? match[1] : '';
+}
+
+describe('src/index.css — `.painel-abas` 38px contínuo (Task C2)', () => {
+  it('declara altura efetiva de 38px, mesma altura do headerHeight do grid', () => {
+    const bloco = cssBlockBody(css, '.painel-abas');
+    expect(bloco).toContain('height: 38px');
+  });
+
+  it('declara background: var(--barra) para a régua correr contínua', () => {
+    const bloco = cssBlockBody(css, '.painel-abas');
+    expect(bloco).toContain('background: var(--barra)');
+  });
+
+  it('troca border-bottom de --borda-2 para --borda', () => {
+    const bloco = cssBlockBody(css, '.painel-abas');
+    expect(bloco).toContain('border-bottom: 1px solid var(--borda)');
+    expect(bloco).not.toContain('var(--borda-2)');
+  });
+
+  it('mantém `.aba` inalterada (sem border-bottom, sem background, sem height)', () => {
+    const bloco = cssBlockBody(css, '.aba');
+    expect(bloco).not.toContain('border-bottom');
+    expect(bloco).not.toContain('height');
+    expect(bloco).toContain('color: var(--muted)');
+  });
+
+  it('mantém `.aba.on` inalterada (background verde-suave, cor verde)', () => {
+    const bloco = cssBlockBody(css, '.aba.on');
+    expect(bloco).toContain('background: var(--verde-suave)');
+    expect(bloco).toContain('color: var(--verde)');
+  });
+});
