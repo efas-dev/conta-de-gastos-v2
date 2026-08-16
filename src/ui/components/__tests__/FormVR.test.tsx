@@ -128,6 +128,19 @@ describe('FormVR — classes oficiais (B1)', () => {
   })
 })
 
+describe('FormVR — variante .input.mini (V4)', () => {
+  it('os três campos por despesa (valor, natureza, descrição) mantêm .input e ganham .mini', () => {
+    render(<FormVR mesRef="2026-07" />)
+
+    expect(screen.getByLabelText('Valor da despesa 1')).toHaveClass('input')
+    expect(screen.getByLabelText('Valor da despesa 1')).toHaveClass('mini')
+    expect(screen.getByLabelText('Natureza da despesa 1')).toHaveClass('input')
+    expect(screen.getByLabelText('Natureza da despesa 1')).toHaveClass('mini')
+    expect(screen.getByLabelText('Descrição da despesa 1')).toHaveClass('input')
+    expect(screen.getByLabelText('Descrição da despesa 1')).toHaveClass('mini')
+  })
+})
+
 describe('FormVR — divisor sutil no lugar do heading (V3)', () => {
   it('não renderiza mais o texto do heading "Despesas pagas com VR"', () => {
     render(<FormVR mesRef="2026-07" />)
