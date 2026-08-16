@@ -122,7 +122,7 @@ export function FormVR({ mesRef }: FormVRProps) {
 
   return (
     <div data-testid="form-vr" role="form" aria-label="Registrar despesas pagas com VR">
-      <div className="painel-secao">Despesas pagas com VR</div>
+      <div className="divisor-sutil" />
 
       {despesas.length === 0 ? (
         <p style={{ fontSize: 13, color: 'var(--texto-2)' }}>Nenhuma despesa adicionada.</p>
