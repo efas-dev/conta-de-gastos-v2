@@ -514,7 +514,7 @@ describe('CentralDeAvisos — mesRef real chega ao FormVR (TL-93, TL-94, Task 7-
     fireEvent.change(screen.getByLabelText('Valor da despesa 1'), { target: { value: '50' } })
     fireEvent.change(screen.getByLabelText('Natureza da despesa 1'), { target: { value: 'ALM' } })
     fireEvent.change(screen.getByLabelText('Descrição da despesa 1'), { target: { value: 'Mercado' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Efetivar lançamentos' }))
   }
 
   it('TL-93: com a prop mesRef fornecida (diferente do default), FormVR usa esse mesRef ao gerar os lançamentos', () => {
@@ -638,7 +638,7 @@ describe('CentralDeAvisos — aviso rendimentos abre FormRendimentos em vez do t
 
     fireEvent.click(screen.getByText('Informe o saldo real para lançar os rendimentos do mês.'))
     fireEvent.change(screen.getByLabelText('Conta corrente'), { target: { value: '100' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Lançar rendimento' }))
 
     expect(spyGerarLancamentoRendimento).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), '2026-03')
   })

@@ -337,7 +337,7 @@ describe('E2E — Task 13: fluxo completo rendimentos (F6/F8) + diferença negat
 
     // ---- 4. Submeter -----------------------------------------------------
     await act(async () => {
-      fireEvent.click(formRendimentos.getByRole('button', { name: 'Aplicar' }))
+      fireEvent.click(formRendimentos.getByRole('button', { name: 'Lançar rendimento' }))
     })
 
     // ---- 5. Grid ganha 1 lançamento RR novo ---------------------------------
@@ -414,7 +414,7 @@ describe('E2E — Task 13: fluxo completo rendimentos (F6/F8) + diferença negat
     expect(lancamentosAntes).toHaveLength(3)
 
     await act(async () => {
-      fireEvent.click(formRendimentos.getByRole('button', { name: 'Aplicar' }))
+      fireEvent.click(formRendimentos.getByRole('button', { name: 'Lançar rendimento' }))
     })
 
     // Nenhum lançamento novo, nenhuma Mutacao aplicada.

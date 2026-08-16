@@ -54,6 +54,17 @@ describe('FormRendimentos — estrutura inicial (T10-FR-01)', () => {
   })
 })
 
+describe('FormRendimentos — CTA "Lançar rendimento" (R3)', () => {
+  it('o CTA exibe "Lançar rendimento" mantendo a classe btn pri mini', () => {
+    render(<FormRendimentos mesRef="2026-07" />)
+
+    const cta = screen.getByRole('button', { name: 'Lançar rendimento' })
+    expect(cta).toHaveClass('btn')
+    expect(cta).toHaveClass('pri')
+    expect(cta).toHaveClass('mini')
+  })
+})
+
 describe('FormRendimentos — feedback visual da soma inline (T10-FR-02, T10-FR-03, T10-FR-04)', () => {
   it('mostra feedback verde quando a soma inline é reconhecida como válida', () => {
     render(<FormRendimentos mesRef="2026-07" />)
@@ -89,7 +100,7 @@ describe('FormRendimentos — caminho de lançamento, integração com a store r
 
     fireEvent.change(screen.getByLabelText('Conta corrente'), { target: { value: '900' } })
     fireEvent.change(screen.getByLabelText('Aplicações'), { target: { value: '150' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Lançar rendimento' }))
 
     const lancamentos = useAppStore.getState().lancamentos
     expect(lancamentos).toHaveLength(1)
@@ -111,7 +122,7 @@ describe('FormRendimentos — caminho de lançamento, integração com a store r
     // saldoCalculado = 1000 + 200 = 1200; informado = 1300 -> diferenca 100
     fireEvent.change(screen.getByLabelText('Conta corrente'), { target: { value: '1300' } })
     fireEvent.change(screen.getByLabelText('Aplicações'), { target: { value: '0' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Lançar rendimento' }))
 
     const lancamentos = useAppStore.getState().lancamentos
     const rr = lancamentos.find((l) => l.natureza === 'RR')
@@ -126,7 +137,7 @@ describe('FormRendimentos — diferença negativa, conciliação manual (T10-FR-
 
     fireEvent.change(screen.getByLabelText('Conta corrente'), { target: { value: '800' } })
     fireEvent.change(screen.getByLabelText('Aplicações'), { target: { value: '0' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Lançar rendimento' }))
 
     expect(useAppStore.getState().lancamentos).toHaveLength(0)
     expect(
@@ -147,7 +158,7 @@ describe('FormRendimentos — sanity check (T10-FR-08, T10-FR-09)', () => {
 
     expect(screen.getByText(/excede/i)).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Lançar rendimento' }))
     expect(useAppStore.getState().lancamentos).toHaveLength(1)
   })
 
@@ -170,7 +181,7 @@ describe('FormRendimentos — saldoAnterior null (T10-FR-10)', () => {
 
     fireEvent.change(screen.getByLabelText('Conta corrente'), { target: { value: '900' } })
     fireEvent.change(screen.getByLabelText('Aplicações'), { target: { value: '150' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Lançar rendimento' }))
 
     expect(screen.getByRole('alert')).toHaveTextContent(/mês anterior/i)
     expect(useAppStore.getState().lancamentos).toHaveLength(0)
@@ -184,7 +195,7 @@ describe('FormRendimentos — validação de conta corrente (T10-FR-11)', () => 
 
     fireEvent.change(screen.getByLabelText('Conta corrente'), { target: { value: 'abc' } })
     fireEvent.change(screen.getByLabelText('Aplicações'), { target: { value: '0' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Lançar rendimento' }))
 
     expect(screen.getByRole('alert')).toBeInTheDocument()
     expect(useAppStore.getState().lancamentos).toHaveLength(0)
@@ -255,7 +266,7 @@ describe('FormRendimentos — aviso ausente (T10-FR-12)', () => {
     fireEvent.change(screen.getByLabelText('Conta corrente'), { target: { value: '900' } })
     fireEvent.change(screen.getByLabelText('Aplicações'), { target: { value: '150' } })
 
-    expect(() => fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))).not.toThrow()
+    expect(() => fireEvent.click(screen.getByRole('button', { name: 'Lançar rendimento' }))).not.toThrow()
     expect(useAppStore.getState().lancamentos).toHaveLength(0)
   })
 })

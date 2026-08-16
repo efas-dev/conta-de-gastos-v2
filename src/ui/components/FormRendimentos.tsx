@@ -162,7 +162,7 @@ export function FormRendimentos({ mesRef }: FormRendimentosProps) {
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
         <button type="button" className="btn pri mini" onClick={confirmar}>
-          Aplicar
+          Lançar rendimento
         </button>
       </div>
 
