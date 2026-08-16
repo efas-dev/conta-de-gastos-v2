@@ -216,6 +216,15 @@ describe('FormRendimentos — classes oficiais e placeholders (B1)', () => {
   })
 })
 
+describe('FormRendimentos — divisor sutil no lugar do heading (R1)', () => {
+  it('não renderiza o heading "Rendimentos do mês" e renderiza o divisor sutil no lugar', () => {
+    const { container } = render(<FormRendimentos mesRef="2026-07" />)
+
+    expect(screen.queryByText('Rendimentos do mês')).toBeNull()
+    expect(container.querySelector('.divisor-sutil')).not.toBeNull()
+  })
+})
+
 describe('FormRendimentos — aviso ausente (T10-FR-12)', () => {
   it('aviso rendimentos ausente na store não lança exceção ao confirmar (best-effort)', () => {
     useAppStore.setState({
