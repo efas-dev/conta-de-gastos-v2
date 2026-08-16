@@ -758,8 +758,10 @@ tr.insp-fica td.ro {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--borda-2);
+  height: 38px;
+  padding: 0 14px;
+  background: var(--barra);
+  border-bottom: 1px solid var(--borda);
   flex-shrink: 0;
 }
 .aba {
