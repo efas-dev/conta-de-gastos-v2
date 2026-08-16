@@ -118,13 +118,20 @@ describe('BannerInspecao', () => {
     expect(screen.getByText(/revelad/i)).toBeInTheDocument()
   })
 
-  it('TL-07: botão Aprovar dispara onAprovar(aviso.id)', () => {
+  it('TL-07: botão Aplicar dispara onAprovar(aviso.id)', () => {
     const onAprovar = vi.fn()
     render(
       <BannerInspecao aviso={criarAviso({ id: 'aviso-x' })} onAprovar={onAprovar} onDispensar={vi.fn()} onFechar={vi.fn()} />,
     )
-    fireEvent.click(screen.getByText('Aprovar'))
+    fireEvent.click(screen.getByText('Aplicar'))
     expect(onAprovar).toHaveBeenCalledWith('aviso-x')
+  })
+
+  it('TL-07b: botão Aplicar usa a classe "btn pri mini"', () => {
+    render(
+      <BannerInspecao aviso={criarAviso()} onAprovar={vi.fn()} onDispensar={vi.fn()} onFechar={vi.fn()} />,
+    )
+    expect(screen.getByText('Aplicar').closest('button')).toHaveClass('btn', 'pri', 'mini')
   })
 
   it('TL-08: botão Dispensar dispara onDispensar(aviso.id)', () => {

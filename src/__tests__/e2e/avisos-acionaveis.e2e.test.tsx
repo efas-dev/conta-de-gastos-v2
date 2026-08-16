@@ -216,7 +216,7 @@ describe('E2E — Task 7: import fatura+extrato → avisos → conciliação →
     return item as HTMLElement
   }
 
-  it('aplicar (Aprovar) a proposta de conciliação remove o lançamento do extrato (não um da fatura)', async () => {
+  it('aplicar a proposta de conciliação remove o lançamento do extrato (não um da fatura)', async () => {
     await produzirFaturaEExtrato()
 
     await waitFor(() => {
@@ -254,7 +254,7 @@ describe('E2E — Task 7: import fatura+extrato → avisos → conciliação →
     expect(lancamentosDepois).toHaveLength(lancamentosAntes.length - 1)
   })
 
-  it('export .xlsx roda sem erro após aprovar a proposta de conciliação', async () => {
+  it('export .xlsx roda sem erro após aplicar a proposta de conciliação', async () => {
     await produzirFaturaEExtrato()
 
     await waitFor(() => {
