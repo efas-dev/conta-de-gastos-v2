@@ -626,6 +626,7 @@ select.input {
   cursor: pointer;
   font-family: inherit;
   padding: 0;
+  white-space: nowrap;
 }
 .btn-texto:hover {
   color: var(--verde-hover);
