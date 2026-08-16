@@ -129,6 +129,27 @@ describe('FormVR — classes oficiais (B1)', () => {
   })
 })
 
+describe('FormVR — layout .despesa (V1)', () => {
+  it('o <li> de cada despesa usa a classe .despesa', () => {
+    const { container } = render(<FormVR mesRef="2026-07" />)
+
+    const li = container.querySelector('li')
+    expect(li).toHaveClass('despesa')
+  })
+
+  it('dentro do <li>, a descrição vem antes de valor e natureza no DOM', () => {
+    render(<FormVR mesRef="2026-07" />)
+
+    const descricao = screen.getByLabelText('Descrição da despesa 1')
+    const valor = screen.getByLabelText('Valor da despesa 1')
+    const natureza = screen.getByLabelText('Natureza da despesa 1')
+
+    // DOCUMENT_POSITION_FOLLOWING (4) indica que o nó comparado vem depois do nó de referência.
+    expect(descricao.compareDocumentPosition(valor) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(descricao.compareDocumentPosition(natureza) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+})
+
 describe('FormVR — caminhos inválidos, sem crash (TL-74, TL-75, TL-76, TL-77, TL-78)', () => {
   it('formulário vazio (0 despesas) bloqueia com mensagem de erro e não insere lançamento', () => {
     render(<FormVR mesRef="2026-07" />)
