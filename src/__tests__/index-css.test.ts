@@ -261,3 +261,19 @@ describe('src/index.css — `.saldos` corte real + alinhamento + tipografia (Tas
     expect(css).not.toMatch(/@media/);
   });
 });
+
+describe('src/index.css — pins de existência das classes novas da spec (Task P1)', () => {
+  it.each(['.despesa', '.input.mini', '.saldos'])(
+    'contém a classe %s como seletor real (não substring)',
+    (classe) => {
+      expect(cssHasSelector(css, classe)).toBe(true);
+    },
+  );
+
+  it('`.despesa` não é confundida com `.desp-x`, que também existe na folha', () => {
+    expect(cssHasSelector(css, '.despesa')).toBe(true);
+    expect(cssHasSelector(css, '.desp-x')).toBe(true);
+    const bloco = cssBlockBody(css, '.despesa');
+    expect(bloco).not.toContain('color: var(--muted-2)');
+  });
+});
