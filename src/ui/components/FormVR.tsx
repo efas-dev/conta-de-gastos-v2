@@ -159,8 +159,13 @@ export function FormVR({ mesRef }: FormVRProps) {
                   onChange={(e) => atualizarCampo(indice, 'natureza', e.target.value)}
                   style={{ flex: 1, minWidth: 0 }}
                 />
-                <button type="button" className="btn sec mini" onClick={() => removerLinha(indice)}>
-                  Remover
+                <button
+                  type="button"
+                  className="desp-x"
+                  aria-label={`Remover despesa ${indice + 1}`}
+                  onClick={() => removerLinha(indice)}
+                >
+                  ×
                 </button>
               </div>
             </li>
