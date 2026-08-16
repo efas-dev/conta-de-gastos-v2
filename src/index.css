@@ -617,6 +617,12 @@ select.input {
   padding: 2px 0;
 }
 
+.saldos {
+  display: flex;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 .btn-texto {
   border: none;
   background: none;
