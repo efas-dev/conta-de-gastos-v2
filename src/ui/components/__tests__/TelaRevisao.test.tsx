@@ -377,6 +377,13 @@ describe('TelaRevisao', () => {
     expect(propsSeletorMesReferencia).toMatchObject({ mesEscolhido: '2024-03' })
     expect(typeof propsSeletorMesReferencia?.onChange).toBe('function')
   })
+
+  it('repassa a prop compacto ao SeletorMesReferencia no call-site do .grupo-mes (Task M1)', () => {
+    render(<TelaRevisao {...props({ mesEscolhido: '2024-03' })} />)
+
+    expect(propsSeletorMesReferencia).not.toBeNull()
+    expect(propsSeletorMesReferencia).toMatchObject({ compacto: true })
+  })
 })
 
 // ---------------------------------------------------------------------------
