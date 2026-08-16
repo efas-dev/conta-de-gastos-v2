@@ -318,6 +318,25 @@ select.input {
   cursor: pointer;
 }
 
+.despesa {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.desp-x {
+  border: none;
+  background: none;
+  color: var(--muted-2);
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.desp-x:hover {
+  color: var(--terracota);
+}
+
 .campo {
   display: flex;
   flex-direction: column;
