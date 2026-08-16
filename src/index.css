@@ -317,6 +317,15 @@ a:hover {
 }
 select.input {
   cursor: pointer;
+  /*
+    Um `select` com aparência nativa fica 2px mais alto que um `input` de mesma fonte e mesmo
+    padding: o user-agent dá ~21px ao conteúdo do select contra ~19px do input. `line-height` não
+    resolve — o navegador o ignora em select com `appearance: auto`. Compensar pelo padding
+    vertical (11px → 10px) iguala a caixa em 43px, para que os campos da mesma linha (ex.: "Suas
+    iniciais" ao lado de "Mês de referência", na tela de importação) fechem topo e base juntos.
+  */
+  padding-top: 10px;
+  padding-bottom: 10px;
 }
 .input.mini {
   font-size: 12px;

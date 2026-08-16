@@ -62,10 +62,14 @@ export function SeletorMesReferencia({ mesEscolhido, onChange, compacto }: Selet
   }
 
   const className = compacto ? 'sel-mini' : 'input'
-  const style = compacto ? undefined : { width: 'auto', padding: '6px 8px', fontSize: 13 }
+  // Fora do modo compacto os selects são campos de formulário como os vizinhos ("Suas iniciais",
+  // "Seu nome"): herdam altura, padding e fonte do `.input`, sem override inline, e dividem a
+  // largura da coluna em partes iguais (`flex: 1`). O `style` inline anterior (padding 6px 8px,
+  // fonte 13) os deixava 9px mais baixos que os campos ao lado e estreitos demais para a coluna.
+  const style = compacto ? undefined : { flex: 1, minWidth: 0 }
 
   return (
-    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+    <span style={{ display: 'flex', alignItems: 'center', gap: 6, width: compacto ? undefined : '100%' }}>
       <select
         data-testid="select-mes"
         value={mesStr}

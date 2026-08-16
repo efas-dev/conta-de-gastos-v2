@@ -233,7 +233,7 @@ describe('E2E — Task 9: fluxo completo VR (F7) + F6/D6 (recomposição não pr
       target: { value: 'Mercado ABC' },
     })
 
-    fireEvent.click(formVR.getByRole('button', { name: 'Adicionar despesa' }))
+    fireEvent.click(formVR.getByRole('button', { name: '+ Adicionar' }))
 
     fireEvent.change(formVR.getByLabelText('Valor da despesa 2'), { target: { value: '30' } })
     fireEvent.change(formVR.getByLabelText('Natureza da despesa 2'), {

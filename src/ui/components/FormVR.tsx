@@ -174,9 +174,14 @@ export function FormVR({ mesRef }: FormVRProps) {
         </ul>
       )}
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'space-between' }}>
-        <button type="button" className="btn sec mini" onClick={adicionarLinha}>
-          Adicionar despesa
+      {/*
+        "Adicionar despesa" é botão de texto (`.btn-texto`), não botão com caixa: os dois botões
+        com caixa somavam 282px num rodapé de 269px e o CTA transbordava a borda do card. A classe
+        `.btn-texto` recebeu `white-space: nowrap` justamente para este uso.
+      */}
+      <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'space-between', alignItems: 'center' }}>
+        <button type="button" className="btn-texto" onClick={adicionarLinha}>
+          + Adicionar
         </button>
         <button type="button" className="btn pri mini" onClick={confirmar}>
           Efetivar lançamentos

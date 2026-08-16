@@ -95,7 +95,12 @@ describe('SeletorMesReferencia', () => {
 })
 
 describe('SeletorMesReferencia — prop compacto', () => {
-  it('sem a prop compacto, os selects mantêm className "input" e o style inline atual', () => {
+  // Correção 2026-08-16: fora do modo compacto os selects são campos como os vizinhos da mesma
+  // linha ("Suas iniciais", "Seu nome"). O `style` inline anterior (`padding: 6px 8px`,
+  // `fontSize: 13`) sobrescrevia o `.input` e os deixava 9px mais baixos e estreitos demais para a
+  // coluna — visualmente "puxadinhos". Agora herdam altura/padding/fonte do `.input` e dividem a
+  // largura em partes iguais.
+  it('sem a prop compacto, os selects usam "input" sem sobrescrever padding/fonte', () => {
     render(<SeletorMesReferencia mesEscolhido="2024-03" onChange={vi.fn()} />)
 
     const selectMes = screen.getByTestId('select-mes')
@@ -103,8 +108,17 @@ describe('SeletorMesReferencia — prop compacto', () => {
 
     expect(selectMes.className).toBe('input')
     expect(selectAno.className).toBe('input')
-    expect(selectMes).toHaveStyle({ width: 'auto', padding: '6px 8px', fontSize: '13px' })
-    expect(selectAno).toHaveStyle({ width: 'auto', padding: '6px 8px', fontSize: '13px' })
+    expect(selectMes.style.padding).toBe('')
+    expect(selectMes.style.fontSize).toBe('')
+    expect(selectAno.style.padding).toBe('')
+    expect(selectAno.style.fontSize).toBe('')
+  })
+
+  it('sem a prop compacto, os dois selects dividem a largura da coluna em partes iguais', () => {
+    render(<SeletorMesReferencia mesEscolhido="2024-03" onChange={vi.fn()} />)
+
+    expect(screen.getByTestId('select-mes')).toHaveStyle({ flex: 1, minWidth: 0 })
+    expect(screen.getByTestId('select-ano')).toHaveStyle({ flex: 1, minWidth: 0 })
   })
 
   it('compacto=false explicitamente mantém o comportamento idêntico ao padrão', () => {
@@ -112,7 +126,8 @@ describe('SeletorMesReferencia — prop compacto', () => {
 
     const selectMes = screen.getByTestId('select-mes')
     expect(selectMes.className).toBe('input')
-    expect(selectMes).toHaveStyle({ width: 'auto', padding: '6px 8px', fontSize: '13px' })
+    expect(selectMes.style.padding).toBe('')
+    expect(selectMes).toHaveStyle({ flex: 1 })
   })
 
   it('compacto=true troca a className para "sel-mini" e remove o style inline de padding', () => {

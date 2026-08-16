@@ -44,10 +44,10 @@ describe('FormVR — estrutura inicial (TL-68)', () => {
 })
 
 describe('FormVR — adicionar/remover linhas (TL-69, TL-70)', () => {
-  it('clicar em "Adicionar despesa" acrescenta uma nova linha vazia', () => {
+  it('clicar em "+ Adicionar" acrescenta uma nova linha vazia', () => {
     render(<FormVR mesRef="2026-07" />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Adicionar despesa' }))
+    fireEvent.click(screen.getByRole('button', { name: '+ Adicionar' }))
 
     expect(screen.getByLabelText('Valor da despesa 1')).toBeInTheDocument()
     expect(screen.getByLabelText('Valor da despesa 2')).toBeInTheDocument()
@@ -56,7 +56,7 @@ describe('FormVR — adicionar/remover linhas (TL-69, TL-70)', () => {
   it('clicar no botão de remover uma linha remove exatamente aquela despesa, preservando as demais', () => {
     render(<FormVR mesRef="2026-07" />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Adicionar despesa' }))
+    fireEvent.click(screen.getByRole('button', { name: '+ Adicionar' }))
     preencherDespesa(1, '10', 'ALM', 'Mercado')
     preencherDespesa(2, '20', 'TRN', 'Ônibus')
 
@@ -87,9 +87,9 @@ describe('FormVR — caminho válido, integração com a store real (TL-71, TL-7
     render(<FormVR mesRef="2026-07" />)
 
     preencherDespesa(1, '10', 'ALM', 'Mercado')
-    fireEvent.click(screen.getByRole('button', { name: 'Adicionar despesa' }))
+    fireEvent.click(screen.getByRole('button', { name: '+ Adicionar' }))
     preencherDespesa(2, '20', 'TRN', 'Ônibus')
-    fireEvent.click(screen.getByRole('button', { name: 'Adicionar despesa' }))
+    fireEvent.click(screen.getByRole('button', { name: '+ Adicionar' }))
     preencherDespesa(3, '30', 'LAZ', 'Cinema')
 
     fireEvent.click(screen.getByRole('button', { name: 'Efetivar lançamentos' }))
@@ -205,7 +205,7 @@ describe('FormVR — botão de remover compacto (V2)', () => {
   it('cada linha tem um aria-label dinâmico distinto por índice', () => {
     render(<FormVR mesRef="2026-07" />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Adicionar despesa' }))
+    fireEvent.click(screen.getByRole('button', { name: '+ Adicionar' }))
 
     expect(screen.getByRole('button', { name: 'Remover despesa 1' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Remover despesa 2' })).toBeInTheDocument()

@@ -319,6 +319,59 @@ describe('derivarContextoInspecao', () => {
     expect(derivarContextoInspecao(undefined)).toBeUndefined()
   })
 
+  // Correção 2026-08-16. Duas falhas empilhadas impediam o realce nessas origens: elas estavam
+  // fora de ORIGENS_COM_EFEITO_GRID, e o `alvo` delas carrega `Lancamento.id` (não índice
+  // posicional, como em conciliação), então a comparação nunca casaria mesmo depois de incluí-las.
+  it('TL-FIX-01: contexto de transferência interna compara por id, não por índice', () => {
+    const aviso = avisoConciliacaoFake({ origem: 'transferencia-interna', alvo: ['77'], permanece: [] })
+    const contexto = derivarContextoInspecao(aviso)
+    expect(contexto).toBeDefined()
+    expect(contexto?.porId).toBe(true)
+    // linha na posição 0 cujo lançamento tem id 77 → realce "sai"
+    expect(calcularTemaLinhaComInspecao(0, contexto, 77)).toBe(TEMA_INSPECAO_SAI)
+    // a mesma posição, com outro lançamento, não é realçada
+    expect(calcularTemaLinhaComInspecao(0, contexto, 78)).toBeUndefined()
+    // e o índice 77 sem o id correspondente também não — o que provava o bug antigo
+    expect(calcularTemaLinhaComInspecao(77, contexto, 5)).toBeUndefined()
+  })
+
+  it('TL-FIX-02: aviso agregado de investimento realça todas as suas linhas por id', () => {
+    const aviso = avisoConciliacaoFake({ origem: 'investimento', alvo: ['4', '11'], permanece: [] })
+    const contexto = derivarContextoInspecao(aviso)
+    expect(contexto?.porId).toBe(true)
+    expect(calcularTemaLinhaComInspecao(0, contexto, 4)).toBe(TEMA_INSPECAO_SAI)
+    expect(calcularTemaLinhaComInspecao(1, contexto, 11)).toBe(TEMA_INSPECAO_SAI)
+    expect(calcularTemaLinhaComInspecao(2, contexto, 9)).toBeUndefined()
+  })
+
+  it('TL-FIX-03: conciliação segue comparando por índice posicional', () => {
+    const contexto = derivarContextoInspecao(avisoConciliacaoFake())
+    expect(contexto?.porId).toBe(false)
+    // alvo ['2'] é posição 2 — o id do lançamento é irrelevante nesta convenção
+    expect(calcularTemaLinhaComInspecao(2, contexto, 999)).toBe(TEMA_INSPECAO_SAI)
+    expect(calcularTemaLinhaComInspecao(0, contexto, 999)).toBe(TEMA_INSPECAO_FICA)
+  })
+
+  it('TL-FIX-04: indicesEnvolvidos traduz id para posição nas origens id-based', () => {
+    const aviso = avisoConciliacaoFake({ origem: 'investimento', alvo: ['77', '99'], permanece: [] })
+    const lancamentos = [
+      { id: 50 }, { id: 77 }, { id: 12 }, { id: 99 },
+    ] as unknown as Parameters<typeof indicesEnvolvidos>[1]
+    expect(indicesEnvolvidos(aviso, lancamentos)).toEqual([1, 3])
+  })
+
+  it('TL-FIX-05: id sem lançamento correspondente é descartado, nunca vira NaN', () => {
+    const aviso = avisoConciliacaoFake({ origem: 'investimento', alvo: ['77', '404'], permanece: [] })
+    const lancamentos = [{ id: 77 }] as unknown as Parameters<typeof indicesEnvolvidos>[1]
+    expect(indicesEnvolvidos(aviso, lancamentos)).toEqual([0])
+  })
+
+  it('TL-FIX-06: origens que criam lançamentos (vr, rendimentos) seguem sem efeito no grid', () => {
+    expect(derivarContextoInspecao(avisoConciliacaoFake({ origem: 'vr' }))).toBeUndefined()
+    expect(derivarContextoInspecao(avisoConciliacaoFake({ origem: 'rendimentos' }))).toBeUndefined()
+    expect(derivarContextoInspecao(avisoConciliacaoFake({ origem: 'desalinhamento-mes' }))).toBeUndefined()
+  })
+
   it('TL-3 (revisão de D11 — T8): retorna alvoSet/permaneceSet(vazio) para origem valor-pendente', () => {
     const contexto = derivarContextoInspecao(avisoValorPendenteFake())
     expect(contexto).toBeDefined()

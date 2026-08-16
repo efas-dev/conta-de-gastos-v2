@@ -308,14 +308,51 @@ function criarTemaGrid() {
  * D11/T4). `'conciliacao'` sempre teve efeito; `'valor-pendente'`/`'pagamento-recebido'` passaram
  * a ter linha real em `lancamentos` a partir de T6/T7 (D16/D17 do ADR) — a grid deixa de ser
  * 100% inalterada para essas origens. Só `'conciliacao'` tem o papel "fica" (verde-menta); as
- * outras duas têm `permanece` sempre `[]`, então só produzem o papel "sai".
+ * demais têm `permanece` sempre `[]`, então só produzem o papel "sai".
+ *
+ * `'transferencia-interna'` e `'investimento'` entraram em 2026-08-16, corrigindo um vão: as duas
+ * origens propõem `remover` linhas reais do grid (ver `registry.ts`), mas estavam fora deste
+ * conjunto — então inspecionar esses avisos abria o banner ("1 linha") sem destacar linha nenhuma.
+ * Enquanto existiu realce permanente por categoria, a cor de categoria mascarava a ausência; ela
+ * foi aposentada em 2026-08-09 e o vão ficou visível.
+ *
+ * O critério para entrar aqui é ter alvo que aponta para linha existente no grid. `'vr'` e
+ * `'rendimentos'` ficam de fora porque *criam* lançamentos em vez de apontar para os existentes,
+ * e `'desalinhamento-mes'` é informativo, sem alvo.
  */
-const ORIGENS_COM_EFEITO_GRID = new Set(['conciliacao', 'valor-pendente', 'pagamento-recebido'])
+const ORIGENS_COM_EFEITO_GRID = new Set([
+  'conciliacao',
+  'valor-pendente',
+  'pagamento-recebido',
+  'transferencia-interna',
+  'investimento',
+])
 
-/** Conjuntos de identidade (índice real em `lancamentos`) para os papéis "sai"/"fica" da inspeção. */
+/**
+ * Origens cujo `Aviso.alvo` carrega `Lancamento.id` em vez de índice posicional.
+ *
+ * O campo `alvo` tem duas convenções no projeto, e a diferença é invisível pelo tipo (`string[]`
+ * nos dois casos): `conciliacao`/`valor-pendente`/`pagamento-recebido` gravam a POSIÇÃO da linha
+ * (ver `deteccoes.ts` e o remapeamento em `registry.ts`), enquanto `transferencia-interna` e
+ * `investimento` gravam o ID do lançamento (ver `investimento.ts`, que documenta a escolha:
+ * o aviso mira o lançamento independentemente de reordenação).
+ *
+ * Comparar id contra índice não casaria nunca — e pior, poderia casar por acidente quando um id
+ * coincidisse com a posição de outra linha, destacando a linha errada. Por isso a comparação é
+ * decidida pela origem, não por heurística.
+ */
+const ORIGENS_ALVO_POR_ID = new Set(['transferencia-interna', 'investimento'])
+
+/**
+ * Conjuntos de identidade para os papéis "sai"/"fica" da inspeção.
+ *
+ * `porId` diz contra o quê comparar: `true` → `Lancamento.id`; `false` → índice real em
+ * `lancamentos`. Ver `ORIGENS_ALVO_POR_ID`.
+ */
 export interface ContextoInspecaoConciliacao {
   alvoSet: Set<string>
   permaneceSet: Set<string>
+  porId: boolean
 }
 
 /**
@@ -333,17 +370,25 @@ export function derivarContextoInspecao(
   return {
     alvoSet: new Set(aviso.alvo),
     permaneceSet: new Set(aviso.permanece),
+    porId: ORIGENS_ALVO_POR_ID.has(aviso.origem),
   }
 }
 
 /**
- * Ids (índices reais em `lancamentos`) de todas as linhas envolvidas na inspeção ativa —
- * união de `alvo` (sai) e `permanece` (fica). Vazio quando não há inspeção com efeito de grid
- * ativa (origem fora de `ORIGENS_COM_EFEITO_GRID`).
+ * Índices reais em `lancamentos` de todas as linhas envolvidas na inspeção ativa — união de
+ * `alvo` (sai) e `permanece` (fica). Vazio quando não há inspeção com efeito de grid ativa
+ * (origem fora de `ORIGENS_COM_EFEITO_GRID`).
+ *
+ * Para as origens de `ORIGENS_ALVO_POR_ID`, `alvo` traz `Lancamento.id` — aqui os ids são
+ * traduzidos para posição via `lancamentos`, porque quem consome isto (`aplicarRevelacaoInspecao`)
+ * trabalha com índice. Um id sem lançamento correspondente é descartado em vez de virar `NaN`.
  */
-export function indicesEnvolvidos(aviso: Aviso | undefined): number[] {
+export function indicesEnvolvidos(aviso: Aviso | undefined, lancamentos: Lancamento[] = []): number[] {
   if (!aviso || !ORIGENS_COM_EFEITO_GRID.has(aviso.origem)) return []
-  return [...aviso.alvo, ...aviso.permanece].map(Number)
+  const bruto = [...aviso.alvo, ...aviso.permanece]
+  if (!ORIGENS_ALVO_POR_ID.has(aviso.origem)) return bruto.map(Number)
+  const posicaoPorId = new Map(lancamentos.map((l, i) => [String(l.id), i]))
+  return bruto.map((id) => posicaoPorId.get(id)).filter((i): i is number => i !== undefined)
 }
 
 /**
@@ -359,11 +404,17 @@ export function indicesEnvolvidos(aviso: Aviso | undefined): number[] {
 export function calcularTemaLinhaComInspecao(
   indiceReal: number,
   contextoInspecao: ContextoInspecaoConciliacao | undefined,
+  idLancamento?: number | string,
 ): typeof TEMA_INSPECAO_SAI | typeof TEMA_INSPECAO_FICA | undefined {
   if (contextoInspecao) {
-    const id = String(indiceReal)
-    if (contextoInspecao.alvoSet.has(id)) return TEMA_INSPECAO_SAI
-    if (contextoInspecao.permaneceSet.has(id)) return TEMA_INSPECAO_FICA
+    // A chave de comparação depende da convenção da origem (ver `ORIGENS_ALVO_POR_ID`): posição da
+    // linha para conciliação e afins, `Lancamento.id` para transferência interna e investimento.
+    const chave =
+      contextoInspecao.porId && idLancamento !== undefined
+        ? String(idLancamento)
+        : String(indiceReal)
+    if (contextoInspecao.alvoSet.has(chave)) return TEMA_INSPECAO_SAI
+    if (contextoInspecao.permaneceSet.has(chave)) return TEMA_INSPECAO_FICA
   }
   return undefined
 }
@@ -505,8 +556,8 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
     [avisoEmInspecao],
   )
   const envolvidosInspecao = useMemo(
-    () => indicesEnvolvidos(avisoEmInspecao),
-    [avisoEmInspecao],
+    () => indicesEnvolvidos(avisoEmInspecao, lancamentos),
+    [avisoEmInspecao, lancamentos],
   )
   const { linhas: lancamentosExibidos, mapa: mapaExibidoReal } = useMemo(
     () =>
@@ -866,9 +917,10 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
 
   const getRowThemeOverride: GetRowThemeCallback = useCallback(
     (row) => {
-      if (!lancamentosExibidos[row]) return undefined
+      const lancamento = lancamentosExibidos[row]
+      if (!lancamento) return undefined
       const indiceReal = mapaExibidoReal[row] ?? row
-      return calcularTemaLinhaComInspecao(indiceReal, contextoInspecao)
+      return calcularTemaLinhaComInspecao(indiceReal, contextoInspecao, lancamento.id)
     },
     [lancamentosExibidos, mapaExibidoReal, contextoInspecao],
   )
