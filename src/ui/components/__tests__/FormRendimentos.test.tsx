@@ -216,6 +216,24 @@ describe('FormRendimentos — classes oficiais e placeholders (B1)', () => {
   })
 })
 
+describe('FormRendimentos — variante .input.mini nos campos (R2)', () => {
+  it('campo "Conta corrente" mantém .input e ganha .mini', () => {
+    render(<FormRendimentos mesRef="2026-07" />)
+
+    const campo = screen.getByLabelText('Conta corrente')
+    expect(campo).toHaveClass('input')
+    expect(campo).toHaveClass('mini')
+  })
+
+  it('campo "Aplicações" mantém .input e ganha .mini', () => {
+    render(<FormRendimentos mesRef="2026-07" />)
+
+    const campo = screen.getByLabelText('Aplicações')
+    expect(campo).toHaveClass('input')
+    expect(campo).toHaveClass('mini')
+  })
+})
+
 describe('FormRendimentos — divisor sutil no lugar do heading (R1)', () => {
   it('não renderiza o heading "Rendimentos do mês" e renderiza o divisor sutil no lugar', () => {
     const { container } = render(<FormRendimentos mesRef="2026-07" />)

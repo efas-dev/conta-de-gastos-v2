@@ -128,7 +128,7 @@ export function FormRendimentos({ mesRef }: FormRendimentosProps) {
         <label className="campo">
           <span className="rotulo">Conta corrente</span>
           <input
-            className="input"
+            className="input mini"
             aria-label="Conta corrente"
             placeholder="Ex.: 1234,56"
             value={contaCorrente}
@@ -139,7 +139,7 @@ export function FormRendimentos({ mesRef }: FormRendimentosProps) {
         <label className="campo">
           <span className="rotulo">Aplicações</span>
           <input
-            className="input"
+            className="input mini"
             aria-label="Aplicações"
             placeholder='Ex.: 100+50+20'
             value={aplicacoes}
