@@ -53,15 +53,14 @@ describe('FormVR — adicionar/remover linhas (TL-69, TL-70)', () => {
     expect(screen.getByLabelText('Valor da despesa 2')).toBeInTheDocument()
   })
 
-  it('clicar em "Remover" numa linha remove exatamente aquela despesa, preservando as demais', () => {
+  it('clicar no botão de remover uma linha remove exatamente aquela despesa, preservando as demais', () => {
     render(<FormVR mesRef="2026-07" />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Adicionar despesa' }))
     preencherDespesa(1, '10', 'ALM', 'Mercado')
     preencherDespesa(2, '20', 'TRN', 'Ônibus')
 
-    const botoesRemover = screen.getAllByRole('button', { name: 'Remover' })
-    fireEvent.click(botoesRemover[0])
+    fireEvent.click(screen.getByRole('button', { name: 'Remover despesa 1' }))
 
     expect(screen.getByLabelText('Valor da despesa 1')).toHaveValue('20')
     expect(screen.getByLabelText('Natureza da despesa 1')).toHaveValue('TRN')
@@ -150,11 +149,38 @@ describe('FormVR — layout .despesa (V1)', () => {
   })
 })
 
+describe('FormVR — botão de remover compacto (V2)', () => {
+  it('o botão de remover usa a classe .desp-x, não mais "btn sec mini"', () => {
+    render(<FormVR mesRef="2026-07" />)
+
+    const botaoRemover = screen.getByRole('button', { name: 'Remover despesa 1' })
+    expect(botaoRemover).toHaveClass('desp-x')
+    expect(botaoRemover).not.toHaveClass('btn')
+  })
+
+  it('o botão de remover não expõe mais o texto "Remover", só o símbolo ×', () => {
+    render(<FormVR mesRef="2026-07" />)
+
+    expect(screen.queryByText('Remover')).toBeNull()
+    const botaoRemover = screen.getByRole('button', { name: 'Remover despesa 1' })
+    expect(botaoRemover).toHaveTextContent('×')
+  })
+
+  it('cada linha tem um aria-label dinâmico distinto por índice', () => {
+    render(<FormVR mesRef="2026-07" />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Adicionar despesa' }))
+
+    expect(screen.getByRole('button', { name: 'Remover despesa 1' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remover despesa 2' })).toBeInTheDocument()
+  })
+})
+
 describe('FormVR — caminhos inválidos, sem crash (TL-74, TL-75, TL-76, TL-77, TL-78)', () => {
   it('formulário vazio (0 despesas) bloqueia com mensagem de erro e não insere lançamento', () => {
     render(<FormVR mesRef="2026-07" />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Remover' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Remover despesa 1' }))
     fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
 
     expect(screen.getByRole('alert')).toBeInTheDocument()
