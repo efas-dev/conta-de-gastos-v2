@@ -808,7 +808,15 @@ tr.insp-fica td.ro {
   height: 38px;
   padding: 0 14px;
   background: var(--barra);
-  border-bottom: 1px solid var(--borda);
+  /*
+    `--borda-linha` (e não `--borda`) porque esta linha precisa ser a MESMA que o Glide desenha sob
+    o header do grid, à esquerda: as duas se encontram em y=82 e formam uma régua só, que atravessa
+    a tela. O tema do grid pede `--borda` em `headerBottomBorderColor`, mas o Glide desenha a
+    horizontal com `horizontalBorderColor` (`--borda-linha`, medido no canvas: #eee9df). Usar
+    `--borda` aqui deixava o lado direito visivelmente mais escuro que o esquerdo — alinhado em
+    posição, quebrado em tom. Ver `ReviewGrid.tsx`, tema do DataEditor.
+  */
+  border-bottom: 1px solid var(--borda-linha);
   flex-shrink: 0;
 }
 .aba {

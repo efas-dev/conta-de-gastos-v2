@@ -191,12 +191,14 @@ beforeEach(() => {
 })
 
 describe('TelaRevisao', () => {
-  it('renderiza a composição principal (toolbar, banner de inspeção e grid) — sem linha de filterchips', () => {
+  it('renderiza a composição principal (toolbar e grid) — sem filterchips e sem faixa de inspeção', () => {
     render(<TelaRevisao {...props()} />)
 
     expect(screen.getByTestId('toolbar-revisao')).toBeInTheDocument()
-    expect(screen.getByTestId('banner-inspecao')).toBeInTheDocument()
     expect(screen.getByTestId('review-grid')).toBeInTheDocument()
+    // A faixa de inspeção foi removida (2026-08-16): era redundante com o card em inspeção, que já
+    // mostra estado, contagem de linhas e as ações. Sair da inspeção continua sendo clicar no card.
+    expect(screen.queryByTestId('banner-inspecao')).toBeNull()
     // A linha de filterchips foi removida (hotfix 2026-08-02): o filtro por
     // natureza vive nos cartões da colinha do PainelLateral.
     expect(document.querySelector('.filtros')).toBeNull()

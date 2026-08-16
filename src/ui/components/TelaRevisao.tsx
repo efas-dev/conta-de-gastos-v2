@@ -14,7 +14,6 @@ import { ReviewGrid } from './ReviewGrid'
 import { SplitModal } from './SplitModal'
 import { ToolbarRevisao } from './ToolbarRevisao'
 import { PainelLateral, type AbaPainelLateral } from './PainelLateral'
-import { BannerInspecao } from './BannerInspecao'
 import { ExportModal } from './ExportModal'
 import { PopupReplicacao } from './PopupReplicacao'
 import { SeletorMesReferencia } from './SeletorMesReferencia'
@@ -60,13 +59,9 @@ export function TelaRevisao({
   const dicEntries = useAppStore((s) => s.dicEntries)
   const naturezasValidas = useAppStore((s) => s.naturezasValidas)
   const naturezasRicas = useAppStore((s) => s.naturezasRicas)
-  const avisosAcionaveis = useAppStore((s) => s.avisosAcionaveis)
   const sujo = useAppStore((s) => s.sujo)
 
   const adicionarAvisosAcionaveis = useAppStore((s) => s.adicionarAvisos)
-  const aplicarAviso = useAppStore((s) => s.aplicar)
-  const dispensarAviso = useAppStore((s) => s.dispensar)
-  const sairInspecao = useAppStore((s) => s.sairInspecao)
   const undo = useAppStore((s) => s.undo)
   const redo = useAppStore((s) => s.redo)
   const marcarLimpo = useAppStore((s) => s.marcarLimpo)
@@ -87,9 +82,6 @@ export function TelaRevisao({
 
   // D5 do ADR colinha-naturezas: lista filtrada — somente naturezas com descrição preenchida.
   const naturezasDescritas = naturezasRicas.filter((n) => n.descricao !== '')
-
-  const avisoEmInspecao =
-    avisosAcionaveis.avisos.find((a) => a.id === avisosAcionaveis.avisoEmInspecao) ?? null
 
   const lancamentosPendentes = lancamentos.filter((l) => validarLinha(l, naturezasValidas)).length
 
@@ -271,13 +263,15 @@ export function TelaRevisao({
           frases de intenção: painel lateral empurra a grid em vez de
           sobrepor como overlay position:fixed). */}
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
+        {/*
+          A faixa de inspeção que ficava aqui (BannerInspecao) foi removida em 2026-08-16 por ser
+          redundante: tudo o que ela mostrava — estado "inspecionando", contagem de linhas, Aplicar
+          e Dispensar — já aparece no próprio card em inspeção, que ainda ganha borda destacada. Sair
+          da inspeção continua possível clicando no card de novo (`aoClicarNoCard`, em
+          `CentralDeAvisos.tsx`, já alternava antes desta mudança), e o realce das linhas no grid
+          segue sinalizando o modo ativo.
+        */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-          <BannerInspecao
-            aviso={avisoEmInspecao}
-            onAprovar={aplicarAviso}
-            onDispensar={dispensarAviso}
-            onFechar={sairInspecao}
-          />
           <div ref={gridWrapRef} style={{ flex: 1, minHeight: 0 }}>
             <ReviewGrid onSplitDetectado={(indice) => setSplitIndice(indice)} />
           </div>

@@ -183,9 +183,13 @@ describe('src/index.css — `.painel-abas` 38px contínuo (Task C2)', () => {
     expect(bloco).toContain('background: var(--barra)');
   });
 
-  it('troca border-bottom de --borda-2 para --borda', () => {
+  // Correção 2026-08-16: a Task C2 trocou o token para `--borda` querendo casar com o header do
+  // grid, mas o Glide desenha a horizontal com `--borda-linha` (#eee9df, medido no canvas) — as
+  // duas linhas se encontram em y=82 alinhadas em posição e divergentes em tom. `--borda-linha` é
+  // o token que efetivamente faz a régua correr contínua.
+  it('usa border-bottom `--borda-linha`, o mesmo tom da linha sob o header do grid', () => {
     const bloco = cssBlockBody(css, '.painel-abas');
-    expect(bloco).toContain('border-bottom: 1px solid var(--borda)');
+    expect(bloco).toContain('border-bottom: 1px solid var(--borda-linha)');
     expect(bloco).not.toContain('var(--borda-2)');
   });
 
