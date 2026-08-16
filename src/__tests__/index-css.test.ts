@@ -202,3 +202,31 @@ describe('src/index.css — `.painel-abas` 38px contínuo (Task C2)', () => {
     expect(bloco).toContain('color: var(--verde)');
   });
 });
+
+describe('src/index.css — `.btn-texto` ganha `white-space: nowrap` (Task C5)', () => {
+  it('declara white-space: nowrap', () => {
+    const bloco = cssBlockBody(css, '.btn-texto');
+    expect(bloco).toContain('white-space: nowrap');
+  });
+
+  it('preserva as demais propriedades originais inalteradas', () => {
+    const bloco = cssBlockBody(css, '.btn-texto');
+    expect(bloco).toContain('border: none');
+    expect(bloco).toContain('background: none');
+    expect(bloco).toContain('color: var(--verde)');
+    expect(bloco).toContain('font-size: 12.5px');
+    expect(bloco).toContain('font-weight: 700');
+    expect(bloco).toContain('cursor: pointer');
+    expect(bloco).toContain('font-family: inherit');
+    expect(bloco).toContain('padding: 0');
+  });
+
+  it('mantém `.btn-texto:hover` inalterada', () => {
+    const bloco = cssBlockBody(css, '.btn-texto:hover');
+    expect(bloco.trim()).toBe('color: var(--verde-hover);');
+  });
+
+  it('não introduz nenhuma @media — invariante do projeto (Decisão 3 do ADR)', () => {
+    expect(css).not.toMatch(/@media/);
+  });
+});
