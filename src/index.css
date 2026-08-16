@@ -829,6 +829,9 @@ tr.insp-fica td.ro {
   color: var(--muted);
   margin-top: 4px;
 }
+.divisor-sutil {
+  border-top: 1px solid var(--borda-2);
+}
 .painel-vazio {
   display: flex;
   flex-direction: column;
