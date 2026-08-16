@@ -1,6 +1,6 @@
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
 // ADR: see Docs/specs/patches-ui-ux.adr.md
-// ADR: see spec/refino-ui-revisao-v2.adr.md
+// ADR: see Docs/specs/refino-ui-revisao-v2.adr.md
 
 import type { ReactNode } from 'react'
 import { useAppStore } from '../store/appStore'
