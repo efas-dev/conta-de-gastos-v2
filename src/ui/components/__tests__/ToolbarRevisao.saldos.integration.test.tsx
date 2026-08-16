@@ -1,4 +1,4 @@
-// ADR: see spec/refino-ui-revisao-v2.adr.md
+// ADR: see Docs/specs/refino-ui-revisao-v2.adr.md
 
 /**
  * Teste de integração — Task M2 (spec `refino-ui-revisao-v2`), exigido pela frase F16 e pela
