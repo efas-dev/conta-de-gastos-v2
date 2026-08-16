@@ -2,6 +2,11 @@
 
 ## Pendentes
 
+> **Faxina de 2026-08-16.** Os itens entregues foram removidos daqui e registrados em
+> **Concluídos** ("Faxina do TODO"). Cada remoção foi verificada no app rodando (Playwright,
+> dados reais de `data_sample/`), não só por leitura de código. O que sobrou abaixo foi
+> verificado como **ausente** — não é backlog herdado por inércia.
+
 ### 14. UX: legibilidade de dados colapsados pela largura das colunas → tooltip no hover
 Na grid de revisão, dados colapsados/truncados pelo tamanho das colunas (caso típico: a
 coluna de transcrição com texto longo) ficam ruins de ler por inteiro. **Abordagem decidida
@@ -10,21 +15,10 @@ sem prejuízo do redimensionamento de coluna já implementado (drag to resize) �
 mecanismos convivem. Vale para qualquer coluna cujo conteúdo não caiba na largura atual,
 não só a transcrição.
 
-### 20. Parser fatura Nubank: deixar de fora o valor pendente do mês anterior → **vai para spec**
-Na fatura Nubank, o parser (`src/parsers/fatura_nubank.ts`) pode excluir da saída a linha de
-valor pendente do mês anterior (saldo/resíduo que a fatura carrega da fatura passada) — ela
-não é um gasto do mês de referência e não deve virar lançamento na grid. **Decisão
-2026-07-18: não vai como hotfix** — falta o título exato da linha num CSV real (não existe em
-`data_sample/`; as faturas do sample foram pagas integralmente, e o legado nunca tratou o
-caso). A mecânica é a mesma do filtro "Pagamento recebido" já existente
-(`src/parsers/fatura_nubank.ts:92`); quando houver CSV real com a linha (do beta tester,
-pseudonimizado), tratar via spec com fixture + aviso de contagem.
-
-**Atualização 2026-07-20 (Captura da spec):** CSV real chegou (`data_sample/pp/Nubank_2026-06-06.csv`,
-título literal "Valor pendente do mês anterior") — item em spec junto com o núcleo do módulo de
-avisos (item 25) e a conciliação (item 26), sob o princípio "tudo é proposta". Decisão D3 da
-Captura: o filtro silencioso de "Pagamento recebido" (`fatura_nubank.ts:92`) **também migra para o
-modelo de proposta** — nenhuma exclusão silenciosa permanece no parser.
+**Verificado 2026-08-16:** não existe. Zero `title`/`role=tooltip` na área da grid; a
+transcrição corta sem reticências e sem nenhuma affordance (ex.: "Transferência recebida pelo
+Pix - LIS IMOVEIS L"). Relacionado: `Docs/debt/tecnica/valor-truncado-auto-largura-*.md` e
+`bug-visualizacao-valor-grande-coluna-valor.md` — mesma família, valeria uma spec só.
 
 ### 23. Detecção de reembolso: entrada e saída de igual valor em períodos próximos
 Funcionalidade que detecta pares de entrada e saída de **igual valor** (sinais opostos) em
@@ -36,123 +30,29 @@ Pontos a decidir na spec: janela de proximidade (dias), se o par pode cruzar fon
 não destrutiva que o usuário confirma (nos moldes das flags/cores já usadas na grid),
 nunca anulação automática silenciosa.
 
-### 25. UX: aviso de fatura dispensável com "×", layout estilo macOS
-O aviso não bloqueante "reconhecido como fatura" (e os avisos em geral da `AvisoList`) deve
-poder ser dispensado com um "×". Estudar layout parecido com o das notificações do macOS:
-cartão flutuante compacto, canto da tela, ícone + texto curto, botão de fechar discreto que
-aparece no hover, possivelmente auto-recolhimento/empilhamento quando houver vários. Cuidado:
-o aviso de fatura hoje é recalculado por `useEffect` a cada mudança de lançamentos/mês
-(`src/App.tsx`, prefixo `[fatura-aviso]`) — a dispensa precisa persistir na sessão para o
-efeito não recriar o aviso dispensado.
+### 27. Transferência própria: casar o **par** entre fontes distintas (parcialmente entregue)
+Quando há transferência própria entre contas pessoais — mesmo valor saindo de uma conta do
+usuário e entrando em outra conta dele (ex.: extratos de dois bancos carregados juntos) — o
+sistema deve casar os **dois** lançamentos e propor anular o par.
 
-### 26. Algoritmo: conciliar pagamento de fatura no extrato com o total da fatura
-Haverá lançamentos rotulados como fatura cujo **somatório** equivale a um pagamento de fatura
-que aparece na fonte extrato (ex.: "Pagamento de fatura" no extrato Nubank). Quando o sistema
-identificar essa equivalência — tolerando diferença de poucos centavos, **até R$ 0,05** — deve
-reconhecer como a mesma saída e **remover da planilha de revisão o lançamento do extrato** que
-equivale ao total dos lançamentos de fatura (evita contar a despesa duas vezes: itens da
-fatura + débito do pagamento no extrato).
+**O que já existe** (spec `dominio-regras` + `fundacao-operacoes`): a detecção virou proposta
+acionável na central de avisos (`detectarTransferenciaInternaAvisos`, origem
+`transferencia-interna` no registry), com Aplicar/Dispensar, modo inspeção e Desfazer.
+Verificado no app em 2026-08-16 com `data_sample/pp/`.
 
-O procedimento gera um **aviso** ao usuário informando que foi efetuado, com opção de
-**desfazer** — ou, alternativamente, o aviso propõe e o usuário confirma antes de aplicar
-(decidir na spec qual dos dois modos). Depende do **módulo de avisos**, que precisa ser
-implementado de forma independente (ver item 25 — dispensa com "×", estilo macOS); avaliar
-junto a semântica do item 23 (reembolso), que também anula pares por equivalência de valor.
+**O que falta — e é o item:** o casamento é **por lançamento isolado**, não em par. Cada linha
+que bate nos padrões (transferência genérica ou Pix nominal via `nomeUsuario`) vira uma
+proposta própria; duas pernas da mesma transferência viram dois avisos independentes, e uma
+perna sozinha vira proposta mesmo sem par. O próprio código declara o escopo em
+`src/dominio/transferencia.ts:73-75`:
 
-**Robustez p/ a spec (achado 2026-08-03):** a conciliação hoje só dispara quando `classificarFonte`
-(`src/dominio/mes.ts`) marca a fonte como *fatura* — o que exige ao menos uma transação com mês
-**anterior** ao mês de referência. Se o mês ref estiver desalinhado, a fatura vira "extrato" e a
-proposta **não aparece, em silêncio**. No dev atual a detecção funciona (reproduzida com fatura de
-junho + extrato de julho); o "parou de funcionar" reportado é provavelmente esse silêncio por mês
-ref. A spec deve: (a) tornar a classificação fatura/extrato mais robusta (ou avisar quando a fatura
-não foi reconhecida), e (b) sinalizar quando uma fatura carregada não gerou nenhuma proposta.
+> "O par entre contas de bancos distintos (item 27 do TODO — matching cruzado entre dois
+> lançamentos de fontes diferentes) NÃO é adicionado por este wrapper e segue fora de escopo."
 
-### 27. Aviso de transferência própria entre contas pessoais (par de mesmo valor)
-Análogo ao item 26: quando há transferência própria entre contas pessoais — mesmo valor
-saindo de uma conta do usuário e entrando em outra conta dele (ex.: extratos de dois bancos
-carregados juntos) — o sistema deve detectar o par e exibir o **aviso** dando ao usuário a
-opção de **revisar e aplicar** o tratamento (anular/neutralizar o par como transferência
-própria, sem virar despesa/receita do mês). Usa o mesmo módulo de avisos independente dos
-itens 25/26. Relação com o existente: `detectarTransferenciaInterna`
-(`src/dominio/transferencia.ts`) hoje marca lançamentos individualmente (flag/cor na grid);
-este item acrescenta o **casamento em par por valor** entre fontes distintas e o fluxo de
-proposta via aviso.
-
-### 29. Round-trip de saldo: B5 (saldo final) do dicionário vira saldo inicial do próximo mês
-O dicionário carregado (xlsx do mês anterior) terá um valor de **saldo final na célula `B5`
-da aba `Extrato`**. Ao produzir o mês seguinte, esse valor deve ser preenchido como **saldo
-inicial do próximo mês** no arquivo gerado. Envolve: leitor passa a extrair `B5` do xlsx
-importado (análogo ao `lerIniciais`/`B2`), e o writer grava o saldo inicial no campo
-correspondente do Modelo — confirmar no Modelo qual célula recebe o saldo inicial e se o
-contrato de injeção precisa ser estendido (hoje: `B2`, `B3`, corpo `A9:H504`, aba
-`Dicionario`).
-
-### 30. Lançamento de rendimentos na tela de revisão (fechar o saldo do mês)
-Depois do item 29: opção de lançar **rendimentos** na tela de revisão. O usuário informa como
-input os **saldos totais ao final do mês de referência** (o que o banco mostra); o sistema
-compara com o saldo calculado do extrato respectivo (saldo inicial + movimentações do mês) e
-**calcula o lançamento que faz tudo zerar** — a diferença é o rendimento (ou ajuste), inserido
-como lançamento na grid para o usuário revisar antes do export. Decidir na spec: input por
-fonte/conta ou global, natureza padrão do lançamento gerado, e comportamento quando a
-diferença for negativa.
-
-**Detalhamento de UX (2026-08-03):** a feature é acionada por um **aviso**, que será sempre o
-**último aviso de toda a lista**. Ao clicar nesse aviso, ele abre — ali na própria sidebar de
-avisos — um **input box** para preencher os valores de saldo inicial da conta bancária e das
-aplicações. O sistema detecta os **bancos envolvidos** pela atividade do interessado (de
-acordo com os parsers acionados na sessão) e lembra o usuário de incluir os saldos de
-aplicações com o nome que cada banco usa: **Nubank → Caixinhas; Inter → Porquinhos;
-Itaú → Cofrinhos**.
-
-### 32. Componente visual de jornada do usuário (stepper de etapas)
-Componente visual para acompanhamento da jornada do usuário no app — um stepper/indicador de
-progresso com as etapas:
-0. **Carregar** extratos e faturas em formato `.csv` ou `.txt`;
-1. **Classificar** lançamentos (natureza/descrição na grid);
-2. **Conciliação de fatura** (pagamento no extrato × total da fatura — item 26);
-3. **Conciliação de transferências internas** — conciliar e anular operações que são meras
-   transferências entre contas do mesmo titular (par saída/entrada de mesmo valor — item 27);
-4. **Conciliação de saldos e rendimentos** (saldo inicial/final + lançamento de rendimentos —
-   itens 29/30);
-5. **Exportar** e realizar o trabalho de inteligência (análise de receitas e despesas
-   pessoais na planilha, ponderando eventuais pontos de otimização, se houver).
-Decidir na spec: onde o componente vive (header? barra própria?), como cada etapa é marcada
-como concluída (automático pelo estado do app × manual), e o que a etapa final mostra dentro
-do app (a análise em si acontece no Excel exportado).
-
-### 33. UX: inspeção visual da proposta de conciliação na grid → **vai para spec**
-Tornar a proposta de conciliação (central de avisos, spec avisos-acionaveis) mais intuitiva:
-clicar na proposta entra em **modo inspeção** — a grid destaca apenas as linhas envolvidas,
-diferenciando **qual linha sai** (o "Pagamento de fatura" do extrato, destaque de remoção) e
-**quais ficam** (os itens da fatura, destaque de permanência), com um sumário mostrando a
-regra cumprida (somatório da fatura R$ X ↔ pagamento R$ Y, diferença ≤ R$ 0,05). Clicar de
-novo, aplicar ou dispensar sai da inspeção. Encaixe já mapeado (2026-07-20): tema novo na
-cadeia de `getRowThemeOverride` (`ReviewGrid.tsx:196-256`, precedência acima dos demais
-enquanto ativo), estado `avisoEmInspecao` no `avisosSlice`, e expor no `Aviso` o conjunto
-"quem fica" (ex.: campo `contexto`/`evidencia` com os ids que permanecem — hoje só o `alvo`
-que sai é exposto). Decidir na spec: cores/semiótica dos dois papéis, auto-scroll/filtro para
-as linhas envolvidas, se a inspeção vale para o fallback de composição (subconjunto) e para as
-demais propostas (valor pendente/pagamento recebido, que também têm "linha que sai").
-
-### 33. Readequação da UI após as implementações do TODO (com mecanismo de jornada)
-Depois que os itens recentes do TODO forem implementados (avisos estilo macOS, conciliações,
-stepper de jornada — itens 25/26/27/29/30/32), readequar a UI como um todo para acomodá-los
-com coerência visual. Envolverá: **otimização do header** (hoje: contador de lançamentos +
-aviso de sessão + desfazer/refazer + mês de referência + exportar), da **barra de chips**
-(filtros + legenda de cores na mesma barra) e dos **títulos da grid** — abrindo espaço para o
-mecanismo de jornada sem poluir a tela. Item guarda-chuva de design: fazer por último, com
-uma passada de design consciente (nos moldes do handoff do Claude Design usado na grid).
-
-### 34. Avisos absorvem transferência própria e investimento; desativar "Precisa de atenção"
-Duas mudanças casadas na grid de revisão:
-1. **Incluir transferências próprias e investimento no campo/seção de avisos** — as detecções
-   (`detectarTransferenciaInterna`, `detectarInvestimento`) passam a se manifestar como
-   avisos (módulo dos itens 25/26/27), em vez de apenas cor de linha + legenda.
-2. **Desativar a funcionalidade "Precisa de atenção"** — não faz mais sentido: com os filter
-   chips (para localizar pendências) e a seção de avisos estabelecidos, a marcação de linha
-   "Precisa de atenção" ficou redundante. Remover a cor/flag e a entrada correspondente na
-   legenda (Swatch em `src/App.tsx`); revisar o que os chips filtram para não perder a
-   localização de linhas incompletas.
+Decidir na spec: tolerância de valor e janela de datas (a conciliação usa R$ 0,05); o que
+fazer com a perna órfã (proposta individual como hoje, ou silêncio); e a precedência entre a
+proposta em par e as individuais que hoje já disparam. Compartilha o motor com os itens 23,
+35 e 36 — todos são "casar par por igual valor e propor remoção".
 
 ### 35. BB Rende Fácil: anular resgates que apenas cobrem débitos da conta
 No extrato do Banco do Brasil (`src/parsers/extrato_bb.ts`) as linhas **"BB Rende Fácil"** são o
@@ -188,42 +88,6 @@ saldo faltante); janela temporal (mesmo dia?); tolerância de centavos; o que fa
 **aplicação** (Saída de excedente — também é investimento a neutralizar?); precedência frente às
 detecções existentes; e se a natureza do resíduo vira "investimento"/"aplicação" já classificado.
 
-### 36. Popup: replicar classificação para linhas de transcrição idêntica ainda não classificadas — ✅ IMPLEMENTADO (2026-08-04, commit `a331b5a`)
-Feito como **popup no rodapé** (não na central de avisos — o `avisosSlice.aplicar` é remove-only;
-esta é fill, então ficou separada). `detectarReplicacao` (`src/dominio/replicacao.ts`) casa por
-transcrição normalizada, alvos = linhas com Natureza vazia (a partir de 1). Store: `sugestaoReplicacao`
-setada no `editarCelula`, `aplicarReplicacao` preenche em massa numa única entrada de histórico
-(um Ctrl+Z desfaz tudo), `dispensarReplicacao` limpa. `PopupReplicacao.tsx` no App. Verificado no app
-real (BB Rende Fácil → "Aplicar a 13"). 9 testes (TL-REP-1..6 + TLREP-INT-1..3).
-
-Quando o sistema detecta que **muitas linhas com a mesma transcrição** ainda estão **sem
-classificação**, oferece um **popup/proposta** sugerindo replicar a classificação (Natureza **e**
-Descrição) que o usuário acabou de dar para **todas as demais linhas iguais**. Acelera a revisão de
-lançamentos recorrentes (ex.: vários "Pix - Enviado - RAIA DROGASIL SA") sem depender do dicionário
-do mês anterior.
-
-Encaixe: gatilho ao classificar uma linha cuja transcrição (normalizada por `normalizarChave`,
-`src/dominio/normalizacao.ts`) coincide com N outras ainda sem Natureza/Descrição; aplicar via
-`preencherIntervalo`/`editarCelula` do store (as demais linhas iguais recebem a mesma Natureza +
-Descrição). Deve ser **proposta acionável** na central de avisos (mesmo modelo dos itens 25/26/27/34),
-com **Desfazer**, nunca replicação silenciosa. Relação: é a versão intra-sessão do aprendizado de
-dicionário (`aprenderDicionario`) — aqui o "padrão" é a linha que o usuário acabou de preencher.
-
-Decidir na spec: limiar N que dispara o popup (2+? 3+?); casar por transcrição **exata** ou
-**normalizada** (sufixo de data removido — recorrência real); replicar só em linhas **vazias** ou
-também sobrescrever divergentes (provavelmente só vazias); se dispara a cada classificação ou é
-acionável sob demanda; e a UX do card (mostrar a contagem "aplicar a N linhas iguais").
-
-### 35. Aviso: propor remoção dos lançamentos de aplicação e resgate
-Novo aviso (módulo dos itens 25/26/27): quando houver lançamentos de **aplicação** e
-**resgate** de investimentos, o sistema propõe removê-los da revisão — nessa frente, o que é
-relevante são apenas os **saldos inicial e final** e um **lançamento de rendimentos**
-calculado por outra feature (itens 29/30). Movimentações de aplicação/resgate são
-transferências para dentro/fora de investimento, não receita nem despesa do mês; mantê-las
-distorce a análise. Aproveita a detecção existente (`detectarInvestimento`); a remoção é
-proposta via aviso com confirmação/desfazer do usuário, nunca automática silenciosa.
-Alinhar com o item 34 (investimento migrando para avisos).
-
 ### 36. Transferências internas entre pessoas da mesma casa
 Tratar o problema das transferências entre **pessoas da mesma casa** (ex.: casal, família no
 mesmo orçamento): funcionam como tirar dinheiro de um bolso e colocar no outro — não são
@@ -234,6 +98,63 @@ Pontos a decidir na spec: como o sistema sabe quem é "da mesma casa" (lista de 
 informada pelo usuário? aprendizado pelo dicionário? campo nome já usado no Pix nominal de
 `detectarTransferenciaInterna`?), e se a anulação é sempre em par ou aceita lançamento único
 (só uma das contas carregada).
+
+### 37. Botão de retorno à tela de importação + stepper persistente na top bar
+Incluir um botão que permita **retornar à tela de importação** a partir da revisão. Proposta
+visual (print `image.png` na raiz): usar a mesma semântica do **Stepper de 3 passos**
+("1 Importar — 2 Revisar — 3 Exportar") que hoje aparece na tela de importação, deixando
+esses indicadores **posicionados no mesmo lugar da top bar ao longo de todo o fluxo** — o
+passo "Importar" clicável funciona como o retorno. Cuidados: preservar o estado ao voltar
+(lançamentos/edições não podem se perder sem confirmação — interação com a flag `sujo` e o
+prompt de saída), e alinhar com os itens 22 (upload incremental) e 32/33 (jornada e
+readequação da UI — este stepper de telas e o stepper de jornada precisam conversar).
+
+### 38. Grid: selecionar linha inteira + menu de contexto (excluir / adicionar linha em branco)
+Opção de **selecionar a linha toda** na grid de revisão (clique no número/cabeçalho da linha,
+como no Google Sheets) e, com o **botão direito**, abrir menu de contexto com as ações
+**excluir linha** e **adicionar linha em branco** (acima/abaixo — decidir). Cuidados: as
+mutações entram no undo/redo e na flag `sujo`; comportamento sob filtro/ordenação (excluir a
+linha certa da visão derivada); linha em branco nasce incompleta (interação com validação,
+chips de incompletos e avisos); e o Glide Data Grid já expõe `onCellContextMenu`/seleção de
+linha — verificar o suporte nativo antes de customizar.
+
+### 39. Navegar até as linhas relevantes (inspeção e incompletos) — achado da faxina 2026-08-16
+Hoje o app **aponta** para linhas mas não **leva** até elas. Dois sintomas do mesmo buraco:
+
+1. **Modo inspeção sem auto-scroll.** Ao inspecionar uma proposta, o realce sai/fica é
+   aplicado corretamente (verificado: linha 39 realçada em `--insp-sai-bg`), mas se a linha
+   estiver fora da viewport é preciso rolar para achá-la — sem nenhuma indicação de onde.
+   O item 33 previa isto ("decidir na spec: auto-scroll/filtro para as linhas envolvidas") e
+   a spec entregou o realce sem a navegação.
+2. **Incompletos sem localizador.** O item 34 alertava: "revisar o que os chips filtram para
+   não perder a localização de linhas incompletas". A linha de filterchips foi aposentada
+   (2026-08-02, commit `034221f`, que registra `filtroFontes`/só-incompletos ficando "sem UI")
+   e o que restou é o contador "X de Y classificados" com `title="N ainda sem natureza"`. Ele
+   **informa** quantas faltam; não leva a nenhuma delas. Numa grid de dezenas/centenas de
+   linhas isso é caçada visual.
+
+Decidir na spec: auto-scroll ao entrar em inspeção vs. botão "ir para"; navegação
+próxima/anterior entre as linhas de um mesmo aviso; e se os incompletos voltam como filtro,
+como salto (n/N com setas), ou ambos. Interage com o item 38 (seleção de linha) e com o 32/33
+(jornada) — a etapa "Classificar" só fecha quando não há incompletos.
+
+### 40. Bug: colar múltiplas células às vezes buga na grid
+Ao copiar duas células (ex.: Natureza + Descrição de uma linha) e colar em outra linha, às
+vezes o paste de múltiplas células buga — não cola as duas de uma vez / cola errado. Bug
+intermitente ("às vezes"): investigar com reprodução no app antes de corrigir. Suspeitos:
+o caminho de paste do Glide Data Grid (`onPaste`/`getCellsForSelection` e o formato TSV do
+clipboard), interação com colunas não editáveis no intervalo alvo, e o GhostEditor/edição
+por digitação direta interceptando o clipboard. Conferir também colar vindo de fora
+(Excel/Sheets → grid) e o efeito no undo/redo (a colagem deve ser 1 mutação única).
+
+### 41. Colinha de naturezas: switch para somar só as iniciais do titular
+O somatório por natureza (cartões da colinha/painel de naturezas) deve ganhar um **switch**
+para somar apenas os lançamentos cujas **iniciais** sejam as de quem faz o extrato (campo
+"Suas iniciais" da sessão). Hoje soma indistintamente os valores de cada natureza, mesmo
+quando a linha tem iniciais de outras pessoas (ex.: despesas rateadas da casa). Com o switch
+ligado, filtra por `iniciais === iniciais da sessão`; desligado, mantém o total geral.
+Decidir: estado default do switch e se o filtro do cartão sobre a grid (clique no cartão)
+acompanha o mesmo recorte.
 
 ---
 
@@ -253,6 +174,41 @@ informada pelo usuário? aprendizado pelo dicionário? campo nome já usado no P
 ---
 
 ## ✅ Concluídos
+
+### Faxina do TODO — 10 itens entregues saíram de "Pendentes" (2026-08-16)
+Auditoria cruzando cada item pendente com o código e com o **app rodando** (Playwright, dados
+reais de `data_sample/pp/` e `data_sample/bb/`). Dos 16 itens listados como pendentes, 10 já
+estavam entregues e 2 tinham sido entregues com escopo diferente do escrito.
+
+| item | onde vive hoje | verificação no app |
+|---|---|---|
+| **20** valor pendente da fatura | detector `valor-pendente` (registry) | proposta "Valor pendente do mês anterior: R$ 3.043,64" |
+| **25** avisos dispensáveis | `CentralDeAvisos`, estados `pendente`/`aplicado`/`dispensado`/`obsoleto` | cards com Aplicar/Dispensar |
+| **26** conciliação fatura × extrato | `detectarConciliacao` + spec `conciliacao-robusta` (que resolveu o silêncio descrito no próprio item) | proposta "Pagamento desta fatura no extrato (R$ 4.874,05)" |
+| **29** B5 → saldo inicial | `lerSaldoAnterior` (`leitor.ts:588`) | topbar "Saldo ant.: R$ 95,70" |
+| **30** rendimentos | `detectarRendimentos` + `FormRendimentos` | último aviso da lista, como especificado |
+| **32** stepper de jornada | `Cabecalho.tsx` | ver divergência abaixo |
+| **33** inspeção da proposta | modo inspeção + realce sai/fica em `ReviewGrid` | linha realçada em `--insp-sai-bg`, card com evidência "Sai: 1 lançamento(s)" |
+| **33** readequação da UI | specs `redesign-frontend`, `patches-ui-ux`, `refino-ui-revisao-v2` | topbar, toolbar e painel redesenhados |
+| **34** avisos absorvem transf./investimento; matar "Precisa de atenção" | detectores `transferencia-interna` e `investimento` no registry; `Swatch` e realce por categoria removidos | transferência interna aparece como proposta; sem legenda de cores |
+| **35** propor remoção de aplicação/resgate | `investimento.ts:139` (`mutacaoProposta: { verbo: 'remover' }`) | — (dataset sem investimento; confirmado no código) |
+| **36** replicar classificação | `detectarReplicacao` + `PopupReplicacao` | popup "13 outras linhas iguais a «BB Rende Fácil»… Aplicar a 13" |
+
+**Duas entregas divergem do que o item pedia** — decisões deliberadas de spec, registradas
+aqui para não se perderem:
+
+- **Item 32 — stepper com 3 passos, não 6.** O item especificava seis etapas (carregar →
+  classificar → conciliar fatura → conciliar transferências → saldos/rendimentos → exportar).
+  A spec `redesign-frontend` entregou `PASSOS = ['Importar', 'Revisar', 'Exportar']`. As
+  etapas de conciliação viraram avisos na sidebar em vez de degraus do stepper. O item 37
+  (novo) mexe justamente neste stepper — vale reabrir a pergunta das 6 etapas lá.
+- **Item 25 — sheet lateral, não cartão flutuante macOS.** O item pedia notificações estilo
+  macOS (cartão flutuante, canto da tela, empilhamento). A spec
+  `inspecao-proposta-conciliacao` aposentou o `AvisoList` e adotou o painel lateral como canal
+  único de avisos. A dispensa persiste via `estado`, que era a preocupação funcional do item.
+
+**Numeração:** a seção tinha colisões (dois 33, dois 35, dois 36). Resolveu-se sozinha na
+faxina — em cada par, um dos itens era dos entregues. Os que restaram são únicos.
 
 ### Hotfix — linha de filterchips aposentada (2026-08-02, commit `034221f`)
 - Com os cartões da colinha filtrando por natureza, a linha de chips perdeu o sentido (decisão
