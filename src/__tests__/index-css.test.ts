@@ -1,9 +1,53 @@
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
+// ADR: see Docs/specs/patches-ui-ux.adr.md
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const css = readFileSync(resolve(__dirname, '../index.css'), 'utf-8');
+
+/**
+ * Confirma que `seletor` existe como seletor CSS de verdade em `folha` — não como substring de um
+ * seletor mais longo. `.chip` NÃO deve casar dentro de `.chip-sujo`, mas DEVE casar em `.chip {`,
+ * `.btn, .chip {` ou `.chip:hover`. A fronteira proibida é qualquer caractere de identificador
+ * ([\w-]) logo antes ou logo depois do seletor buscado — isso barra extensões do nome (`-sujo`) sem
+ * barrar continuações legítimas de seletor (`,`, `:`, `.`, espaço, chave, fim de string).
+ */
+function cssHasSelector(folha: string, seletor: string): boolean {
+  const escapado = seletor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(?<![\\w-])${escapado}(?![\\w-])`);
+  return regex.test(folha);
+}
+
+describe('cssHasSelector — matcher de seletor real (Task D1)', () => {
+  it('casa um seletor simples que aparece isolado seguido de chave', () => {
+    expect(cssHasSelector('.chip {\n  color: red;\n}', '.chip')).toBe(true);
+  });
+
+  it('NÃO casa um seletor simples dentro de outro seletor que o contém como prefixo textual', () => {
+    expect(cssHasSelector('.chip-sujo {\n  color: red;\n}', '.chip')).toBe(false);
+  });
+
+  it('NÃO casa `.btn` dentro de `.btn-remover`', () => {
+    expect(cssHasSelector('.btn-remover {\n  color: red;\n}', '.btn')).toBe(false);
+  });
+
+  it('casa seletor composto exato', () => {
+    expect(cssHasSelector('.btn.pri {\n  color: red;\n}', '.btn.pri')).toBe(true);
+  });
+
+  it('NÃO casa seletor composto quando o CSS tem um terceiro qualificador colado', () => {
+    expect(cssHasSelector('.btn.pri-especial {\n  color: red;\n}', '.btn.pri')).toBe(false);
+  });
+
+  it('casa quando o seletor aparece numa lista separada por vírgula', () => {
+    expect(cssHasSelector('.btn, .chip {\n  color: red;\n}', '.chip')).toBe(true);
+  });
+
+  it('casa quando o seletor é seguido de pseudo-classe', () => {
+    expect(cssHasSelector('.aba:hover {\n  color: red;\n}', '.aba')).toBe(true);
+  });
+});
 
 describe('src/index.css — fundação de tokens do protótipo Claude Design (Task T1)', () => {
   it('contém as variáveis novas de cor de inspeção e terracota suave', () => {
@@ -25,12 +69,9 @@ describe('src/index.css — fundação de tokens do protótipo Claude Design (Ta
     '.btn.cta',
     '.btn.icone',
     '.btn.mini',
-    '.btn.ver',
     '.badge',
     '.badge.peach',
     '.badge.inline',
-    '.chip',
-    '.chip.on',
     '.chip-sujo',
     '.ponto',
     '.painel',
@@ -65,15 +106,7 @@ describe('src/index.css — fundação de tokens do protótipo Claude Design (Ta
     '.sel-mini',
     '.logo',
     '.logo.mini',
-    '.gtab',
-    '.filtros',
-    '.filtro-grupo',
-    '.divisor',
-    '.btn-limpar',
-    '.banner-inspecao',
-    '.tag-insp',
-    '.tag-insp.sai',
-    '.tag-insp.fica',
+    '.btn-texto',
     '.valor',
     '.valor.neg',
     '.valor.pos',
@@ -110,27 +143,137 @@ describe('src/index.css — fundação de tokens do protótipo Claude Design (Ta
     '.dica-dic',
     '.alerta-export',
     '.arquivo-nome',
-  ])('contém a classe %s copiada do protótipo', (classe) => {
-    expect(css).toContain(classe);
+  ])('contém a classe %s copiada do protótipo, como seletor real (não substring)', (classe) => {
+    expect(cssHasSelector(css, classe)).toBe(true);
   });
 
   it('contém o styling de scrollbar do protótipo', () => {
     expect(css).toContain('::-webkit-scrollbar');
   });
 
-  it.each([
-    '.dc-titulo',
-    '.dc-subtitulo',
-    '.dc-rotulo',
-    '.dc-opcional',
-    '.dc-card',
-    '.dc-input',
-    '.dc-btn',
-    '.dc-btn-secundario',
-    '.dc-btn-primario',
-    '.dc-btn-cta',
-    '.dc-pill-privado',
-  ])('não remove a classe %s existente', (classe) => {
-    expect(css).toContain(classe);
+  it('não confunde `.chip-sujo` (real) com um resquício de `.chip` (removido em C1) — prova contra o CSS de produção', () => {
+    expect(cssHasSelector(css, '.chip-sujo')).toBe(true);
+    expect(cssHasSelector(css, '.chip')).toBe(false);
+  });
+});
+
+/**
+ * Extrai o corpo de um bloco de regra CSS (`seletor { ... }`) pelo seletor exato, sem casar
+ * seletores compostos que o contenham como prefixo (ex.: `.aba` não deve casar `.aba.on`).
+ */
+function cssBlockBody(folha: string, seletor: string): string {
+  const escapado = seletor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(?<![\\w-])${escapado}(?![\\w-])\\s*\\{([^}]*)\\}`);
+  const match = folha.match(regex);
+  return match ? match[1] : '';
+}
+
+describe('src/index.css — `.painel-abas` 38px contínuo (Task C2)', () => {
+  it('declara altura efetiva de 38px, mesma altura do headerHeight do grid', () => {
+    const bloco = cssBlockBody(css, '.painel-abas');
+    expect(bloco).toContain('height: 38px');
+  });
+
+  it('declara background: var(--barra) para a régua correr contínua', () => {
+    const bloco = cssBlockBody(css, '.painel-abas');
+    expect(bloco).toContain('background: var(--barra)');
+  });
+
+  // Correção 2026-08-16: a Task C2 trocou o token para `--borda` querendo casar com o header do
+  // grid, mas o Glide desenha a horizontal com `--borda-linha` (#eee9df, medido no canvas) — as
+  // duas linhas se encontram em y=82 alinhadas em posição e divergentes em tom. `--borda-linha` é
+  // o token que efetivamente faz a régua correr contínua.
+  it('usa border-bottom `--borda-linha`, o mesmo tom da linha sob o header do grid', () => {
+    const bloco = cssBlockBody(css, '.painel-abas');
+    expect(bloco).toContain('border-bottom: 1px solid var(--borda-linha)');
+    expect(bloco).not.toContain('var(--borda-2)');
+  });
+
+  it('mantém `.aba` inalterada (sem border-bottom, sem background, sem height)', () => {
+    const bloco = cssBlockBody(css, '.aba');
+    expect(bloco).not.toContain('border-bottom');
+    expect(bloco).not.toContain('height');
+    expect(bloco).toContain('color: var(--muted)');
+  });
+
+  it('mantém `.aba.on` inalterada (background verde-suave, cor verde)', () => {
+    const bloco = cssBlockBody(css, '.aba.on');
+    expect(bloco).toContain('background: var(--verde-suave)');
+    expect(bloco).toContain('color: var(--verde)');
+  });
+});
+
+describe('src/index.css — `.btn-texto` ganha `white-space: nowrap` (Task C5)', () => {
+  it('declara white-space: nowrap', () => {
+    const bloco = cssBlockBody(css, '.btn-texto');
+    expect(bloco).toContain('white-space: nowrap');
+  });
+
+  it('preserva as demais propriedades originais inalteradas', () => {
+    const bloco = cssBlockBody(css, '.btn-texto');
+    expect(bloco).toContain('border: none');
+    expect(bloco).toContain('background: none');
+    expect(bloco).toContain('color: var(--verde)');
+    expect(bloco).toContain('font-size: 12.5px');
+    expect(bloco).toContain('font-weight: 700');
+    expect(bloco).toContain('cursor: pointer');
+    expect(bloco).toContain('font-family: inherit');
+    expect(bloco).toContain('padding: 0');
+  });
+
+  it('mantém `.btn-texto:hover` inalterada', () => {
+    const bloco = cssBlockBody(css, '.btn-texto:hover');
+    expect(bloco.trim()).toBe('color: var(--verde-hover);');
+  });
+
+  it('não introduz nenhuma @media — invariante do projeto (Decisão 3 do ADR)', () => {
+    expect(css).not.toMatch(/@media/);
+  });
+});
+
+describe('src/index.css — `.saldos` corte real + alinhamento + tipografia (Task C6b)', () => {
+  it('corta o conteúdo excedente com overflow: hidden', () => {
+    const bloco = cssBlockBody(css, '.saldos');
+    expect(bloco).toContain('overflow: hidden');
+  });
+
+  it('alinha o grupo verticalmente ao centro e espaça os itens com gap: 12px', () => {
+    const bloco = cssBlockBody(css, '.saldos');
+    expect(bloco).toContain('align-items: center');
+    expect(bloco).toContain('gap: 12px');
+  });
+
+  it('declara a tipografia discreta da topbar (font-size, font-weight, color)', () => {
+    const bloco = cssBlockBody(css, '.saldos');
+    expect(bloco).toContain('font-size: 12px');
+    expect(bloco).toContain('font-weight: 600');
+    expect(bloco).toContain('color: var(--texto-3)');
+  });
+
+  it('preserva as 3 propriedades originais da Task C6', () => {
+    const bloco = cssBlockBody(css, '.saldos');
+    expect(bloco).toContain('display: flex');
+    expect(bloco).toContain('min-width: 0');
+    expect(bloco).toContain('font-variant-numeric: tabular-nums');
+  });
+
+  it('não introduz nenhuma @media — invariante do projeto (Decisão 3 do ADR)', () => {
+    expect(css).not.toMatch(/@media/);
+  });
+});
+
+describe('src/index.css — pins de existência das classes novas da spec (Task P1)', () => {
+  it.each(['.despesa', '.input.mini', '.saldos'])(
+    'contém a classe %s como seletor real (não substring)',
+    (classe) => {
+      expect(cssHasSelector(css, classe)).toBe(true);
+    },
+  );
+
+  it('`.despesa` não é confundida com `.desp-x`, que também existe na folha', () => {
+    expect(cssHasSelector(css, '.despesa')).toBe(true);
+    expect(cssHasSelector(css, '.desp-x')).toBe(true);
+    const bloco = cssBlockBody(css, '.despesa');
+    expect(bloco).not.toContain('color: var(--muted-2)');
   });
 });

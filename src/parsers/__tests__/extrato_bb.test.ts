@@ -11,9 +11,10 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { extratoBb } from '../extrato_bb'
 import { detectar } from '../index'
+import { reiniciarContadorIds } from '../idSerial'
 
 const FIXTURES = join(__dirname, 'fixtures')
 
@@ -87,5 +88,16 @@ describe('extratoBb.parsear', () => {
 describe('detectar — registro do parser BB', () => {
   it('TL-BB-11: detectar() roteia o extrato BB para o extratoBb', () => {
     expect(detectar(lerFixture('extrato_bb_conta_corrente.csv'))).toBe(extratoBb)
+  })
+})
+
+describe('extratoBb.parsear() — id serial de nascimento', () => {
+  beforeEach(() => {
+    reiniciarContadorIds()
+  })
+
+  it('TL-BB-12: atribui id sequencial e único a cada lançamento retornado', () => {
+    const { lancamentos } = extratoBb.parsear(lerFixture('extrato_bb_conta_corrente.csv'))
+    expect(lancamentos.map(l => l.id)).toEqual(lancamentos.map((_, i) => i + 1))
   })
 })

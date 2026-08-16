@@ -3,12 +3,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useAppStore } from '../appStore'
 import type { CampoEditavel } from '../appStore'
-import {
-  calcularTemaLinha,
-  TEMA_ERRO,
-  TEMA_INVESTIMENTO,
-  TEMA_TRANSFERENCIA,
-} from '../../components/ReviewGrid'
 import type { Lancamento, DicEntry } from '../../../types'
 
 // ---------------------------------------------------------------------------
@@ -66,6 +60,7 @@ function resetarStore(): void {
     filtroSoIncompletos: false,
     ordenacaoColuna: null,
     ordenacaoDirecao: 'asc',
+    saldoAnterior: null,
   })
 }
 
@@ -95,6 +90,39 @@ describe('setIniciais', () => {
   it('persiste iniciais no estado', () => {
     useAppStore.getState().setIniciais('JF')
     expect(useAppStore.getState().iniciais).toBe('JF')
+  })
+})
+
+describe('setSaldoAnterior', () => {
+  beforeEach(resetarStore)
+
+  it('inicia como null antes de qualquer setSaldoAnterior', () => {
+    expect(useAppStore.getState().saldoAnterior).toBeNull()
+  })
+
+  it('persiste o número no estado', () => {
+    useAppStore.getState().setSaldoAnterior(1500)
+    expect(useAppStore.getState().saldoAnterior).toBe(1500)
+  })
+
+  it('restaura para null', () => {
+    useAppStore.getState().setSaldoAnterior(1500)
+    useAppStore.getState().setSaldoAnterior(null)
+    expect(useAppStore.getState().saldoAnterior).toBeNull()
+  })
+
+  it('não empilha entrada em historico/futuro (sem rastreamento de undo)', () => {
+    useAppStore.getState().setSaldoAnterior(1500)
+    expect(useAppStore.getState().historico).toHaveLength(0)
+    expect(useAppStore.getState().futuro).toHaveLength(0)
+  })
+
+  it('passa incólume por undo de uma mutação rastreada', () => {
+    useAppStore.getState().setLancamentos([lancamento()])
+    useAppStore.getState().setSaldoAnterior(1500)
+    useAppStore.getState().editarCelula(0, 'valor', -200)
+    useAppStore.getState().undo()
+    expect(useAppStore.getState().saldoAnterior).toBe(1500)
   })
 })
 
@@ -263,6 +291,78 @@ describe('excluirLinha', () => {
     useAppStore.getState().excluirLinha(2)
     expect(useAppStore.getState().lancamentos).toHaveLength(2)
     expect(useAppStore.getState().lancamentos[1].transcricao).toBe('B')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 13-bis. excluirLinha aciona reconciliarObsoletos (Task T12, ADR
+// fundacao-operacoes, emenda de escopo 2026-08-04): o gatilho real da
+// transição 'pendente' → 'obsoleto' (T08 só materializou a ação) mora aqui.
+// ---------------------------------------------------------------------------
+
+describe('excluirLinha aciona reconciliarObsoletos (Task T12)', () => {
+  beforeEach(() => {
+    resetarStore()
+  })
+
+  it('transiciona para obsoleto um aviso pendente cujo único alvo por id é removido via excluirLinha', () => {
+    const l0 = lancamento({ transcricao: 'A', id: 1 })
+    const l1 = lancamento({ transcricao: 'B', id: 2 })
+    useAppStore.getState().setLancamentos([l0, l1])
+    useAppStore.setState((s) => ({
+      avisosAcionaveis: {
+        ...s.avisosAcionaveis,
+        avisos: [
+          {
+            id: 'a1',
+            tipo: 'proposta',
+            origem: 'conciliacao',
+            mensagem: 'Proposta de teste',
+            alvo: [],
+            permanece: [],
+            estado: 'pendente',
+            mutacaoProposta: { verbo: 'remover', alvo: [l0.id] },
+          },
+        ],
+      },
+    }))
+
+    // l0 está na posição 0 — excluirLinha(0) remove exatamente o alvo de a1.
+    useAppStore.getState().excluirLinha(0)
+
+    expect(
+      useAppStore.getState().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado,
+    ).toBe('obsoleto')
+  })
+
+  it('mantém pendente um aviso cujo alvo por id continua presente após excluirLinha remover outra linha', () => {
+    const l0 = lancamento({ transcricao: 'A', id: 1 })
+    const l1 = lancamento({ transcricao: 'B', id: 2 })
+    useAppStore.getState().setLancamentos([l0, l1])
+    useAppStore.setState((s) => ({
+      avisosAcionaveis: {
+        ...s.avisosAcionaveis,
+        avisos: [
+          {
+            id: 'a1',
+            tipo: 'proposta',
+            origem: 'conciliacao',
+            mensagem: 'Proposta de teste',
+            alvo: [],
+            permanece: [],
+            estado: 'pendente',
+            mutacaoProposta: { verbo: 'remover', alvo: [l0.id] },
+          },
+        ],
+      },
+    }))
+
+    // l1 (posição 1) é removida — l0 (o alvo real de a1) continua presente.
+    useAppStore.getState().excluirLinha(1)
+
+    expect(
+      useAppStore.getState().avisosAcionaveis.avisos.find((a) => a.id === 'a1')?.estado,
+    ).toBe('pendente')
   })
 })
 
@@ -498,59 +598,6 @@ describe('flag sujo', () => {
     // Undo restaura o valor de natureza, mas sujo permanece true (D6)
     expect(useAppStore.getState().lancamentos[0].natureza).toBe('Alimentação')
     expect(useAppStore.getState().sujo).toBe(true)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// calcularTemaLinha — Task 5 da spec grid-autocomplete-aviso-saida
-// Precedência: investimento > transferência interna > erro de validação
-// ---------------------------------------------------------------------------
-
-describe('calcularTemaLinha', () => {
-  const naturezasValidas = ['Alimentação', 'Moradia', 'Transporte']
-
-  function lancamentoBase(parcial: Partial<Lancamento> = {}): Lancamento {
-    return {
-      fonte: 'Nubank',
-      data: '2025-03-15',
-      transcricao: 'Compra',
-      valor: -50,
-      iniciais: 'ES',
-      natureza: 'Alimentação',
-      descricao: 'Supermercado',
-      transferenciaInterna: false,
-      investimento: null,
-      ...parcial,
-    }
-  }
-
-  // TL-T5-02: TEMA_INVESTIMENTO quando investimento != null (precedência máxima)
-  it('retorna TEMA_INVESTIMENTO quando investimento != null', () => {
-    const l = lancamentoBase({ investimento: 'Tesouro Direto' })
-    expect(calcularTemaLinha(l, naturezasValidas)).toBe(TEMA_INVESTIMENTO)
-  })
-
-  // TL-T5-03: investimento vence transferenciaInterna (precedência máxima)
-  it('retorna TEMA_INVESTIMENTO mesmo quando transferenciaInterna é true — investimento tem precedência', () => {
-    const l = lancamentoBase({ investimento: 'CDB', transferenciaInterna: true })
-    expect(calcularTemaLinha(l, naturezasValidas)).toBe(TEMA_INVESTIMENTO)
-  })
-
-  // TL-T5-04: TEMA_TRANSFERENCIA quando transferenciaInterna=true e investimento=null
-  it('retorna TEMA_TRANSFERENCIA quando transferenciaInterna é true e investimento é null', () => {
-    const l = lancamentoBase({ transferenciaInterna: true, investimento: null })
-    expect(calcularTemaLinha(l, naturezasValidas)).toBe(TEMA_TRANSFERENCIA)
-  })
-
-  // TL-T5-05: TEMA_ERRO quando natureza inválida (sem investimento, sem transferência)
-  it('retorna TEMA_ERRO quando natureza é inválida e linha não é investimento nem transferência', () => {
-    const l = lancamentoBase({ natureza: 'NaturezaDesconhecida' })
-    expect(calcularTemaLinha(l, naturezasValidas)).toBe(TEMA_ERRO)
-  })
-
-  it('retorna undefined quando linha é normal (natureza válida, sem investimento, sem transferência)', () => {
-    const l = lancamentoBase({ natureza: 'Alimentação' })
-    expect(calcularTemaLinha(l, naturezasValidas)).toBeUndefined()
   })
 })
 

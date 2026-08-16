@@ -2,6 +2,9 @@
 // ADR: see Docs/specs/colinha-naturezas.adr.md
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
+// ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see spec/conciliacao-robusta.adr.md
+// ADR: see spec/vr-despesas.adr.md
 
 /**
  * Representa um lançamento financeiro normalizado, independente da fonte de origem.
@@ -9,6 +12,13 @@
  * Produzido pelos parsers e consumido pelo domínio, pelo gerador .xlsx e pela UI.
  */
 export interface Lancamento {
+  /**
+   * Id serial de nascimento: contador incremental por sessão, atribuído no momento
+   * do parse (via `src/parsers/idSerial.ts`), nunca recalculado depois. Buracos na
+   * numeração visível após remoção são comportamento correto, não um bug — o id é
+   * número de nascimento, não posição visual (ver ADR `fundacao-operacoes`, Decisão 2).
+   */
+  id: number
   /** Nome do banco/fonte de origem (ex.: "Nubank") */
   fonte: string
   /** Data do lançamento em formato ISO 8601 (YYYY-MM-DD) */
@@ -23,21 +33,11 @@ export interface Lancamento {
   natureza: string
   /** Descrição enriquecida do gasto (preenchida pelo dicionário ou em branco) */
   descricao: string
-  /**
-   * Indica se o lançamento é uma movimentação entre contas do próprio usuário.
-   * `true` = transferência interna (ex.: TED/Pix para conta própria, pagamento de fatura de cartão próprio).
-   * Preenchida pelo pipeline via `detectarTransferenciaInterna`; `undefined` antes do enriquecimento.
-   */
-  transferenciaInterna?: boolean
-  /**
-   * Classificação do lançamento quanto a investimentos de renda fixa/variável.
-   * `'aplicacao'` = entrada de dinheiro em investimento (débito na conta corrente).
-   * `'resgate'` = saída de investimento de volta para conta corrente (crédito).
-   * `null` = lançamento comum, sem caráter de investimento.
-   * `undefined` = campo ainda não avaliado pelo pipeline.
-   * Preenchida pelo pipeline via `detectarInvestimento`.
-   */
-  investimento?: 'aplicacao' | 'resgate' | null
+  // Os campos `transferenciaInterna` e `investimento` foram removidos em 2026-08-09:
+  // eram gravados pelo pipeline e lidos por um único consumidor — o realce colorido
+  // permanente da grid, aposentado a pedido do usuário. As detecções de domínio
+  // (`detectarTransferenciaInterna`/`detectarInvestimento`) continuam vivas e rodam sob
+  // demanda no registry, que gera os avisos acionáveis; nenhuma delas precisava da flag.
   /**
    * Marca as linhas de fatura que antes eram excluídas silenciosamente no parser
    * (`excluidosPendentes`) e agora entram em `lancamentos` como lançamentos normais
@@ -105,6 +105,43 @@ export interface ResultadoParse {
 }
 
 /**
+ * Mutação declarativa que um `Aviso` do tipo `'proposta'` pode carregar em
+ * `mutacaoProposta`: descreve o que aplicar/desfazer sem que o `avisosSlice`
+ * precise conhecer a semântica de cada detector (ver ADR `fundacao-operacoes`,
+ * Decisões 1 e 5).
+ *
+ * União discriminada por `verbo`, extensível — hoje `'remover'` e `'adicionar'`
+ * (ver ADR `spec-20260805-vr-despesas`, Decisão 1). Novos verbos (ex.: `'editar'`)
+ * só entram quando uma spec futura os exigir.
+ *
+ * `'remover'` referencia lançamentos JÁ EXISTENTES por id (`alvo`): quem propõe a
+ * mutação (o detector) já viu o `Lancamento` completo em `lancamentos` e só precisa
+ * apontar para ele. `'adicionar'` carrega os LANÇAMENTOS COMPLETOS a inserir (sem
+ * `id`) em vez de ids, porque eles ainda não existem no momento da proposta — são
+ * construídos no submit do form que gera a proposta (ex.: `FormVR`, spec
+ * `vr-despesas`) e só ganham `id` serial de nascimento quando `avisosSlice.aplicar`
+ * os insere (via `atribuirIds`, `src/parsers/idSerial.ts`). Referenciar por id não
+ * seria possível aqui: não há id para referenciar antes da inserção.
+ */
+export type Mutacao =
+  | {
+      /** Remove os lançamentos existentes referenciados por `alvo`. */
+      verbo: 'remover'
+      /** Ids (`Lancamento.id`) dos lançamentos alvo da mutação. */
+      alvo: number[]
+    }
+  | {
+      /** Insere `lancamentos` como novos lançamentos, ainda sem `id`. */
+      verbo: 'adicionar'
+      /**
+       * Lançamentos completos a inserir, sem `id` — o id serial de nascimento é
+       * atribuído por quem aplica a mutação (`avisosSlice.aplicar`), nunca por
+       * quem propõe.
+       */
+      lancamentos: Omit<Lancamento, 'id'>[]
+    }
+
+/**
  * Aviso acionável exibido na Central de Avisos (ver ADR `avisos-acionaveis`, Decisão 5).
  *
  * `tipo: 'informativo'` é somente leitura; `tipo: 'proposta'` pode ser aceita/ignorada.
@@ -135,6 +172,32 @@ export interface Aviso {
    * (ex.: `detectarValorPendente`) ou quando o aviso não representa um casamento.
    */
   resumo?: string
-  /** Estado do ciclo de vida do aviso */
-  estado: 'pendente' | 'aplicado' | 'dispensado'
+  /**
+   * Estado do ciclo de vida do aviso. `'obsoleto'` é terminal: alcançado quando o(s)
+   * alvo(s) por id de um aviso `'pendente'` deixam de existir em `lancamentos` (ex.:
+   * exclusão manual de linha na grid) — nunca aplicado pela metade (ver ADR
+   * `fundacao-operacoes`, Decisão 7). Fica fora de `selecionarContagemPendentes` e
+   * nunca é aplicável, pelo mesmo guard usado para `'aplicado'`/`'dispensado'`
+   * (`avisosSlice.aplicar` só age sobre `estado === 'pendente'`).
+   */
+  estado: 'pendente' | 'aplicado' | 'dispensado' | 'obsoleto'
+  /**
+   * Mutação declarativa proposta por este aviso, interpretada genericamente pelo
+   * `avisosSlice` em `aplicar`/`desfazer` (ver ADR `fundacao-operacoes`, Decisão 1).
+   * Opcional nesta task (T02): os detectores existentes ainda não a populam — isso
+   * é feito em T06/T07/T07-bis. `undefined` = aviso sem proposta de mutação
+   * estruturada (ex.: avisos informativos, ou propostas ainda não migradas ao
+   * registry).
+   */
+  mutacaoProposta?: Mutacao
+  /**
+   * Lista de candidatos de conciliação para exibição (ver ADR `conciliacao-robusta`,
+   * Decisões 2 e 3): candidatos próximos do total da fatura (D2) quando nenhum bate
+   * exato, ou candidatos ambíguos (D3) quando 2+ batem exato. Cada item carrega o id
+   * do lançamento candidato (`alvo`) e um `resumo` textual (valor/data) para exibição
+   * — nunca aplicado automaticamente, apenas listado para seleção manual do usuário.
+   * Populado por `detectarConciliacao` (T3/T4). `undefined` = aviso sem candidatos
+   * (ex.: proposta com casamento exato único, ou avisos de outras origens).
+   */
+  candidatos?: { alvo: string; resumo: string }[]
 }

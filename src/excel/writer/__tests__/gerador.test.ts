@@ -27,6 +27,27 @@ const PARTES_MODIFICADAS = new Set([
   'xl/workbook.xml',
 ])
 
+/**
+ * Remove o atributo `tabSelected` de um XML de worksheet.
+ *
+ * O gerador limpa `tabSelected` de toda aba que não seja a Extrato — não é
+ * efeito colateral, é defesa deliberada (ver `gerador.ts`, passo 5): duas abas
+ * selecionadas viram GRUPO no Excel, e em modo grupo o Excel bloqueia editar e
+ * excluir linhas. Se o humano salvar o Modelo com outra aba ativa, essa limpeza
+ * passa a alterar aquela aba.
+ *
+ * A garantia que este teste existe para proteger é "nenhum conteúdo, fórmula ou
+ * estilo das abas não escritas muda" — e `tabSelected` é estado de janela, não
+ * conteúdo. Normalizar antes de comparar mantém a garantia real sem transformar
+ * um salvamento legítimo do Modelo em falso vermelho.
+ */
+function semTabSelected(data: Uint8Array): Uint8Array {
+  const xml = new TextDecoder().decode(data)
+  return new TextEncoder().encode(xml.replace(/\s+tabSelected="[^"]*"/g, ''))
+}
+
+const ehWorksheet = (parte: string) => /^xl\/worksheets\/sheet\d+\.xml$/.test(parte)
+
 describe('gerarXlsx', () => {
   let modeloBytes: Uint8Array
   let modeloParts: Record<string, Uint8Array>
@@ -203,11 +224,28 @@ describe('gerarXlsx', () => {
     for (const parte of partesOriginais) {
       if (PARTES_MODIFICADAS.has(parte)) continue
 
-      const hashOriginal = hashSha256(modeloParts[parte])
-      const hashResultado = hashSha256(resultParts[parte])
+      // Worksheets são comparadas sem `tabSelected` (estado de janela, não
+      // conteúdo) — ver `semTabSelected`. Demais partes: byte a byte.
+      const normalizar = ehWorksheet(parte) ? semTabSelected : (x: Uint8Array) => x
+
+      const hashOriginal = hashSha256(normalizar(modeloParts[parte]))
+      const hashResultado = hashSha256(normalizar(resultParts[parte]))
 
       expect(hashResultado, `SHA256 da parte "${parte}" deve ser idêntico ao original`).toBe(hashOriginal)
     }
+  })
+
+  // Contrapartida do relaxamento acima: o que `semTabSelected` deixa de checar
+  // vira asserção explícita aqui, para a normalização não virar buraco cego.
+  it('deixa apenas a aba Extrato selecionada, mesmo se o Modelo foi salvo com outra aba ativa', () => {
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06')
+    const resultParts = unzipSync(resultado)
+
+    const selecionadas = Object.keys(resultParts)
+      .filter(ehWorksheet)
+      .filter((p) => decodePart(resultParts, p).includes('tabSelected'))
+
+    expect(selecionadas).toEqual(['xl/worksheets/sheet1.xml'])
   })
 
   // Test List item 8: XML escape em valores com caracteres especiais

@@ -1,6 +1,7 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
+// ADR: see Docs/specs/patches-ui-ux.adr.md
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Lancamento } from '../../types'
 import { ratearSplit, type AlvoSplit } from '../../dominio/split'
 import { useAppStore } from '../store/appStore'
@@ -64,13 +65,28 @@ export function SplitModal({ lancamento, indice, onClose }: SplitModalProps) {
     onClose()
   }
 
+  // Escape fecha o modal com a mesma callback do botão fechar/Cancelar.
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
   return (
-    <div role="dialog" aria-modal="true" aria-label="Rateio de lançamento" onClick={onClose} className="overlay">
-      <div onClick={(e) => e.stopPropagation()} className="modal">
+    <div onClick={onClose} className="overlay">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Rateio de lançamento"
+        onClick={(e) => e.stopPropagation()}
+        className="modal"
+      >
         <h2 className="modal-titulo">Rateio de lançamento</h2>
         <p style={{ margin: '8px 0 20px', fontSize: 14.5 }}>
           <strong>{lancamento.transcricao}</strong>
-          {' — '}
+          {' · '}
           <span style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700 }}>
             {lancamento.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
           </span>
@@ -85,8 +101,8 @@ export function SplitModal({ lancamento, indice, onClose }: SplitModalProps) {
             marginBottom: 18,
           }}
         >
-          <span className="dc-rotulo">Iniciais</span>
-          <span className="dc-rotulo" style={{ textAlign: 'right' }}>
+          <span className="rotulo">Iniciais</span>
+          <span className="rotulo" style={{ textAlign: 'right' }}>
             Valor
           </span>
           <span />
@@ -102,7 +118,7 @@ export function SplitModal({ lancamento, indice, onClose }: SplitModalProps) {
           ))}
         </div>
 
-        <button className="btn-limpar" onClick={handleAdicionarAlvo} style={{ marginBottom: 22 }}>
+        <button className="btn-texto" onClick={handleAdicionarAlvo} style={{ marginBottom: 22 }}>
           + Adicionar alvo
         </button>
 
@@ -145,9 +161,11 @@ function Linha({
         className={`valor ${valor !== undefined && valor < 0 ? 'neg' : 'pos'}`}
         style={{ textAlign: 'right', minWidth: 96 }}
       >
+        {/* Sem valor digitado, a célula fica vazia: o travessão que antes marcava
+            a ausência era o único traço restante nos textos da interface. */}
         {valor !== undefined
           ? valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
-          : '—'}
+          : ''}
       </span>
       {onRemove ? (
         <button aria-label={`Remover alvo ${i + 1}`} onClick={onRemove} className="btn sec mini icone">

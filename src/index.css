@@ -2,6 +2,8 @@
    Direção visual "Conta de Gastos" — importada do handoff do Claude Design.
    Paleta calma/serena em tons terrosos, fonte Manrope. */
 /* ADR: see Docs/specs/redesign-frontend-claude-design.adr.md */
+/* ADR: see Docs/specs/patches-ui-ux.adr.md */
+/* ADR: see Docs/specs/refino-ui-revisao-v2.adr.md */
 
 :root {
   /* Superfícies */
@@ -26,6 +28,7 @@
   --terracota: #b4654a;
   --terracota-suave: #f7ece6;
   --azul: #5b7a94;
+  --verde-texto: #4e6a53;
 
   /* Cores de inspeção (avisos acionáveis: "sai" / "fica") */
   --insp-sai: #c94f46;
@@ -33,14 +36,14 @@
   --insp-fica: #3e9c78;
   --insp-fica-bg: #daeee4;
 
-  /* Realces de linha (validação / transferência / investimento).
-     Matizes bem separados para distinção fácil, mantendo o tom sereno. */
+  /* Nomes herdados do realce permanente de linha do grid (atenção/transferência/
+     investimento), aposentado em 2026-08-09. As três variáveis abaixo sobreviveram
+     porque outros componentes já as usavam: `.arquivo.erro`, `.icone-aviso.proposta`,
+     `.icone-aviso.info` e `.alerta-export`. As três órfãs (--linha-transferencia-borda,
+     --linha-investimento, --linha-investimento-borda) saíram junto com o realce. */
   --linha-atencao: #f9e2d6; /* pêssego/terracota */
   --linha-atencao-borda: #ecc3ad;
   --linha-transferencia: #d5e4f2; /* azul */
-  --linha-transferencia-borda: #b3cce4;
-  --linha-investimento: #dcedd3; /* verde */
-  --linha-investimento-borda: #bcd9ac;
 
   /* Bordas */
   --borda: #e1dcd1;
@@ -77,121 +80,12 @@ body {
   background: #cfdccf;
 }
 
-/* Tipografia utilitária */
-.dc-titulo {
-  margin: 0;
-  font-size: 32px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1.15;
-}
-.dc-subtitulo {
-  margin: 14px 0 0;
-  font-size: 16px;
-  line-height: 1.6;
-  color: var(--texto-3);
-}
-.dc-rotulo {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--texto-2);
-}
-.dc-opcional {
-  color: var(--muted-2);
-  font-weight: 600;
-}
-
-/* Card / superfície */
-.dc-card {
-  background: var(--superficie);
-  border: 1px solid var(--borda);
-  border-radius: var(--raio-card);
-  overflow: hidden;
-  box-shadow: var(--sombra-card);
-}
-
-/* Inputs */
-.dc-input {
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 600;
-  padding: 12px 14px;
-  border: 1px solid var(--borda-3);
-  border-radius: var(--raio-campo);
-  background: var(--branco);
-  color: var(--texto);
-  outline: none;
-  width: 100%;
-  transition: border-color 0.15s;
-}
-.dc-input::placeholder {
-  color: var(--muted-2);
-  font-weight: 500;
-}
-.dc-input:focus {
-  border-color: var(--verde);
-}
-
-/* Botões */
-.dc-btn {
-  font-family: inherit;
-  font-size: 14px;
-  font-weight: 700;
-  border-radius: 10px;
-  padding: 10px 15px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  transition: background 0.15s, border-color 0.15s, opacity 0.15s;
-}
-.dc-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.dc-btn-secundario {
-  color: var(--texto-2);
-  background: var(--branco);
-  border: 1px solid var(--borda-3);
-}
-.dc-btn-secundario:hover:not(:disabled) {
-  border-color: #b9b2a4;
-}
-.dc-btn-primario {
-  color: var(--superficie);
-  background: var(--verde);
-  border: 1px solid var(--verde);
-  box-shadow: var(--sombra-verde);
-}
-.dc-btn-primario:hover:not(:disabled) {
-  background: var(--verde-hover);
-}
-.dc-btn-cta {
-  font-size: 16px;
-  padding: 16px;
-  border-radius: var(--raio-botao);
-  width: 100%;
-}
-
-/* Pill "dados nunca saem" */
-.dc-pill-privado {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--verde-suave);
-  border: 1px solid var(--verde-borda);
-  color: #4e6a53;
-  padding: 7px 13px;
-  border-radius: 20px;
-  font-size: 13px;
-  font-weight: 600;
-}
-
 /* ===========================================================================
    Sistema de classes do protótipo Claude Design (Task T1).
    Fonte: prototipo/Conta de Gastos - Redesign.html, bloco <style>.
-   Convivem com as classes .dc-* acima até T11 migrar os call-sites.
+   A família .dc-* (protótipo original) foi removida em C1 (spec
+   patches-ui-ux) — todos os call-sites já haviam migrado para as classes
+   abaixo.
    =========================================================================== */
 
 a {
@@ -276,7 +170,7 @@ a:hover {
   gap: 7px;
   background: var(--verde-suave);
   border: 1px solid var(--verde-borda);
-  color: #4e6a53;
+  color: var(--verde-texto);
   padding: 6px 12px;
   border-radius: 20px;
   font-size: 12.5px;
@@ -298,6 +192,7 @@ a:hover {
 }
 
 .btn {
+  position: relative;
   font-family: inherit;
   font-size: 13.5px;
   font-weight: 700;
@@ -311,12 +206,20 @@ a:hover {
   transition: background 0.15s, border-color 0.15s, opacity 0.15s;
   border: 1px solid transparent;
 }
+
+.btn:focus-visible,
+.aba:focus-visible,
+.nat-item:focus-visible,
+.btn-remover:focus-visible,
+.cartao-dic:focus-visible {
+  outline: 2px solid var(--verde);
+  outline-offset: 2px;
+}
 .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 .btn,
-.chip,
 .pill-privado {
   white-space: nowrap;
 }
@@ -359,20 +262,6 @@ a:hover {
 .btn.mini.icone {
   padding: 5px 7px;
 }
-.btn.ver {
-  background: none;
-  border: none;
-  color: var(--azul);
-  gap: 5px;
-}
-.btn.ver:hover {
-  color: var(--texto);
-}
-.btn.ver.on {
-  color: var(--texto);
-  font-weight: 800;
-}
-
 .badge {
   position: absolute;
   top: -7px;
@@ -422,8 +311,45 @@ a:hover {
 .input:focus {
   border-color: var(--verde);
 }
+.input[data-soma-valida='true'] {
+  border-color: var(--verde);
+  background: var(--verde-suave);
+}
 select.input {
   cursor: pointer;
+  /*
+    Um `select` com aparência nativa fica 2px mais alto que um `input` de mesma fonte e mesmo
+    padding: o user-agent dá ~21px ao conteúdo do select contra ~19px do input. `line-height` não
+    resolve — o navegador o ignora em select com `appearance: auto`. Compensar pelo padding
+    vertical (11px → 10px) iguala a caixa em 43px, para que os campos da mesma linha (ex.: "Suas
+    iniciais" ao lado de "Mês de referência", na tela de importação) fechem topo e base juntos.
+  */
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+.input.mini {
+  font-size: 12px;
+  padding: 7px 10px;
+  border-radius: 8px;
+}
+
+.despesa {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.desp-x {
+  border: none;
+  background: none;
+  color: var(--muted-2);
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.desp-x:hover {
+  color: var(--terracota);
 }
 
 .campo {
@@ -557,7 +483,7 @@ select.input {
 }
 .tag-tipo.extrato {
   background: var(--verde-suave);
-  color: #4e6a53;
+  color: var(--verde-texto);
   border: 1px solid var(--verde-borda);
 }
 
@@ -609,17 +535,27 @@ select.input {
   flex-wrap: wrap;
 }
 .toolbar.compacta {
-  padding: 9px 18px;
+  height: 44px;
+  padding: 6px 16px;
 }
 .toolbar.compacta .btn {
-  font-size: 12.5px;
-  padding: 6.5px 11px;
+  font-size: 12px;
+  padding: 5px 10px;
 }
 .toolbar.compacta .btn.icone {
-  padding: 6.5px 8px;
+  padding: 5px 7px;
 }
 .toolbar.compacta .grupo-mes {
-  padding: 3px 8px;
+  padding: 2px 7px;
+}
+.toolbar.compacta .progresso {
+  gap: 7px;
+  font-size: 11.5px;
+}
+.toolbar.compacta .chip-sujo {
+  gap: 5px;
+  font-size: 11px;
+  padding: 2px 8px;
 }
 
 .progresso {
@@ -691,59 +627,19 @@ select.input {
   padding: 2px 0;
 }
 
-.filtros {
+.saldos {
   display: flex;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
   align-items: center;
-  gap: 10px;
-  padding: 6px 18px;
-  border-bottom: 1px solid var(--borda-2);
-  flex-shrink: 0;
-  flex-wrap: wrap;
-}
-.filtro-grupo {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
-}
-.divisor {
-  width: 1px;
-  height: 16px;
-  background: var(--borda-3);
-}
-.chip {
-  font-family: inherit;
-  padding: 2.5px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--borda-2);
-  background: none;
-  color: var(--texto-3);
-  cursor: pointer;
+  gap: 12px;
   font-size: 12px;
   font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: all 0.12s;
+  color: var(--texto-3);
 }
-.chip:hover {
-  border-color: #b9b2a4;
-}
-.chip.on {
-  background: var(--verde);
-  border-color: var(--verde);
-  color: #faf8f3;
-}
-.chip.estado.on .sw {
-  border-color: rgba(250, 248, 243, 0.7);
-}
-.sw {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  border: 1px solid;
-  display: inline-block;
-}
-.btn-limpar {
+
+.btn-texto {
   border: none;
   background: none;
   color: var(--verde);
@@ -752,37 +648,10 @@ select.input {
   cursor: pointer;
   font-family: inherit;
   padding: 0;
+  white-space: nowrap;
 }
-.btn-limpar:hover {
+.btn-texto:hover {
   color: var(--verde-hover);
-}
-
-.banner-inspecao {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 9px 26px;
-  background: var(--branco);
-  border-bottom: 1px solid var(--borda-2);
-  font-size: 13px;
-  flex-shrink: 0;
-}
-.tag-insp {
-  display: inline-block;
-  padding: 1px 8px;
-  border-radius: 5px;
-  font-size: 10.5px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.tag-insp.sai {
-  background: var(--insp-sai);
-  color: #fff;
-}
-.tag-insp.fica {
-  background: var(--insp-fica);
-  color: #fff;
 }
 
 .grid-wrap {
@@ -791,80 +660,11 @@ select.input {
   overflow: auto;
   background: var(--superficie);
 }
-.gtab {
-  border-collapse: separate;
-  border-spacing: 0;
-  width: 100%;
-  table-layout: fixed;
-  font-size: 13.5px;
-}
-.gtab th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--barra);
-  color: var(--muted);
-  font-size: 11.5px;
-  font-weight: 700;
-  text-align: left;
-  padding: 9px 13px;
-  border-bottom: 1px solid var(--borda);
-  cursor: pointer;
-  user-select: none;
-  white-space: nowrap;
-}
-.gtab th:hover {
-  color: var(--texto-2);
-}
-.gtab th.ro {
-  background: #efece4;
-}
 .sort-ind {
   display: inline-block;
   width: 10px;
   color: var(--verde);
   font-weight: 800;
-}
-.gtab td {
-  padding: 8px 13px;
-  border-bottom: 1px solid var(--borda-2);
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  height: 39px;
-}
-.gtab td.ro {
-  background: rgba(0, 0, 0, 0.022);
-  color: var(--texto-3);
-}
-.gtab td.edit {
-  cursor: text;
-}
-.gtab td.edit:hover {
-  box-shadow: inset 0 0 0 1.5px var(--verde-borda);
-  border-radius: 2px;
-}
-.gtab td.num {
-  text-align: right;
-}
-.gtab td.marcador {
-  text-align: center;
-  color: var(--muted-2);
-  font-size: 11px;
-  font-weight: 700;
-  cursor: pointer;
-  background: var(--barra);
-  border-right: 1px solid var(--borda-2);
-  user-select: none;
-  padding: 8px 4px;
-}
-.gtab td.marcador:hover {
-  color: var(--verde);
-}
-.gtab td.marcador.sel {
-  background: var(--verde);
-  color: #faf8f3;
 }
 tr.insp-sai td {
   background: var(--insp-sai-bg);
@@ -893,7 +693,7 @@ tr.insp-fica td.ro {
   color: var(--terracota);
 }
 .valor.pos {
-  color: #4e6a53;
+  color: var(--verde-texto);
 }
 .valor .moeda {
   opacity: 0.65;
@@ -977,8 +777,18 @@ tr.insp-fica td.ro {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--borda-2);
+  height: 38px;
+  padding: 0 14px;
+  background: var(--barra);
+  /*
+    `--borda-linha` (e não `--borda`) porque esta linha precisa ser a MESMA que o Glide desenha sob
+    o header do grid, à esquerda: as duas se encontram em y=82 e formam uma régua só, que atravessa
+    a tela. O tema do grid pede `--borda` em `headerBottomBorderColor`, mas o Glide desenha a
+    horizontal com `horizontalBorderColor` (`--borda-linha`, medido no canvas: #eee9df). Usar
+    `--borda` aqui deixava o lado direito visivelmente mais escuro que o esquerdo — alinhado em
+    posição, quebrado em tom. Ver `ReviewGrid.tsx`, tema do DataEditor.
+  */
+  border-bottom: 1px solid var(--borda-linha);
   flex-shrink: 0;
 }
 .aba {
@@ -1015,6 +825,9 @@ tr.insp-fica td.ro {
   color: var(--muted);
   margin-top: 4px;
 }
+.divisor-sutil {
+  border-top: 1px solid var(--borda-2);
+}
 .painel-vazio {
   display: flex;
   flex-direction: column;
@@ -1037,6 +850,10 @@ tr.insp-fica td.ro {
 }
 .card-aviso.resolvido {
   opacity: 0.65;
+}
+.card-aviso.expandido {
+  border-color: var(--verde-borda);
+  background: var(--verde-suave);
 }
 .icone-aviso {
   width: 24px;

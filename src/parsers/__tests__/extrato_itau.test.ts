@@ -2,8 +2,9 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { extratoItau } from '../extrato_itau'
+import { reiniciarContadorIds } from '../idSerial'
 
 const FIXTURES = join(__dirname, 'fixtures')
 
@@ -94,5 +95,17 @@ describe('extratoItau.parsear — campos do lançamento', () => {
     const conteudo = lerFixture('extrato_itau_minus_inline.txt')
     const { lancamentos } = extratoItau.parsear(conteudo)
     expect(lancamentos[0].transcricao).toBe('Supermercado Sintetico')
+  })
+})
+
+describe('extratoItau.parsear() — id serial de nascimento', () => {
+  beforeEach(() => {
+    reiniciarContadorIds()
+  })
+
+  it('TL-T5-12: atribui id sequencial e único a cada lançamento retornado', () => {
+    const conteudo = lerFixture('extrato_itau_minus_inline.txt')
+    const { lancamentos } = extratoItau.parsear(conteudo)
+    expect(lancamentos.map(l => l.id)).toEqual(lancamentos.map((_, i) => i + 1))
   })
 })

@@ -197,7 +197,11 @@ describe('App — aviso textual na barra de revisão', () => {
     resetarStore()
   })
 
-  it('exibe o lembrete de efemeridade ("Só nesta aba · exporte antes de fechar") quando há lançamentos', () => {
+  // Task B7b (spec patches-ui-ux): a faixa dedicada "Só nesta aba · exporte
+  // antes de fechar" foi removida de TelaRevisao — o aviso de zero-retenção
+  // já vive no `.chip-sujo` de ToolbarRevisao desde a Task B8, condicionado a
+  // `sujo` (não a `lancamentos.length`).
+  it('exibe o lembrete de efemeridade ("não exportado · só nesta aba") no chip-sujo quando sujo', () => {
     act(() => {
       useAppStore.setState({
         lancamentos: [lancamentoFixture()],
@@ -207,20 +211,20 @@ describe('App — aviso textual na barra de revisão', () => {
 
     render(<App />)
 
-    // O texto visível ficou compacto, na faixa de filtros à direita (o texto
-    // completo vive no atributo `title`). Cobre a presença do nudge de
-    // zero-retenção durante a revisão.
+    // O texto visível é curto, no `.chip-sujo` da toolbar (o texto completo
+    // vive no atributo `title`). Cobre a presença do nudge de zero-retenção
+    // durante a revisão.
     expect(
-      screen.getByText(/Só nesta aba · exporte antes de fechar/),
+      screen.getByText(/não exportado · só nesta aba/),
     ).toBeInTheDocument()
   })
 
-  it('não exibe o lembrete de efemeridade na etapa de upload (sem lançamentos)', () => {
-    // Estado inicial sem lançamentos
+  it('não exibe o lembrete de efemeridade na etapa de upload (estado inicial, não sujo)', () => {
+    // Estado inicial: sem lançamentos e sujo=false
     render(<App />)
 
     expect(
-      screen.queryByText(/Só nesta aba · exporte antes de fechar/),
+      screen.queryByText(/não exportado · só nesta aba/),
     ).not.toBeInTheDocument()
   })
 })

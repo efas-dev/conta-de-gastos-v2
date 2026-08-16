@@ -1,6 +1,7 @@
 // ADR: see Docs/specs/parsers-fatura-nubank-extrato-itau.adr.md
 
 import type { Lancamento, ResultadoParse } from '../types'
+import { atribuirIds } from './idSerial'
 
 /** Regex estrutural: dd/mm/yyyy;qualquer-descrição;-?valor-br */
 const LINHA_ESTRUTURAL = /^(\d{2}\/\d{2}\/\d{4});(.+);(-?[\d.]+,\d{2})\s*$/
@@ -49,7 +50,7 @@ function parsearValor(valorStr: string): number {
  * - Linhas não estruturais são puladas e contadas em linhasIgnoradas.
  */
 function parsear(conteudo: string): ResultadoParse {
-  const lancamentos: Lancamento[] = []
+  const lancamentos: Omit<Lancamento, 'id'>[] = []
   let linhasIgnoradas = 0
 
   const linhas = conteudo.replace(/\r/g, '').split('\n')
@@ -85,7 +86,7 @@ function parsear(conteudo: string): ResultadoParse {
     })
   }
 
-  return { lancamentos, linhasIgnoradas, excluidosPendentes: [] }
+  return { lancamentos: atribuirIds(lancamentos), linhasIgnoradas, excluidosPendentes: [] }
 }
 
 export const extratoItau = { aceita, parsear }

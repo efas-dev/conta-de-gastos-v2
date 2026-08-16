@@ -45,6 +45,9 @@ vi.mock('../ui/PipelineState', () => ({
   produzirLancamentos: vi.fn(() => ({ lancamentos: [], dicEntries: [], avisos: [] })),
   gerarAPartirDosRevisados: vi.fn(() => new Uint8Array([1, 2, 3])),
   computarNomeArquivo: vi.fn(() => 'extrato.xlsx'),
+  // Task T14 (cutover): handlersPipeline.handleProduzir agora importa reproduzirAvisos
+  // de PipelineState — mock no-op preserva as asserções existentes deste arquivo.
+  reproduzirAvisos: vi.fn(),
 }))
 
 // Mock do leitor — lerNaturezas retorna NaturezaRica[] (T3: tipo atualizado de string[] para NaturezaRica[])

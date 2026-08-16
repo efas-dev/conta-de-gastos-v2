@@ -3,8 +3,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { PainelLateral } from '../PainelLateral'
+import { CentralDeAvisos } from '../CentralDeAvisos'
 import type { Aviso } from '../../../types'
 import type { NaturezaRica } from '../../../types'
+
+// TL-92 (Task 7-bis): envolve a implementação real de `CentralDeAvisos` num `vi.fn` — preserva o
+// comportamento/conteúdo real (os demais testes deste arquivo continuam vendo o conteúdo
+// renderizado de verdade) e permite inspecionar com qual `mesRef` o componente foi chamado.
+vi.mock('../CentralDeAvisos', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../CentralDeAvisos')>()
+  return { ...real, CentralDeAvisos: vi.fn(real.CentralDeAvisos) }
+})
 
 const mockAplicar = vi.fn()
 const mockDesfazer = vi.fn()
@@ -17,6 +26,9 @@ let avisosMock: Aviso[] = []
 vi.mock('../../store/appStore', () => ({
   useAppStore: (selector: (state: Record<string, unknown>) => unknown) =>
     selector({
+      lancamentos: [],
+      filtroNaturezas: [],
+      setFiltroNaturezas: () => {},
       avisosAcionaveis: { avisos: avisosMock, removidos: {}, avisoEmInspecao: null },
       aplicar: mockAplicar,
       desfazer: mockDesfazer,
@@ -50,6 +62,7 @@ beforeEach(() => {
   mockDispensar.mockReset()
   mockEntrarInspecao.mockReset()
   mockSairInspecao.mockReset()
+  vi.mocked(CentralDeAvisos).mockClear()
 })
 
 describe('PainelLateral — estrutura (TL-13)', () => {
@@ -66,12 +79,18 @@ describe('PainelLateral — estrutura (TL-13)', () => {
     expect(container.querySelector('.painel-corpo')).not.toBeNull()
   })
 
-  it('renderiza as abas "Avisos" e "Naturezas" e o botão de fechar', () => {
+  it('renderiza as abas "Avisos" e "Naturezas" — sem botão de fechar por padrão (painel fixo)', () => {
     const setAba = vi.fn()
     render(<PainelLateral aba="avisos" setAba={setAba} naturezas={naturezasFicticias} />)
 
     expect(screen.getByRole('button', { name: /avisos/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /naturezas/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /fechar/i })).toBeNull()
+  })
+
+  it('com fechavel=true (overlay da importação) exibe o botão de fechar', () => {
+    render(<PainelLateral aba="avisos" setAba={vi.fn()} naturezas={naturezasFicticias} fechavel />)
+
     expect(screen.getByRole('button', { name: /fechar/i })).toBeInTheDocument()
   })
 })
@@ -108,9 +127,9 @@ describe('PainelLateral — alternância de abas (TL-14 a TL-18, TL-21)', () => 
     expect(setAba).toHaveBeenCalledWith('avisos')
   })
 
-  it('clicar no botão de fechar chama setAba(null)', () => {
+  it('clicar no botão de fechar (fechavel=true) chama setAba(null)', () => {
     const setAba = vi.fn()
-    render(<PainelLateral aba="avisos" setAba={setAba} naturezas={naturezasFicticias} />)
+    render(<PainelLateral aba="avisos" setAba={setAba} naturezas={naturezasFicticias} fechavel />)
 
     screen.getByRole('button', { name: /fechar/i }).click()
     expect(setAba).toHaveBeenCalledWith(null)
@@ -142,5 +161,23 @@ describe('PainelLateral — badge de propostas pendentes (TL-19, TL-20)', () => 
 
     const botaoAvisos = screen.getByRole('button', { name: /^avisos/i })
     expect(botaoAvisos.querySelector('.badge')).toBeNull()
+  })
+})
+
+describe('PainelLateral — repassa mesRef para CentralDeAvisos (TL-92, Task 7-bis)', () => {
+  it('mesRef recebido chega intacto até CentralDeAvisos', () => {
+    render(
+      <PainelLateral aba="avisos" setAba={vi.fn()} naturezas={naturezasFicticias} mesRef="2026-03" />,
+    )
+
+    const [propsRecebidas] = vi.mocked(CentralDeAvisos).mock.calls[0]!
+    expect(propsRecebidas).toEqual(expect.objectContaining({ mesRef: '2026-03' }))
+  })
+
+  it('sem mesRef fornecido, CentralDeAvisos é chamado sem essa prop (compatibilidade retroativa)', () => {
+    render(<PainelLateral aba="avisos" setAba={vi.fn()} naturezas={naturezasFicticias} />)
+
+    const [propsRecebidas] = vi.mocked(CentralDeAvisos).mock.calls[0]!
+    expect(propsRecebidas).not.toEqual(expect.objectContaining({ mesRef: expect.anything() }))
   })
 })

@@ -2,99 +2,16 @@
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
+// ADR: see spec/fundacao-operacoes.adr.md
 
 import type { Lancamento, DicEntry, Aviso } from '../types'
 import { detectar } from '../parsers/index'
 import { enriquecerLancamento } from '../dominio/dicionario'
-import { detectarInvestimento } from '../dominio/investimento'
-import { detectarTransferenciaInterna } from '../dominio/transferencia'
 import { detectarConciliacao } from '../dominio/deteccoes'
+import { detectores, orquestrarDeteccao } from '../dominio/registry'
 import { aprenderDicionario } from '../dominio/aprendizado'
 import { lerDicionario } from '../excel/reader/leitor'
 import { gerarXlsx } from '../excel/writer/gerador'
-
-// ---------------------------------------------------------------------------
-// Estado
-// ---------------------------------------------------------------------------
-
-/**
- * Estado do pipeline de importação.
- * Gerenciado pelo redutor puro `reduzir` — sem efeitos colaterais.
- */
-export interface Estado {
-  /** Iniciais do usuário (obrigatório para habilitar o botão Gerar) */
-  iniciais: string
-  /** Arquivo CSV do extrato selecionado pelo usuário */
-  csvArquivo: File | null
-  /** Arquivo .xlsx do mês anterior (opcional — dicionário) */
-  dicArquivo: File | null
-  /** true quando o arquivo CSV está selecionado e pronto para geração */
-  csvPronto: boolean
-  /** true quando o arquivo .xlsx de dicionário está selecionado */
-  dicPronto: boolean
-  /** Mensagens de aviso acumuladas (linhas ignoradas, dicionário inválido, etc.) */
-  avisos: string[]
-}
-
-// ---------------------------------------------------------------------------
-// Ações
-// ---------------------------------------------------------------------------
-
-export type Acao =
-  | { tipo: 'SET_INICIAIS'; valor: string }
-  | { tipo: 'SET_CSV'; arquivo: File }
-  | { tipo: 'SET_DIC'; arquivo: File }
-  | { tipo: 'ADICIONAR_AVISO'; mensagem: string }
-  | { tipo: 'LIMPAR_AVISOS' }
-
-// ---------------------------------------------------------------------------
-// Estado inicial
-// ---------------------------------------------------------------------------
-
-export const estadoInicial: Estado = {
-  iniciais: '',
-  csvArquivo: null,
-  dicArquivo: null,
-  csvPronto: false,
-  dicPronto: false,
-  avisos: [],
-}
-
-// ---------------------------------------------------------------------------
-// Redutor puro
-// ---------------------------------------------------------------------------
-
-/**
- * Redutor puro do estado do pipeline.
- * Sem efeitos colaterais — dados persistência, I/O ou chamadas de rede
- * ficam no `executarPipeline` e no `App.tsx`.
- *
- * Regras de validação:
- * - SET_INICIAIS com string vazia é rejeitado (iniciais permanece inalterada).
- */
-export function reduzir(estado: Estado, acao: Acao): Estado {
-  switch (acao.tipo) {
-    case 'SET_INICIAIS':
-      // Validação: rejeita string vazia
-      if (!acao.valor) return estado
-      return { ...estado, iniciais: acao.valor }
-
-    case 'SET_CSV':
-      return { ...estado, csvArquivo: acao.arquivo, csvPronto: true }
-
-    case 'SET_DIC':
-      return { ...estado, dicArquivo: acao.arquivo, dicPronto: true }
-
-    case 'ADICIONAR_AVISO':
-      return { ...estado, avisos: [...estado.avisos, acao.mensagem] }
-
-    case 'LIMPAR_AVISOS':
-      return { ...estado, avisos: [] }
-
-    default:
-      return estado
-  }
-}
 
 // ---------------------------------------------------------------------------
 // Helpers puros
@@ -103,10 +20,24 @@ export function reduzir(estado: Estado, acao: Acao): Estado {
 /**
  * Computa o nome do arquivo gerado: `AAAA-MM-INICIAIS.xlsx`.
  *
- * O mês/ano é derivado do campo `data` (YYYY-MM-DD) do primeiro lançamento.
- * Se a lista estiver vazia, retorna um nome genérico `exportacao-INICIAIS.xlsx`.
+ * O mês/ano vem do **mês de referência** (`mesReferencia`, formato `YYYY-MM`) —
+ * a mesma autoridade que alimenta `B3` e a coluna `Ref.` do .xlsx. Antes o mês
+ * era derivado da data do PRIMEIRO lançamento, o que produzia M-1 sempre que o
+ * lote começava por uma fatura (cujas compras são do mês anterior): referência
+ * 2026-07 gerava `2026-06-ES.xlsx` (bug reportado em 2026-08-04).
+ *
+ * Fallbacks, nessa ordem: sem `mesReferencia` válido, usa a data do primeiro
+ * lançamento (comportamento legado, preservado para a fachada de testes E2E);
+ * sem lançamentos, retorna `exportacao-INICIAIS.xlsx`.
  */
-export function computarNomeArquivo(lancamentos: Lancamento[], iniciais: string): string {
+export function computarNomeArquivo(
+  lancamentos: Lancamento[],
+  iniciais: string,
+  mesReferencia?: string,
+): string {
+  if (mesReferencia !== undefined && /^\d{4}-\d{2}$/.test(mesReferencia)) {
+    return `${mesReferencia}-${iniciais}.xlsx`
+  }
   if (lancamentos.length === 0) {
     return `exportacao-${iniciais}.xlsx`
   }
@@ -120,7 +51,7 @@ export function computarNomeArquivo(lancamentos: Lancamento[], iniciais: string)
 // ---------------------------------------------------------------------------
 
 /**
- * Resultado de `produzirLancamentos`: lançamentos enriquecidos com flags,
+ * Resultado de `produzirLancamentos`: lançamentos enriquecidos pelo dicionário,
  * entradas do dicionário lido e avisos acumulados durante o processamento.
  */
 export interface ResultadoProduzir {
@@ -130,12 +61,11 @@ export interface ResultadoProduzir {
 }
 
 // ---------------------------------------------------------------------------
-// Etapa 1 — Parse + enriquecimento + detecção de flags
+// Etapa 1 — Parse + enriquecimento
 // ---------------------------------------------------------------------------
 
 /**
- * Faz parse do CSV, enriquece os lançamentos com o dicionário fornecido
- * e aplica as detecções de investimento/transferência com regra de precedência.
+ * Faz parse do CSV e enriquece os lançamentos com o dicionário fornecido.
  *
  * Função pura de transformação — sem efeitos colaterais além do retorno.
  * Os avisos acumulados (linhas ignoradas) são retornados no campo `avisos`
@@ -161,7 +91,6 @@ export interface ResultadoProduzir {
  * @param csvConteudo       Conteúdo do arquivo CSV (já lido como string)
  * @param dicEntries        Entradas do dicionário já lidas, ou [] se não fornecido
  * @param iniciais          Iniciais do usuário
- * @param nomeUsuario       Nome do usuário (opcional — habilita Pix nominal em `detectarTransferenciaInterna`)
  * @param lancamentosExtrato Lançamentos do extrato a conciliar com esta fatura (opcional).
  *   Quando vazio, `detectarConciliacao` não é chamado — evita o aviso "fatura não conciliada"
  *   em importações de um único arquivo sem contraparte de extrato.
@@ -172,7 +101,6 @@ export function produzirLancamentos(
   csvConteudo: string,
   dicEntries: DicEntry[],
   iniciais: string,
-  nomeUsuario?: string,
   lancamentosExtrato: Lancamento[] = [],
   adicionarAvisos: (avisos: Aviso[]) => void = () => {},
 ): ResultadoProduzir {
@@ -207,24 +135,67 @@ export function produzirLancamentos(
     enriquecerLancamento(l, dicEntries, iniciais),
   )
 
-  // 3. Detecção de flags com regra de precedência: investimento vence transferenciaInterna
-  const lancamentosComFlags = lancamentosEnriquecidos.map((l) => {
-    const investimento = detectarInvestimento(l)
-    const transferenciaInterna =
-      investimento !== null ? false : detectarTransferenciaInterna(l, nomeUsuario)
-    return { ...l, investimento, transferenciaInterna }
-  })
-
-  // 4. Avisos acionáveis: converte conciliação em Aviso[] e despacha. Valor-pendente/
+  // 3. Avisos acionáveis: converte conciliação em Aviso[] e despacha. Valor-pendente/
   // pagamento-recebido deixaram de ser detectados aqui (T11 — ver docstring acima);
   // o call-site real (`App.tsx`, `handleProduzir`) os detecta sobre `todosLancamentos`.
+  //
+  // O antigo passo de "flags" (`investimento`/`transferenciaInterna` gravados no
+  // lançamento) saiu em 2026-08-09: os campos só alimentavam o realce colorido da grid,
+  // aposentado a pedido do usuário. Os detectores de domínio continuam vivos — o registry
+  // chama `detectarInvestimento`/`detectarTransferenciaInterna` sobre o próprio lançamento
+  // para gerar os avisos acionáveis, sem precisar da flag persistida.
   const avisosConciliacao =
     lancamentosExtrato.length > 0
-      ? detectarConciliacao(lancamentosComFlags, lancamentosExtrato)
+      ? detectarConciliacao(lancamentosEnriquecidos, lancamentosExtrato)
       : []
   adicionarAvisos([...avisosConciliacao, ...avisosInformativosMigrados])
 
-  return { lancamentos: lancamentosComFlags, dicEntries, avisos }
+  return { lancamentos: lancamentosEnriquecidos, dicEntries, avisos }
+}
+
+// ---------------------------------------------------------------------------
+// Política de "produzir" — limpar avisos e re-rodar o registry do zero (T09)
+// ---------------------------------------------------------------------------
+
+/**
+ * Materializa a política de "produzir" declarada na Decisão 8 do ADR `fundacao-operacoes`
+ * (Task T09): zera a lista de avisos por inteiro — incluindo decisões já tomadas
+ * (`'aplicado'`/`'dispensado'`) — e re-roda TODOS os detectores registrados no registry
+ * (`src/dominio/registry.ts`, T05/T06/T07/T07-bis) do zero sobre o array total de
+ * lançamentos já concatenado. Nenhuma decisão anterior sobrevive a uma nova chamada —
+ * previsibilidade sobre memória, decisão humana explícita da captura (o custo — o usuário
+ * pode precisar re-dispensar propostas já dispensadas — foi registrado e aceito no ADR).
+ *
+ * `limparAvisos` é chamado SEMPRE antes de `adicionarAvisos` — nunca depois — para que a
+ * lista nunca contenha, ainda que momentaneamente, avisos de duas rodadas de detecção
+ * distintas.
+ *
+ * Wiring real (chamar esta função a partir do fluxo de "Produzir" do usuário, substituindo
+ * as chamadas legadas diretas a `detectarValorPendente`/`detectarPagamentoRecebido`/
+ * `detectarConciliacao` hoje em `App.tsx::handleProduzir`) é DIFERIDO para T10/T11 — ver
+ * iteração-log da Task T09: `App.tsx` está fora das Áreas tocadas desta task; T11 já prevê
+ * extrair `handleProduzir` para um módulo próprio que deixa de importar detectores
+ * diretamente, ponto natural para este wiring.
+ *
+ * @param todosLancamentos Array total de lançamentos (já concatenado de todos os arquivos
+ *   do lote), nunca a sublista de um único arquivo.
+ * @param nomeUsuario      Nome do usuário (opcional) — habilita heurísticas nominais (ex.:
+ *   Pix nominal em transferência interna).
+ * @param mesRef           Mês de referência no formato YYYY-MM (opcional) — necessário para
+ *   o detector de conciliação classificar fonte de fatura/extrato (ver `registry.ts`); sem
+ *   ele, conciliação não produz aviso (degradação silenciosa já documentada em T06).
+ * @param limparAvisos     Ação do avisosSlice que zera `avisos`/`removidos`/`avisoEmInspecao`.
+ * @param adicionarAvisos  Ação do avisosSlice que despacha os avisos recém-detectados.
+ */
+export function reproduzirAvisos(
+  todosLancamentos: Lancamento[],
+  nomeUsuario: string | undefined,
+  mesRef: string | undefined,
+  limparAvisos: () => void,
+  adicionarAvisos: (avisos: Aviso[]) => void,
+): void {
+  limparAvisos()
+  adicionarAvisos(orquestrarDeteccao(todosLancamentos, detectores, nomeUsuario, mesRef))
 }
 
 // ---------------------------------------------------------------------------

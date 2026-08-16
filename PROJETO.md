@@ -24,13 +24,19 @@ open source prontas e **não reinventar a roda**. Só abstrair o que realmente v
 
 ## Arquitetura de repositório
 
-**Não é hexagonal.** São módulos simples com **um único encaixe de plugin: o registro de parsers**.
-Não há ports/adapters — abstrair o que é fixo seria overengineering.
+**Não é hexagonal.** São módulos simples com **dois encaixes de plugin**, de origem distinta:
+o registro de **parsers** (`src/parsers/index.ts`, extensão **comunitária** — novo banco/formato
+vem de fora do projeto) e o registro de **detectores** (`src/dominio/registry.ts`, extensão
+**interna** — organiza o crescimento das próprias operações do app, ex.: conciliação, valor
+pendente, investimento). Não há ports/adapters, nem um terceiro registry — abstrair além disso
+seria overengineering. Detalhe completo dos dois contratos e do molde de operações que os
+detectores seguem em [`Docs/ARCHITECTURE.md`](Docs/ARCHITECTURE.md).
 
 ```
 src/
 ├── dominio/        # Lancamento + regras puras (classificar, normalizar, split, detectar transferências/investimentos)
-├── parsers/        # ÚNICO ponto extensível: 1 arquivo por banco/formato + registro + detectar()
+│                    #   registry.ts: registro de detectores (extensão interna) + orquestrador
+├── parsers/        # ponto extensível COMUNITÁRIO: 1 arquivo por banco/formato + registro + detectar()
 ├── excel/          # preenchimento do template Modelo.xlsx (abas Extrato + Dicionario)
 ├── ui/             # grid de revisão, telas de upload e revisão
 └── Modelo.xlsx     # template imutável; 3 abas: Extrato, Dicionario (vazia), Naturezas (referência) — versionado
@@ -39,6 +45,20 @@ src/
 - **TDD do núcleo puro** (parsers, normalização, classificação, enriquecimento, split, validação,
   injeção dado fixture de bytes). A grid em canvas testa-se pelos redutores de estado, não pelo desenho.
 - Todo parser tem fixture sintética + testes de `aceita()` e `parsear()`.
+
+### Molde de operações (detecta → propõe → aplica/dispensa/desfaz)
+
+Toda operação sobre lançamentos (conciliação, valor pendente, pagamento recebido, transferência
+interna, investimento, e as futuras da mesma família) segue o mesmo molde, desde a spec
+`fundacao-operacoes`: um **detector** puro (função `(lancamentos, contexto) => Aviso[]`,
+registrada em `src/dominio/registry.ts`) **detecta** e opcionalmente **propõe** uma mutação
+declarativa (`Aviso.mutacaoProposta`, verbo `remover` por enquanto); o usuário **aplica**,
+**dispensa** ou **desfaz** via `avisosSlice`, genérico sobre a mutação — nunca um `switch` por
+detector. O alvo de toda mutação é o `id` serial do lançamento (atribuído no parse, nunca
+recalculado), não a posição na lista — sobrevive a undo/redo e reordenação. Um aviso pendente
+cujo alvo some (ex.: exclusão manual) vira `'obsoleto'`, estado terminal. A etapa da jornada do
+usuário (upload vs. revisão, hoje; qualquer stepper futuro do item 32) nunca é um campo de
+estado guardado — é sempre derivada do estado existente (ex.: há lançamentos → está em revisão).
 
 ## Arquitetura de dados
 
@@ -122,7 +142,7 @@ no Excel real = fonte da verdade; (b) `diff` do XML descompactado — só pode m
 - **Incentivar o envio em CSV/TXT** (mais confiável que PDF; PDF é best-effort e pode falhar).
 - O usuário confronta o que foi parseado com os documentos originais antes de exportar.
 
-## Parsers (único ponto escalável)
+## Parsers (ponto de extensão comunitário)
 
 Cada parser: `aceita(arquivo) -> bool` e `parsear(arquivo) -> Lancamento[]`; `detectar()` escolhe.
 

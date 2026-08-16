@@ -1,8 +1,11 @@
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
+// ADR: see Docs/specs/patches-ui-ux.adr.md
+// ADR: see Docs/specs/refino-ui-revisao-v2.adr.md
 
 import type { ReactNode } from 'react'
 import { useAppStore } from '../store/appStore'
 import { validarLinha } from '../../dominio/validacao'
+import { calcularSaldoCalculado } from '../../dominio/rendimentos'
 
 interface ToolbarRevisaoProps {
   /**
@@ -34,6 +37,7 @@ export function ToolbarRevisao({ children }: ToolbarRevisaoProps) {
   const lancamentos = useAppStore((s) => s.lancamentos)
   const naturezasValidas = useAppStore((s) => s.naturezasValidas)
   const sujo = useAppStore((s) => s.sujo)
+  const saldoAnterior = useAppStore((s) => s.saldoAnterior)
 
   const total = lancamentos.length
   const pendentes = lancamentos.filter((l) => validarLinha(l, naturezasValidas)).length
@@ -55,17 +59,36 @@ export function ToolbarRevisao({ children }: ToolbarRevisaoProps) {
           </span>
         </span>
         {sujo && (
-          <span className="chip-sujo" title="Os dados vivem apenas nesta aba — exporte antes de fechar.">
+          <span
+            className="chip-sujo"
+            title="Os dados vivem apenas nesta aba. Exporte antes de fechar ou recarregar."
+          >
             <span className="ponto" />
-            não exportado
+            não exportado · só nesta aba
           </span>
         )}
       </div>
+      {saldoAnterior !== null && (
+        <div
+          className="saldos"
+          title="Saldo ant.: lido do xlsx do mês anterior (célula B5). Calculado: saldo anterior + soma de todos os lançamentos deste mês."
+        >
+          <span>Saldo ant.: {formatarBRL(saldoAnterior)}</span>
+          <span style={{ color: calcularSaldoCalculado(saldoAnterior, lancamentos) < 0 ? 'var(--terracota)' : undefined }}>
+            Calculado: {formatarBRL(calcularSaldoCalculado(saldoAnterior, lancamentos))}
+          </span>
+        </div>
+      )}
       {children && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>{children}</div>
       )}
     </div>
   )
+}
+
+/** Mesmo padrão de formatação BRL já usado por `SplitModal.tsx`/`ReviewGrid.tsx`/`PainelNaturezas.tsx`. */
+function formatarBRL(valor: number): string {
+  return valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
 function IconeLogo() {

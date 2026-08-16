@@ -53,6 +53,22 @@ const PARTES_MODIFICADAS = new Set([
 ])
 
 /**
+ * Remove `tabSelected` de um XML de worksheet antes da comparação de hash.
+ *
+ * Espelha o helper de mesmo nome em `src/excel/writer/__tests__/gerador.test.ts`
+ * — ver lá o racional completo. Em resumo: o gerador limpa `tabSelected` de toda
+ * aba que não seja a Extrato de propósito (duas abas selecionadas = grupo, e em
+ * modo grupo o Excel bloqueia editar/excluir linhas). `tabSelected` é estado de
+ * janela, não conteúdo, então normalizá-lo preserva a garantia que importa.
+ */
+function semTabSelected(data: Uint8Array): Uint8Array {
+  const xml = new TextDecoder().decode(data)
+  return new TextEncoder().encode(xml.replace(/\s+tabSelected="[^"]*"/g, ''))
+}
+
+const ehWorksheet = (parte: string) => /^xl\/worksheets\/sheet\d+\.xml$/.test(parte)
+
+/**
  * Constrói um ZIP OOXML mínimo com aba "Dicionario" para uso como dicionário
  * em testes de aceitação.
  *
@@ -259,8 +275,10 @@ describe('E2E — Caso 1: pipeline completo sem dicionário', () => {
     for (const parte of Object.keys(modeloParts)) {
       if (PARTES_MODIFICADAS.has(parte)) continue
 
-      const hashOriginal = hashSha256(modeloParts[parte])
-      const hashResultado = hashSha256(resultadoParts[parte])
+      const normalizar = ehWorksheet(parte) ? semTabSelected : (x: Uint8Array) => x
+
+      const hashOriginal = hashSha256(normalizar(modeloParts[parte]))
+      const hashResultado = hashSha256(normalizar(resultadoParts[parte]))
 
       expect(hashResultado, `SHA256 da parte "${parte}" deve ser idêntico ao original`).toBe(
         hashOriginal,

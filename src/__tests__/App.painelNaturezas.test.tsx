@@ -32,10 +32,6 @@ import { estadoInicialAvisos } from '../ui/store/avisosSlice'
 
 vi.mock('../ui/components/ReviewGrid', () => ({
   ReviewGrid: () => React.createElement('div', { 'data-testid': 'review-grid' }),
-  TEMA_ERRO: { bgCell: '#f9e2d6' },
-  TEMA_TRANSFERENCIA: { bgCell: '#d5e4f2' },
-  TEMA_INVESTIMENTO: { bgCell: '#dcedd3' },
-  calcularTemaLinha: vi.fn(),
   calcularSomaSelecionados: vi.fn(() => null),
 }))
 
@@ -86,14 +82,33 @@ describe('T5/T11 — integração PainelNaturezas + App.tsx (botão "Naturezas")
   })
 
   // [TL-T5-1][integration] Modelo.xlsx real
-  it('lerNaturezas com Modelo.xlsx real retorna exatamente 16 entradas com descricao não-vazia', () => {
+  //
+  // Trava a PROPRIEDADE, não a contagem exata: o humano edita as descrições da
+  // coluna F no Modelo como operação normal (foi assim que "Materiais de
+  // escritório" entrou em F14, em 2026-08-16). Um número mágico aqui ficaria
+  // vermelho a cada edição legítima, treinando o leitor a atualizá-lo sem ler —
+  // e nesse ponto o teste já não detecta mais a regressão que existe para pegar.
+  it('lerNaturezas com Modelo.xlsx real lê a coluna F e devolve descrições utilizáveis', () => {
     const caminhoModelo = resolve(__dirname, '../../public/Modelo.xlsx')
     const bytes = new Uint8Array(readFileSync(caminhoModelo))
 
     const ricas = lerNaturezas(bytes)
 
     const comDescricao = ricas.filter((n) => n.descricao !== '')
-    expect(comDescricao).toHaveLength(16)
+
+    // Piso: a coluna F está sendo lida de fato (uma quebra no leitor zeraria isto).
+    expect(comDescricao.length).toBeGreaterThan(0)
+
+    // Toda entrada rica tem sigla; descrição é opcional mas nunca lixo estrutural.
+    for (const n of ricas) {
+      expect(n.sigla).not.toBe('')
+      expect(typeof n.descricao).toBe('string')
+    }
+
+    // Caso concreto: a descrição de VR foi preenchida no Modelo e precisa chegar à UI.
+    expect(ricas.some((n) => n.sigla === 'VR' && n.descricao === 'Materiais de escritório')).toBe(
+      true,
+    )
   })
 
   // [TL-T5-2][unit] Botão "Naturezas" aparece quando naturezasRicas filtrado é não-vazio
@@ -124,8 +139,10 @@ describe('T5/T11 — integração PainelNaturezas + App.tsx (botão "Naturezas")
     expect(botaoNaturezas).not.toBeNull()
   })
 
-  // [TL-T5-3][unit] Botão "Naturezas" ausente quando naturezasRicas é vazio
-  it('NÃO renderiza o botão "Naturezas" quando naturezasRicas está vazio', () => {
+  // [TL-T5-3][unit] Hotfix 2026-08-02: o painel lateral fica SEMPRE aberto na
+  // revisão, então a aba "Naturezas" existe mesmo com naturezasRicas vazio
+  // (antes o botão de toggle da toolbar sumia; o toggle foi removido).
+  it('aba "Naturezas" do painel existe mesmo quando naturezasRicas está vazio (painel sempre aberto)', () => {
     // Store com lançamentos mas sem naturezas ricas (lista filtrada vazia)
     act(() => {
       useAppStore.setState({
@@ -146,7 +163,8 @@ describe('T5/T11 — integração PainelNaturezas + App.tsx (botão "Naturezas")
 
     render(React.createElement(App))
 
-    const botaoNaturezas = screen.queryByRole('button', { name: /naturezas/i })
-    expect(botaoNaturezas).toBeNull()
+    const abaNaturezas = screen.queryByRole('button', { name: /naturezas/i })
+    expect(abaNaturezas).not.toBeNull()
+    expect(abaNaturezas).toHaveClass('aba')
   })
 })

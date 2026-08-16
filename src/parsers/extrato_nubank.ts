@@ -3,6 +3,7 @@
 
 import type { Lancamento, ResultadoParse } from '../types'
 import { parsearLinhaCsv } from './csv'
+import { atribuirIds } from './idSerial'
 
 const CABECALHO_ESPERADO = 'Data,Valor,Identificador,Descrição'
 
@@ -58,7 +59,7 @@ function parsear(conteudo: string): ResultadoParse {
 
   const linhas = conteudo.split('\n')
   const linhasVistas = new Set<string>()
-  const lancamentos: Lancamento[] = []
+  const lancamentos: Omit<Lancamento, 'id'>[] = []
   let linhasIgnoradas = 0
 
   for (let i = 1; i < linhas.length; i++) {
@@ -114,7 +115,7 @@ function parsear(conteudo: string): ResultadoParse {
     })
   }
 
-  return { lancamentos, linhasIgnoradas, excluidosPendentes: [] }
+  return { lancamentos: atribuirIds(lancamentos), linhasIgnoradas, excluidosPendentes: [] }
 }
 
 export const extratoNubank = { aceita, parsear }

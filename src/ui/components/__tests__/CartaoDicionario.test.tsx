@@ -28,6 +28,31 @@ describe('CartaoDicionario — estado vazio', () => {
 
     expect(onCarregar).toHaveBeenCalledTimes(1)
   })
+
+  it('TL-07: cartão vazio expõe role="button" e tabIndex={0} como alvo de teclado', () => {
+    render(<CartaoDicionario dicionario={null} onCarregar={vi.fn()} />)
+
+    const cartao = screen.getByRole('button')
+    expect(cartao).toHaveAttribute('tabIndex', '0')
+  })
+
+  it('TL-08: Enter no cartão vazio dispara onCarregar', () => {
+    const onCarregar = vi.fn()
+    render(<CartaoDicionario dicionario={null} onCarregar={onCarregar} />)
+
+    fireEvent.keyDown(screen.getByRole('button'), { key: 'Enter' })
+
+    expect(onCarregar).toHaveBeenCalledTimes(1)
+  })
+
+  it('TL-09: Espaço no cartão vazio dispara onCarregar', () => {
+    const onCarregar = vi.fn()
+    render(<CartaoDicionario dicionario={null} onCarregar={onCarregar} />)
+
+    fireEvent.keyDown(screen.getByRole('button'), { key: ' ' })
+
+    expect(onCarregar).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('CartaoDicionario — estado carregado', () => {
@@ -55,5 +80,14 @@ describe('CartaoDicionario — estado carregado', () => {
     fireEvent.click(cartao)
 
     expect(onCarregar).not.toHaveBeenCalled()
+  })
+
+  it('TL-10: cartão carregado não é mais alvo de teclado (sem role="button" nem tabIndex)', () => {
+    render(<CartaoDicionario dicionario={dicionario} onCarregar={vi.fn()} />)
+
+    const cartao = screen.getByText('Planilha do mês anterior').closest('.cartao-dic') as HTMLElement
+    expect(cartao).not.toHaveAttribute('role', 'button')
+    expect(cartao).not.toHaveAttribute('tabIndex')
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 })

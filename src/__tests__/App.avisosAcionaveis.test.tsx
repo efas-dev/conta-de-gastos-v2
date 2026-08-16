@@ -7,7 +7,7 @@
  *
  * Cobre:
  *   [integration] ciclo completo via store real: aviso aparece → aplicar → some dos pendentes
- *   [integration] handleProduzir liga o callback adicionarAvisos real ao pipeline (6º argumento)
+ *   [integration] handleProduzir liga o callback adicionarAvisos real ao pipeline (5º argumento)
  *   [integration] CentralDeAvisos (sheet) renderizado também na tela de importação (T9)
  *   [integration] footer AvisoList aposentado — ausente das duas telas (T9)
  *   [integration] os 5 avisos legados migram para o slice como informativos dispensáveis (T9)
@@ -41,6 +41,11 @@ vi.mock('../ui/PipelineState', () => ({
   produzirLancamentos: vi.fn(() => ({ lancamentos: [], dicEntries: [], avisos: [] })),
   gerarAPartirDosRevisados: vi.fn(() => new Uint8Array([1, 2, 3])),
   computarNomeArquivo: vi.fn(() => 'extrato.xlsx'),
+  // Task T14 (cutover): handlersPipeline.handleProduzir agora importa reproduzirAvisos
+  // de PipelineState — mock no-op preserva o comportamento anterior destes testes (que
+  // exercitam o canal avisosAcionaveis via o 5º argumento de produzirLancamentos, não
+  // via reproduzirAvisos/registry).
+  reproduzirAvisos: vi.fn(),
 }))
 
 // Mock do leitor — controla ehDicionario/lerDicionario/lerIniciais nos testes de
@@ -185,11 +190,16 @@ describe('App — avisos legados migram para o slice como informativos dispensá
   })
 
   it('aviso "reconhecido-como-fatura" aparece no slice como informativo e é dispensável, sem duplicar em re-renders', async () => {
-    // Data bem no passado — sempre "fatura" frente a qualquer mesEscolhido default.
+    // Cross-check de desalinhamento de mês (Decisão 1, ADR conciliacao-robusta, Task 8): o aviso só
+    // dispara quando a heurística por data (`classificarFonte`) diverge da classificação autoritativa
+    // por prefixo (`classificarFontePorPrefixo`, T1) — não mais sempre que a heurística acha "fatura".
+    // Fonte `fatura_*` (prefixo autoritativo 'fatura') com data NÃO anterior a nenhum mesEscolhido
+    // default plausível (ano bem no futuro) → heurística classifica 'extrato' → diverge → aviso
+    // (cenário motivador F1: fatura sem nenhuma data anterior ao mês escolhido).
     const lancamentos = [
       {
-        fonte: 'Nubank',
-        data: '2020-01-15',
+        fonte: 'fatura_nubank_cc',
+        data: '2099-01-15',
         transcricao: 'Item de fatura',
         valor: -10,
         iniciais: '',
@@ -204,7 +214,7 @@ describe('App — avisos legados migram para o slice como informativos dispensá
     await waitFor(() => {
       const informativos = useAppStore
         .getState()
-        .avisosAcionaveis.avisos.filter((a) => a.origem === 'fatura-aviso')
+        .avisosAcionaveis.avisos.filter((a) => a.origem === 'desalinhamento-mes')
       expect(informativos).toHaveLength(1)
     })
     expect(useAppStore.getState().avisosAcionaveis.avisos[0]).toMatchObject({
@@ -217,14 +227,14 @@ describe('App — avisos legados migram para o slice como informativos dispensá
     await waitFor(() => {
       const informativos = useAppStore
         .getState()
-        .avisosAcionaveis.avisos.filter((a) => a.origem === 'fatura-aviso')
+        .avisosAcionaveis.avisos.filter((a) => a.origem === 'desalinhamento-mes')
       expect(informativos).toHaveLength(1)
     })
 
     // Dispensar via UI — sheet ainda na tela de revisão (emRevisao=true por padrão do resetarStore).
     fireEvent.click(screen.getByRole('button', { name: /^avisos/i }))
     const idAviso = useAppStore.getState().avisosAcionaveis.avisos[0].id
-    fireEvent.click(screen.getByRole('button', { name: /dispensar/i }))
+    fireEvent.click(screen.getByRole('button', { name: /ok, entendi/i }))
 
     await waitFor(() => {
       const aviso = useAppStore.getState().avisosAcionaveis.avisos.find((a) => a.id === idAviso)
@@ -236,7 +246,7 @@ describe('App — avisos legados migram para o slice como informativos dispensá
     await waitFor(() => {
       const informativos = useAppStore
         .getState()
-        .avisosAcionaveis.avisos.filter((a) => a.origem === 'fatura-aviso')
+        .avisosAcionaveis.avisos.filter((a) => a.origem === 'desalinhamento-mes')
       expect(informativos).toHaveLength(1)
       expect(informativos[0].estado).toBe('dispensado')
     })
@@ -352,18 +362,19 @@ describe('App — ciclo completo aviso → aplicar via store real (T6)', () => {
     fireEvent.click(screen.getByRole('button', { name: /^avisos/i }))
 
     // Escopo restrito à seção "Propostas" — o topo da tela de revisão já tem
-    // botões "Desfazer"/"Refazer" de undo/redo do grid, com o mesmo nome acessível.
+    // botões "Desfazer"/"Refazer" de undo/redo do grid, com nome acessível
+    // parecido ("Reverter" não colide, mas "Desfazer" colidiria).
     const secaoPropostas = screen.getByRole('region', { name: 'Propostas' })
-    expect(within(secaoPropostas).getByRole('button', { name: /aprovar/i })).toBeInTheDocument()
+    expect(within(secaoPropostas).getByRole('button', { name: /^aplicar$/i })).toBeInTheDocument()
 
-    fireEvent.click(within(secaoPropostas).getByRole('button', { name: /aprovar/i }))
+    fireEvent.click(within(secaoPropostas).getByRole('button', { name: /^aplicar$/i }))
 
     await waitFor(() => {
       expect(useAppStore.getState().avisosAcionaveis.avisos[0].estado).toBe('aplicado')
     })
-    // Não há mais botão "Aprovar" pendente para esse aviso — vira "Desfazer"
-    expect(within(secaoPropostas).queryByRole('button', { name: /aprovar/i })).toBeNull()
-    expect(within(secaoPropostas).getByRole('button', { name: /desfazer/i })).toBeInTheDocument()
+    // Não há mais botão "Aplicar" pendente para esse aviso — vira "Reverter"
+    expect(within(secaoPropostas).queryByRole('button', { name: /^aplicar$/i })).toBeNull()
+    expect(within(secaoPropostas).getByRole('button', { name: /reverter/i })).toBeInTheDocument()
   })
 })
 
@@ -382,7 +393,7 @@ describe('App — handleProduzir liga adicionarAvisos real ao pipeline (T6)', ()
     vi.unstubAllGlobals()
   })
 
-  it('produzirLancamentos recebe uma função como 6º argumento (adicionarAvisos)', async () => {
+  it('produzirLancamentos recebe uma função como 5º argumento (adicionarAvisos)', async () => {
     render(<App />)
 
     const input = document.querySelector('input[type="file"]') as HTMLInputElement
@@ -402,12 +413,12 @@ describe('App — handleProduzir liga adicionarAvisos real ao pipeline (T6)', ()
     })
 
     const args = vi.mocked(produzirLancamentos).mock.calls[0]
-    expect(typeof args[5]).toBe('function')
+    expect(typeof args[4]).toBe('function')
   })
 
   it('avisos emitidos pelo callback injetado populam avisosAcionaveis.avisos do store real', async () => {
     vi.mocked(produzirLancamentos).mockImplementation(
-      (_csv, _dic, _iniciais, _nome, _extrato, adicionarAvisos) => {
+      (_csv, _dic, _iniciais, _extrato, adicionarAvisos) => {
         adicionarAvisos?.([propostaFicticia])
         return { lancamentos: [], dicEntries: [], avisos: [] }
       },

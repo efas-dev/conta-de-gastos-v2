@@ -1,9 +1,20 @@
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
+// ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see spec/conciliacao-robusta.adr.md
 
 import type { Aviso, Lancamento } from '../types'
 
 const TOLERANCIA_CENTAVOS = 5
+
+/**
+ * Faixa de proximidade (D2 do ADR `conciliacao-robusta`): além da tolerância exata de
+ * R$ 0,05, um lançamento do extrato cuja diferença absoluta em relação ao somatório da
+ * fatura seja de até 10% desse somatório é listado como "candidato próximo" — critério
+ * simples e proporcional ao tamanho da fatura, sem casamento/remoção automática (listar
+ * ≠ casar). Ver `detectarConciliacao`.
+ */
+const FAIXA_PROXIMIDADE_PERCENTUAL = 0.1
 
 /** Converte um valor em reais para centavos inteiros, evitando float drift. */
 function paraCentavos(valor: number): number {
@@ -18,12 +29,40 @@ function formatarReais(centavos: number): string {
   })
 }
 
+/** Formata uma data ISO (`YYYY-MM-DD`) como `DD/MM/YYYY`, sem passar por `Date` (evita fuso). */
+function formatarDataBr(dataIso: string): string {
+  const [ano, mes, dia] = dataIso.split('-')
+  return `${dia}/${mes}/${ano}`
+}
+
+/** Resumo textual (valor + data) de um candidato próximo — ver `candidatosProximos`. */
+function formatarResumoCandidato(lancamento: Lancamento): string {
+  return `R$ ${formatarReais(Math.abs(paraCentavos(lancamento.valor)))} em ${formatarDataBr(lancamento.data)}`
+}
+
 /**
  * Resumo textual da regra de casamento aplicada em `detectarConciliacao` (ver ADR
  * `inspecao-proposta-conciliacao`, Decisão 2) — usado em `Aviso.resumo`.
+ *
+ * O texto expõe os dois lados do casamento (soma dos itens ↔ pagamento) e o MOTIVO da
+ * proposta: as compras da fatura já entraram uma a uma na planilha, então manter também a
+ * linha do extrato — que é o pagamento dessas mesmas compras — contaria os gastos duas vezes.
+ *
+ * @param parcial - `true` quando o casamento veio do fallback subset-sum, isto é, quando o
+ * pagamento cobre só PARTE dos itens da fatura. Distinguir importa: dizer "soma dos itens da
+ * fatura" num casamento parcial seria falso (a fatura inteira soma mais que o pagamento).
  */
-function formatarResumoConciliacao(somaFaturaCentavos: number, pagamentoCentavos: number): string {
-  return `somatório da fatura R$ ${formatarReais(somaFaturaCentavos)} ↔ pagamento R$ ${formatarReais(pagamentoCentavos)}, diferença ≤ R$ 0,05`
+function formatarResumoConciliacao(
+  somaFaturaCentavos: number,
+  pagamentoCentavos: number,
+  parcial = false,
+): string {
+  const sujeito = parcial ? 'Parte dos itens desta fatura já entrou' : 'Os itens desta fatura já entraram'
+  return (
+    `${sujeito} na planilha, um a um (somam R$ ${formatarReais(somaFaturaCentavos)}). ` +
+    `Esta linha do extrato é o pagamento desses mesmos gastos (R$ ${formatarReais(pagamentoCentavos)}). ` +
+    `Manter as duas contaria tudo duas vezes. Aprovar remove só a linha do extrato.`
+  )
 }
 
 /** Rótulo exibido por origem especial, usado na mensagem/resumo das propostas de remoção. */
@@ -32,10 +71,23 @@ const ROTULO_ORIGEM_ESPECIAL: Record<'valor-pendente' | 'pagamento-recebido', st
   'pagamento-recebido': 'Pagamento recebido',
 }
 
-/** Trecho final do resumo — reforça que o valor não é gasto/receita do mês corrente. */
+/**
+ * Explicação exibida no resumo do aviso. As duas linhas são uma particularidade do CSV do
+ * Nubank, que abre a fatura repetindo o saldo que ficou em aberto no ciclo anterior e, em
+ * seguida, o crédito da quitação desse saldo. Quando o usuário não atrasa a fatura, as duas
+ * se anulam (mesmo valor, sinais opostos) — daí "em geral": com atraso entram multa e juros
+ * e os módulos deixam de coincidir, mas nenhuma das duas linhas é gasto do mês corrente.
+ * O texto nomeia a contraparte para que o usuário entenda o par ao tratar cada aviso.
+ */
 const COMPLEMENTO_RESUMO_ORIGEM_ESPECIAL: Record<'valor-pendente' | 'pagamento-recebido', string> = {
-  'valor-pendente': 'resíduo da fatura passada, não é gasto do mês',
-  'pagamento-recebido': 'crédito referente à quitação da fatura anterior, não é gasto do mês',
+  'valor-pendente':
+    'É o que ficou em aberto na fatura passada, que o Nubank repete no começo desta. ' +
+    'Não é uma compra deste mês: em geral se anula com o "Pagamento recebido" de mesmo valor. ' +
+    'Aprovar tira a linha da planilha.',
+  'pagamento-recebido':
+    'É a quitação da fatura anterior, que o Nubank lança dentro desta fatura. ' +
+    'Não é gasto nem receita deste mês: em geral se anula com o "Valor pendente do mês anterior". ' +
+    'Aprovar tira a linha da planilha.',
 }
 
 /**
@@ -61,15 +113,23 @@ function detectarPorOrigemEspecial(
 
     const rotulo = ROTULO_ORIGEM_ESPECIAL[origem]
     const valorCentavos = Math.abs(paraCentavos(lancamento.valor))
+    const valorFormatado = `R$ ${formatarReais(valorCentavos)}`
+
+    // A transcrição só entra quando acrescenta informação: no caso comum ela é idêntica ao
+    // rótulo da origem ("Valor pendente do mês anterior"), e repeti-la só polui o título.
+    const transcricaoRedundante =
+      lancamento.transcricao.trim().toLocaleLowerCase('pt-BR') === rotulo.toLocaleLowerCase('pt-BR')
 
     avisos.push({
       id: `${origem}-${index}`,
       tipo: 'proposta',
       origem,
-      mensagem: `${rotulo}: "${lancamento.transcricao}" (R$ ${Math.abs(lancamento.valor).toFixed(2)}).`,
+      mensagem: transcricaoRedundante
+        ? `${rotulo}: ${valorFormatado}.`
+        : `${rotulo}: ${valorFormatado} ("${lancamento.transcricao}").`,
       alvo: [String(index)],
       permanece: [],
-      resumo: `${rotulo}: R$ ${formatarReais(valorCentavos)} — ${COMPLEMENTO_RESUMO_ORIGEM_ESPECIAL[origem]}`,
+      resumo: `${rotulo}: R$ ${formatarReais(valorCentavos)}. ${COMPLEMENTO_RESUMO_ORIGEM_ESPECIAL[origem]}`,
       estado: 'pendente',
     })
   })
@@ -137,6 +197,32 @@ function subsetComposicaoIndices(
   return alcancaveis.get(alvoCentavos) ?? null
 }
 
+/**
+ * Monta o Aviso informativo (sem `mutacaoProposta`) que lista candidatos do extrato para
+ * seleção manual do usuário — usado tanto pela ambiguidade exata (D3, 2+ candidatos por
+ * total ou por subconjunto) quanto pelos candidatos próximos (D2). Listar ≠ casar: nenhum
+ * desses caminhos aplica remoção automática.
+ */
+function avisoInformativoComCandidatos(
+  id: string,
+  mensagem: string,
+  candidatosLancamentos: Lancamento[],
+): Aviso {
+  return {
+    id,
+    tipo: 'informativo',
+    origem: 'conciliacao',
+    mensagem,
+    alvo: [],
+    permanece: [],
+    estado: 'pendente',
+    candidatos: candidatosLancamentos.map((lancamento) => ({
+      alvo: String(lancamento.id),
+      resumo: formatarResumoCandidato(lancamento),
+    })),
+  }
+}
+
 /** Monta o Aviso de proposta de conciliação apontando para o lançamento do extrato. */
 function propostaConciliacao(
   lancamento: Lancamento,
@@ -148,7 +234,7 @@ function propostaConciliacao(
     id: `conciliacao-${indexExtrato}`,
     tipo: 'proposta',
     origem: 'conciliacao',
-    mensagem: `Fatura conciliada com "${lancamento.transcricao}" do extrato — deseja remover esse lançamento?`,
+    mensagem: `Pagamento desta fatura no extrato: "${lancamento.transcricao}" (R$ ${formatarReais(Math.abs(paraCentavos(lancamento.valor)))}).`,
     alvo: [String(indexExtrato)],
     permanece,
     resumo,
@@ -168,14 +254,22 @@ function propostaConciliacao(
  *    exato ao centavo entre um subconjunto da fatura e um lançamento do extrato (cenário
  *    de pagamento parcial).
  * 3. Em ambas as etapas, 2+ candidatos dentro do critério é ambiguidade — par único
- *    conservador (R2): nenhuma proposta é gerada.
- * 4. Nenhum casamento em nenhuma etapa → aviso informativo "fatura não conciliada".
+ *    conservador (R2): nenhuma proposta é gerada; em vez disso (ADR `conciliacao-robusta`
+ *    Decisão 3), emite 1 aviso informativo com `Aviso.candidatos` listando todos os
+ *    candidatos ambíguos (valor/data/id) para seleção manual — nunca remoção automática.
+ * 4. Nenhum casamento em nenhuma etapa: se existir ≥1 lançamento do extrato dentro da
+ *    faixa de proximidade do total da fatura (`FAIXA_PROXIMIDADE_PERCENTUAL`, ADR
+ *    `conciliacao-robusta` Decisão 2), emite 1 aviso informativo com `Aviso.candidatos`
+ *    listando-os (valor/data/id) para seleção manual — nunca casamento/remoção
+ *    automática (D2: listar ≠ casar). Sem candidato próximo, mantém o informativo
+ *    genérico "fatura não conciliada".
  *
  * Função pura: não faz I/O, não tem efeito colateral, não referencia o store.
  *
  * @param lancamentosFatura - Lançamentos da fatura a conciliar.
  * @param lancamentosExtrato - Lançamentos do extrato candidatos ao casamento.
- * @returns Array com 0 ou 1 `Aviso` (proposta de conciliação ou informativo de não-casamento).
+ * @returns Array com 0 ou 1 `Aviso` (proposta de conciliação, informativo com
+ * candidatos próximos, ou informativo genérico de não-casamento).
  */
 export function detectarConciliacao(
   lancamentosFatura: Lancamento[],
@@ -203,7 +297,13 @@ export function detectarConciliacao(
     return [propostaConciliacao(lancamento, index, permanece, resumo)]
   }
   if (candidatosTotal.length >= 2) {
-    return []
+    return [
+      avisoInformativoComCandidatos(
+        'conciliacao-ambiguidade-total',
+        `${candidatosTotal.length} lançamentos do extrato têm o valor exato desta fatura. Não dá para saber qual é o pagamento dela: escolha qual remover para não contar os mesmos gastos duas vezes.`,
+        candidatosTotal.map(({ lancamento }) => lancamento),
+      ),
+    ]
   }
 
   const candidatosSubset = lancamentosExtrato
@@ -224,14 +324,44 @@ export function detectarConciliacao(
       (acc, i) => acc + Math.abs(paraCentavos(lancamentosFatura[i].valor)),
       0,
     )
+    // `parcial`: o casamento cobre só os itens de `composicao`, não a fatura inteira.
     const resumo = formatarResumoConciliacao(
       somaSubsetCentavos,
       Math.abs(paraCentavos(lancamento.valor)),
+      composicao.length < lancamentosFatura.length,
     )
     return [propostaConciliacao(lancamento, index, permanece, resumo)]
   }
   if (candidatosSubset.length >= 2) {
-    return []
+    return [
+      avisoInformativoComCandidatos(
+        'conciliacao-ambiguidade-subconjunto',
+        `${candidatosSubset.length} lançamentos do extrato batem com algum grupo de itens desta fatura. Não dá para saber qual é o pagamento dela: escolha qual remover para não contar os mesmos gastos duas vezes.`,
+        candidatosSubset.map(({ lancamento }) => lancamento),
+      ),
+    ]
+  }
+
+  const limiteProximidadeCentavos = somaFaturaCentavos * FAIXA_PROXIMIDADE_PERCENTUAL
+  const candidatosProximos = lancamentosExtrato
+    .map((lancamento, index) => ({
+      lancamento,
+      index,
+      diferencaCentavos: Math.abs(Math.abs(paraCentavos(lancamento.valor)) - somaFaturaCentavos),
+    }))
+    .filter(
+      ({ diferencaCentavos }) =>
+        diferencaCentavos > TOLERANCIA_CENTAVOS && diferencaCentavos <= limiteProximidadeCentavos,
+    )
+
+  if (candidatosProximos.length > 0) {
+    return [
+      avisoInformativoComCandidatos(
+        'conciliacao-candidatos-proximos',
+        `Nenhum lançamento do extrato bate exatamente com esta fatura, mas ${candidatosProximos.length} chega(m) perto. Veja se algum é o pagamento dela e remova-o para não contar os mesmos gastos duas vezes.`,
+        candidatosProximos.map(({ lancamento }) => lancamento),
+      ),
+    ]
   }
 
   return [
@@ -239,7 +369,9 @@ export function detectarConciliacao(
       id: 'conciliacao-sem-casamento',
       tipo: 'informativo',
       origem: 'conciliacao',
-      mensagem: 'Aviso: fatura não conciliada — nenhum lançamento do extrato corresponde ao somatório da fatura.',
+      mensagem:
+        'Não encontrei no extrato o pagamento desta fatura. Nada foi removido: se o pagamento ' +
+        'estiver lá com outro valor, remova-o à mão para não contar os mesmos gastos duas vezes.',
       alvo: [],
       permanece: [],
       estado: 'pendente',

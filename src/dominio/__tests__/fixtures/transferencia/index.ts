@@ -18,7 +18,13 @@ export const lancamentoOpenBanking: Lancamento = {
   valor: -500.0,
 }
 
-/** TL-2: Pagamento de fatura de cartão próprio */
+/**
+ * TL-2: "Pagamento de fatura" — NÃO é mais transferência interna (Task T14,
+ * decisão de domínio 2026-08-04). Conciliação (item 26) já é dona dessa linha
+ * via correlação fatura×extrato; o padrão genérico foi removido de
+ * `PADROES_INTERNOS` (`../../transferencia.ts`) para evitar duas propostas
+ * concorrentes sobre o mesmo lançamento.
+ */
 export const lancamentoPagFatura: Lancamento = {
   ...base,
   transcricao: 'Pagamento de fatura Nubank',
