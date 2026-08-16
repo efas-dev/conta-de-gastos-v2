@@ -178,7 +178,7 @@ export function FormVR({ mesRef }: FormVRProps) {
           Adicionar despesa
         </button>
         <button type="button" className="btn pri mini" onClick={confirmar}>
-          Aplicar
+          Efetivar lançamentos
         </button>
       </div>
 

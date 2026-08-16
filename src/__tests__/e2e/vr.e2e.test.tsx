@@ -247,7 +247,7 @@ describe('E2E — Task 9: fluxo completo VR (F7) + F6/D6 (recomposição não pr
     expect(lancamentosAntesAplicar).toHaveLength(3)
 
     await act(async () => {
-      fireEvent.click(formVR.getByRole('button', { name: 'Aplicar' }))
+      fireEvent.click(formVR.getByRole('button', { name: 'Efetivar lançamentos' }))
     })
 
     // ---- 4. Grid ganha N=2 saídas `form_vr` + 1 entrada `RR` ----------------
@@ -344,7 +344,7 @@ describe('E2E — Task 9: fluxo completo VR (F7) + F6/D6 (recomposição não pr
     })
 
     await act(async () => {
-      fireEvent.click(formVR.getByRole('button', { name: 'Aplicar' }))
+      fireEvent.click(formVR.getByRole('button', { name: 'Efetivar lançamentos' }))
     })
 
     await waitFor(() => {

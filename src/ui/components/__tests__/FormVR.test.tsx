@@ -74,7 +74,7 @@ describe('FormVR — caminho válido, integração com a store real (TL-71, TL-7
     render(<FormVR mesRef="2026-07" />)
 
     preencherDespesa(1, '150', 'ALM', 'Mercado do mês')
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Efetivar lançamentos' }))
 
     const lancamentos = useAppStore.getState().lancamentos
     expect(lancamentos).toHaveLength(2)
@@ -92,7 +92,7 @@ describe('FormVR — caminho válido, integração com a store real (TL-71, TL-7
     fireEvent.click(screen.getByRole('button', { name: 'Adicionar despesa' }))
     preencherDespesa(3, '30', 'LAZ', 'Cinema')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Efetivar lançamentos' }))
 
     expect(useAppStore.getState().lancamentos).toHaveLength(4)
   })
@@ -101,7 +101,7 @@ describe('FormVR — caminho válido, integração com a store real (TL-71, TL-7
     render(<FormVR mesRef="2026-07" />)
 
     preencherDespesa(1, '150', 'ALM', 'Mercado do mês')
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Efetivar lançamentos' }))
 
     const aviso = useAppStore.getState().avisosAcionaveis.avisos.find((a) => a.id === 'vr')
     expect(aviso?.estado).toBe('aplicado')
@@ -111,7 +111,7 @@ describe('FormVR — caminho válido, integração com a store real (TL-71, TL-7
     render(<FormVR mesRef="2026-07" />)
 
     preencherDespesa(1, '150', 'ALM', 'Mercado do mês')
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Efetivar lançamentos' }))
 
     expect(screen.getByLabelText('Valor da despesa 1')).toHaveValue('')
     expect(screen.queryByLabelText('Valor da despesa 2')).toBeNull()
@@ -125,6 +125,15 @@ describe('FormVR — classes oficiais (B1)', () => {
     expect(screen.getByLabelText('Valor da despesa 1')).toHaveClass('input')
     expect(screen.getByLabelText('Natureza da despesa 1')).toHaveClass('input')
     expect(screen.getByLabelText('Descrição da despesa 1')).toHaveClass('input')
+  })
+})
+
+describe('FormVR — CTA com verbo específico (V5)', () => {
+  it('o CTA principal chama-se "Efetivar lançamentos" e mantém a classe btn pri mini', () => {
+    render(<FormVR mesRef="2026-07" />)
+
+    const cta = screen.getByRole('button', { name: 'Efetivar lançamentos' })
+    expect(cta).toHaveClass('btn', 'pri', 'mini')
   })
 })
 
@@ -208,7 +217,7 @@ describe('FormVR — caminhos inválidos, sem crash (TL-74, TL-75, TL-76, TL-77,
     render(<FormVR mesRef="2026-07" />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Remover despesa 1' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Efetivar lançamentos' }))
 
     expect(screen.getByRole('alert')).toBeInTheDocument()
     expect(useAppStore.getState().lancamentos).toHaveLength(0)
@@ -219,7 +228,7 @@ describe('FormVR — caminhos inválidos, sem crash (TL-74, TL-75, TL-76, TL-77,
     render(<FormVR mesRef="2026-07" />)
 
     preencherDespesa(1, '0', 'ALM', 'Mercado')
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Efetivar lançamentos' }))
 
     expect(screen.getByRole('alert')).toBeInTheDocument()
     expect(useAppStore.getState().lancamentos).toHaveLength(0)
@@ -229,7 +238,7 @@ describe('FormVR — caminhos inválidos, sem crash (TL-74, TL-75, TL-76, TL-77,
     render(<FormVR mesRef="2026-07" />)
 
     preencherDespesa(1, 'abc', 'ALM', 'Mercado')
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Efetivar lançamentos' }))
 
     expect(screen.getByRole('alert')).toBeInTheDocument()
     expect(useAppStore.getState().lancamentos).toHaveLength(0)
@@ -239,7 +248,7 @@ describe('FormVR — caminhos inválidos, sem crash (TL-74, TL-75, TL-76, TL-77,
     render(<FormVR mesRef="2026-07" />)
 
     preencherDespesa(1, '10', '   ', 'Mercado')
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Efetivar lançamentos' }))
 
     expect(screen.getByRole('alert')).toBeInTheDocument()
     expect(useAppStore.getState().lancamentos).toHaveLength(0)
@@ -249,7 +258,7 @@ describe('FormVR — caminhos inválidos, sem crash (TL-74, TL-75, TL-76, TL-77,
     render(<FormVR mesRef="2026-07" />)
 
     preencherDespesa(1, '10', 'ALM', '   ')
-    fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Efetivar lançamentos' }))
 
     expect(screen.getByRole('alert')).toBeInTheDocument()
     expect(useAppStore.getState().lancamentos).toHaveLength(0)
@@ -264,7 +273,7 @@ describe('FormVR — caminhos inválidos, sem crash (TL-74, TL-75, TL-76, TL-77,
 
     preencherDespesa(1, '10', 'ALM', 'Mercado')
 
-    expect(() => fireEvent.click(screen.getByRole('button', { name: 'Aplicar' }))).not.toThrow()
+    expect(() => fireEvent.click(screen.getByRole('button', { name: 'Efetivar lançamentos' }))).not.toThrow()
     expect(useAppStore.getState().lancamentos).toHaveLength(0)
   })
 })
