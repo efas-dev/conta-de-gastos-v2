@@ -654,34 +654,6 @@ select.input {
   color: var(--verde-hover);
 }
 
-.banner-inspecao {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 9px 26px;
-  background: var(--branco);
-  border-bottom: 1px solid var(--borda-2);
-  font-size: 13px;
-  flex-shrink: 0;
-}
-.tag-insp {
-  display: inline-block;
-  padding: 1px 8px;
-  border-radius: 5px;
-  font-size: 10.5px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.tag-insp.sai {
-  background: var(--insp-sai);
-  color: #fff;
-}
-.tag-insp.fica {
-  background: var(--insp-fica);
-  color: #fff;
-}
-
 .grid-wrap {
   flex: 1;
   min-height: 0;
