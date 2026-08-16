@@ -128,6 +128,20 @@ describe('FormVR — classes oficiais (B1)', () => {
   })
 })
 
+describe('FormVR — divisor sutil no lugar do heading (V3)', () => {
+  it('não renderiza mais o texto do heading "Despesas pagas com VR"', () => {
+    render(<FormVR mesRef="2026-07" />)
+
+    expect(screen.queryByText('Despesas pagas com VR')).toBeNull()
+  })
+
+  it('renderiza um divisor sutil (.divisor-sutil) no lugar do heading removido', () => {
+    const { container } = render(<FormVR mesRef="2026-07" />)
+
+    expect(container.querySelector('.divisor-sutil')).not.toBeNull()
+  })
+})
+
 describe('FormVR — layout .despesa (V1)', () => {
   it('o <li> de cada despesa usa a classe .despesa', () => {
     const { container } = render(<FormVR mesRef="2026-07" />)
