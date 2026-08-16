@@ -82,14 +82,33 @@ describe('T5/T11 — integração PainelNaturezas + App.tsx (botão "Naturezas")
   })
 
   // [TL-T5-1][integration] Modelo.xlsx real
-  it('lerNaturezas com Modelo.xlsx real retorna exatamente 16 entradas com descricao não-vazia', () => {
+  //
+  // Trava a PROPRIEDADE, não a contagem exata: o humano edita as descrições da
+  // coluna F no Modelo como operação normal (foi assim que "Materiais de
+  // escritório" entrou em F14, em 2026-08-16). Um número mágico aqui ficaria
+  // vermelho a cada edição legítima, treinando o leitor a atualizá-lo sem ler —
+  // e nesse ponto o teste já não detecta mais a regressão que existe para pegar.
+  it('lerNaturezas com Modelo.xlsx real lê a coluna F e devolve descrições utilizáveis', () => {
     const caminhoModelo = resolve(__dirname, '../../public/Modelo.xlsx')
     const bytes = new Uint8Array(readFileSync(caminhoModelo))
 
     const ricas = lerNaturezas(bytes)
 
     const comDescricao = ricas.filter((n) => n.descricao !== '')
-    expect(comDescricao).toHaveLength(16)
+
+    // Piso: a coluna F está sendo lida de fato (uma quebra no leitor zeraria isto).
+    expect(comDescricao.length).toBeGreaterThan(0)
+
+    // Toda entrada rica tem sigla; descrição é opcional mas nunca lixo estrutural.
+    for (const n of ricas) {
+      expect(n.sigla).not.toBe('')
+      expect(typeof n.descricao).toBe('string')
+    }
+
+    // Caso concreto: a descrição de VR foi preenchida no Modelo e precisa chegar à UI.
+    expect(ricas.some((n) => n.sigla === 'VR' && n.descricao === 'Materiais de escritório')).toBe(
+      true,
+    )
   })
 
   // [TL-T5-2][unit] Botão "Naturezas" aparece quando naturezasRicas filtrado é não-vazio

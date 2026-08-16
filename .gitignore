@@ -1,6 +1,7 @@
 # Otimização do Claude Code (harness, agentes, skills, hooks, docs gerados)
 .claude/
 .harness/
+.playwright-mcp/
 Docs/
 spec/
 CLAUDE.md
