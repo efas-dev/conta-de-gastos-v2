@@ -94,6 +94,49 @@ describe('SeletorMesReferencia', () => {
   })
 })
 
+describe('SeletorMesReferencia — prop compacto', () => {
+  it('sem a prop compacto, os selects mantêm className "input" e o style inline atual', () => {
+    render(<SeletorMesReferencia mesEscolhido="2024-03" onChange={vi.fn()} />)
+
+    const selectMes = screen.getByTestId('select-mes')
+    const selectAno = screen.getByTestId('select-ano')
+
+    expect(selectMes.className).toBe('input')
+    expect(selectAno.className).toBe('input')
+    expect(selectMes).toHaveStyle({ width: 'auto', padding: '6px 8px', fontSize: '13px' })
+    expect(selectAno).toHaveStyle({ width: 'auto', padding: '6px 8px', fontSize: '13px' })
+  })
+
+  it('compacto=false explicitamente mantém o comportamento idêntico ao padrão', () => {
+    render(<SeletorMesReferencia mesEscolhido="2024-03" onChange={vi.fn()} compacto={false} />)
+
+    const selectMes = screen.getByTestId('select-mes')
+    expect(selectMes.className).toBe('input')
+    expect(selectMes).toHaveStyle({ width: 'auto', padding: '6px 8px', fontSize: '13px' })
+  })
+
+  it('compacto=true troca a className para "sel-mini" e remove o style inline de padding', () => {
+    render(<SeletorMesReferencia mesEscolhido="2024-03" onChange={vi.fn()} compacto />)
+
+    const selectMes = screen.getByTestId('select-mes')
+    const selectAno = screen.getByTestId('select-ano')
+
+    expect(selectMes.className).toBe('sel-mini')
+    expect(selectAno.className).toBe('sel-mini')
+    expect(selectMes.getAttribute('style')).toBeNull()
+    expect(selectAno.getAttribute('style')).toBeNull()
+  })
+
+  it('compacto=true preserva o comportamento de onChange (composição YYYY-MM)', () => {
+    const onChange = vi.fn()
+    render(<SeletorMesReferencia mesEscolhido="2024-03" onChange={onChange} compacto />)
+
+    fireEvent.change(screen.getByTestId('select-mes'), { target: { value: '09' } })
+
+    expect(onChange).toHaveBeenCalledWith('2024-09')
+  })
+})
+
 describe('SeletorMesReferenciaProps', () => {
   it('a interface de props não declara mais usuarioEditou (prop morta removida — Task B11)', async () => {
     const fs = await import('node:fs')

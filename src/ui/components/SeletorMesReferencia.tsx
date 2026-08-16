@@ -39,6 +39,8 @@ function anosDisponiveis(): number[] {
 interface SeletorMesReferenciaProps {
   mesEscolhido: string // formato YYYY-MM
   onChange: (novoMes: string) => void
+  /** Quando `true`, os selects usam a classe `.sel-mini` (sem caixa própria) em vez de `.input`. */
+  compacto?: boolean
 }
 
 /**
@@ -46,7 +48,7 @@ interface SeletorMesReferenciaProps {
  * O estado interno é uma string YYYY-MM derivada da combinação dos dois selects.
  * Decisão D5 e D6 do ADR: nunca vazio; default = mês anterior ao corrente.
  */
-export function SeletorMesReferencia({ mesEscolhido, onChange }: SeletorMesReferenciaProps) {
+export function SeletorMesReferencia({ mesEscolhido, onChange, compacto }: SeletorMesReferenciaProps) {
   // mesEscolhido é sempre 'YYYY-MM' (garantido por defaultMes e pelos handlers)
   const [anoStr, mesStr] = mesEscolhido.split('-')
 
@@ -58,14 +60,17 @@ export function SeletorMesReferencia({ mesEscolhido, onChange }: SeletorMesRefer
     onChange(`${e.target.value}-${mesStr}`)
   }
 
+  const className = compacto ? 'sel-mini' : 'input'
+  const style = compacto ? undefined : { width: 'auto', padding: '6px 8px', fontSize: 13 }
+
   return (
     <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       <select
         data-testid="select-mes"
         value={mesStr}
         onChange={handleMes}
-        className="input"
-        style={{ width: 'auto', padding: '6px 8px', fontSize: 13 }}
+        className={className}
+        style={style}
         aria-label="Mês de referência"
       >
         {MESES.map((m) => (
@@ -76,8 +81,8 @@ export function SeletorMesReferencia({ mesEscolhido, onChange }: SeletorMesRefer
         data-testid="select-ano"
         value={anoStr}
         onChange={handleAno}
-        className="input"
-        style={{ width: 'auto', padding: '6px 8px', fontSize: 13 }}
+        className={className}
+        style={style}
         aria-label="Ano de referência"
       >
         {anosDisponiveis().map((a) => (

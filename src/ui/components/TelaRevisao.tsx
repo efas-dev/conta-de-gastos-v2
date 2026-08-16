@@ -252,6 +252,7 @@ export function TelaRevisao({
           <SeletorMesReferencia
             mesEscolhido={mesEscolhido}
             onChange={onMudarMes}
+            compacto
           />
         </span>
         <button
