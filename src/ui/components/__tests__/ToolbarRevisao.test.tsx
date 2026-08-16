@@ -13,10 +13,12 @@ const mockStore: {
   lancamentos: Lancamento[]
   naturezasValidas: string[]
   sujo: boolean
+  saldoAnterior: number | null
 } = {
   lancamentos: [],
   naturezasValidas: [],
   sujo: false,
+  saldoAnterior: null,
 }
 
 vi.mock('../../store/appStore', () => ({
@@ -140,5 +142,99 @@ describe('ToolbarRevisao', () => {
     expect(container.querySelector('.progresso')).toBeTruthy()
     expect(container.querySelector('.prog-barra')).toBeTruthy()
     expect(container.querySelector('.prog-fill')).toBeTruthy()
+  })
+
+  it('grupo de saldos: usa a classe .saldos e exibe os rótulos "Saldo ant." e "Calculado"', () => {
+    mockStore.lancamentos = []
+    mockStore.naturezasValidas = []
+    mockStore.sujo = false
+    mockStore.saldoAnterior = 1000
+
+    const { container } = render(<ToolbarRevisao />)
+
+    const grupo = container.querySelector('.saldos')
+    expect(grupo).toBeTruthy()
+    expect(grupo!.textContent).toContain('Saldo ant.')
+    expect(grupo!.textContent).toContain('Calculado')
+  })
+
+  it('grupo de saldos: saldoAnterior === null omite o grupo inteiro (nem rótulo, nem "R$ —")', () => {
+    mockStore.lancamentos = [lan({ valor: 100 })]
+    mockStore.naturezasValidas = []
+    mockStore.sujo = false
+    mockStore.saldoAnterior = null
+
+    const { container } = render(<ToolbarRevisao />)
+
+    expect(container.querySelector('.saldos')).toBeFalsy()
+    expect(container.textContent).not.toContain('Saldo ant.')
+    expect(container.textContent).not.toContain('Calculado')
+  })
+
+  it('grupo de saldos: sem lançamentos, "Calculado" exibe o mesmo valor de "Saldo ant."', () => {
+    mockStore.lancamentos = []
+    mockStore.naturezasValidas = []
+    mockStore.sujo = false
+    mockStore.saldoAnterior = 543.21
+
+    const { container } = render(<ToolbarRevisao />)
+
+    const grupo = container.querySelector('.saldos') as HTMLElement
+    const anteriorFmt = (543.21).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    // "Calculado" deve conter o mesmo valor formatado do "Saldo ant." quando não há lançamentos.
+    const ocorrencias = grupo.textContent!.split(anteriorFmt).length - 1
+    expect(ocorrencias).toBe(2)
+  })
+
+  it('grupo de saldos: calculado negativo pinta o valor de var(--terracota)', () => {
+    mockStore.lancamentos = [lan({ valor: -2000 })]
+    mockStore.naturezasValidas = []
+    mockStore.sujo = false
+    mockStore.saldoAnterior = 100
+
+    const { container } = render(<ToolbarRevisao />)
+
+    const spans = container.querySelectorAll('.saldos span')
+    const calculadoSpan = spans[1] as HTMLElement
+    expect(calculadoSpan.style.color).toBe('var(--terracota)')
+  })
+
+  it('grupo de saldos: calculado positivo NÃO pinta o valor de var(--terracota)', () => {
+    mockStore.lancamentos = [lan({ valor: 2000 })]
+    mockStore.naturezasValidas = []
+    mockStore.sujo = false
+    mockStore.saldoAnterior = 100
+
+    const { container } = render(<ToolbarRevisao />)
+
+    const spans = container.querySelectorAll('.saldos span')
+    const calculadoSpan = spans[1] as HTMLElement
+    expect(calculadoSpan.style.color).not.toBe('var(--terracota)')
+  })
+
+  it('grupo de saldos: valores formatados em pt-BR/BRL', () => {
+    mockStore.lancamentos = []
+    mockStore.naturezasValidas = []
+    mockStore.sujo = false
+    mockStore.saldoAnterior = 1234.5
+
+    const { container } = render(<ToolbarRevisao />)
+
+    const grupo = container.querySelector('.saldos') as HTMLElement
+    expect(grupo.textContent).toContain('R$')
+    expect(grupo.textContent).toContain('1.234,50')
+  })
+
+  it('grupo de saldos: carrega title (tooltip) explicando a origem dos números', () => {
+    mockStore.lancamentos = []
+    mockStore.naturezasValidas = []
+    mockStore.sujo = false
+    mockStore.saldoAnterior = 100
+
+    const { container } = render(<ToolbarRevisao />)
+
+    const grupo = container.querySelector('.saldos') as HTMLElement
+    expect(grupo.getAttribute('title')).toBeTruthy()
+    expect((grupo.getAttribute('title') as string).length).toBeGreaterThan(10)
   })
 })
