@@ -230,3 +230,34 @@ describe('src/index.css — `.btn-texto` ganha `white-space: nowrap` (Task C5)',
     expect(css).not.toMatch(/@media/);
   });
 });
+
+describe('src/index.css — `.saldos` corte real + alinhamento + tipografia (Task C6b)', () => {
+  it('corta o conteúdo excedente com overflow: hidden', () => {
+    const bloco = cssBlockBody(css, '.saldos');
+    expect(bloco).toContain('overflow: hidden');
+  });
+
+  it('alinha o grupo verticalmente ao centro e espaça os itens com gap: 12px', () => {
+    const bloco = cssBlockBody(css, '.saldos');
+    expect(bloco).toContain('align-items: center');
+    expect(bloco).toContain('gap: 12px');
+  });
+
+  it('declara a tipografia discreta da topbar (font-size, font-weight, color)', () => {
+    const bloco = cssBlockBody(css, '.saldos');
+    expect(bloco).toContain('font-size: 12px');
+    expect(bloco).toContain('font-weight: 600');
+    expect(bloco).toContain('color: var(--texto-3)');
+  });
+
+  it('preserva as 3 propriedades originais da Task C6', () => {
+    const bloco = cssBlockBody(css, '.saldos');
+    expect(bloco).toContain('display: flex');
+    expect(bloco).toContain('min-width: 0');
+    expect(bloco).toContain('font-variant-numeric: tabular-nums');
+  });
+
+  it('não introduz nenhuma @media — invariante do projeto (Decisão 3 do ADR)', () => {
+    expect(css).not.toMatch(/@media/);
+  });
+});
