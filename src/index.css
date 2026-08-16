@@ -317,6 +317,11 @@ a:hover {
 select.input {
   cursor: pointer;
 }
+.input.mini {
+  font-size: 12px;
+  padding: 7px 10px;
+  border-radius: 8px;
+}
 
 .despesa {
   display: flex;
