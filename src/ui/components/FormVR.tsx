@@ -134,7 +134,7 @@ export function FormVR({ mesRef }: FormVRProps) {
             <li key={indice} className="despesa">
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <input
-                  className="input"
+                  className="input mini"
                   aria-label={`Descrição da despesa ${indice + 1}`}
                   placeholder="Descrição"
                   value={despesa.descricao}
@@ -144,7 +144,7 @@ export function FormVR({ mesRef }: FormVRProps) {
               </div>
               <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <input
-                  className="input"
+                  className="input mini"
                   aria-label={`Valor da despesa ${indice + 1}`}
                   placeholder="Valor"
                   value={despesa.valor}
@@ -152,7 +152,7 @@ export function FormVR({ mesRef }: FormVRProps) {
                   style={{ flex: 1, minWidth: 0 }}
                 />
                 <input
-                  className="input"
+                  className="input mini"
                   aria-label={`Natureza da despesa ${indice + 1}`}
                   placeholder="Natureza"
                   value={despesa.natureza}
