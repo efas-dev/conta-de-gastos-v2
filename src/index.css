@@ -621,6 +621,12 @@ select.input {
   display: flex;
   min-width: 0;
   font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--texto-3);
 }
 
 .btn-texto {
