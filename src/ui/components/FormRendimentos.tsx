@@ -122,7 +122,7 @@ export function FormRendimentos({ mesRef }: FormRendimentosProps) {
 
   return (
     <div data-testid="form-rendimentos" role="form" aria-label="Lançar rendimentos do mês">
-      <div className="painel-secao">Rendimentos do mês</div>
+      <div className="divisor-sutil" />
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <label className="campo">
