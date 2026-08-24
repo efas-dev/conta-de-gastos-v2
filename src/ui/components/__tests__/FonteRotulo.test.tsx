@@ -111,6 +111,49 @@ describe('FonteRotulo — remoção de role="status" (Task B12)', () => {
   })
 })
 
+describe('FonteRotulo — rótulo "fatura_itau_cc" (Task T10, ADR fatura-itau-xlsx)', () => {
+  it('TL-T10-1: renderiza o nome da fonte quando tipo="fatura_itau_cc", sem erro de tipo/runtime', () => {
+    render(<FonteRotulo fonte="Fatura Itaú Agosto" tipo="fatura_itau_cc" />)
+    expect(screen.getByText('Fatura Itaú Agosto')).toBeInTheDocument()
+  })
+
+  it('TL-T10-2: badge de fatura_itau_cc tem className e aria-label distintos de fatura/extrato/form_vr/form_rendimentos', () => {
+    const { container } = render(<FonteRotulo fonte="Fatura Itaú Agosto" tipo="fatura_itau_cc" />)
+    const rotulo = badge(container)
+    expect(rotulo).toHaveClass('tag-tipo', 'fatura_itau_cc')
+    const label = rotulo.getAttribute('aria-label')
+    expect(label).not.toBe('tipo fatura')
+    expect(label).not.toBe('tipo extrato')
+    expect(label).not.toBe('tipo form_vr')
+    expect(label).not.toBe('tipo form_rendimentos')
+  })
+
+  it('TL-T10-3: renderiza o texto "Fatura Itaú" (nunca o identificador cru "fatura_itau_cc") quando tipo="fatura_itau_cc"', () => {
+    render(<FonteRotulo fonte="Fatura Itaú Agosto" tipo="fatura_itau_cc" />)
+    expect(screen.getByText('Fatura Itaú')).toBeInTheDocument()
+    expect(screen.queryByText('fatura_itau_cc')).not.toBeInTheDocument()
+  })
+})
+
+describe('FonteRotulo — mapeamentos existentes permanecem inalterados (Task T10)', () => {
+  it('TL-T10-4: form_vr continua renderizando "VR" após a adição de fatura_itau_cc', () => {
+    render(<FonteRotulo fonte="VR Agosto" tipo="form_vr" />)
+    expect(screen.getByText('VR')).toBeInTheDocument()
+  })
+
+  it('TL-T10-5: form_rendimentos continua renderizando "rendimentos" após a adição de fatura_itau_cc', () => {
+    render(<FonteRotulo fonte="Rendimentos Agosto" tipo="form_rendimentos" />)
+    expect(screen.getByText('rendimentos')).toBeInTheDocument()
+  })
+
+  it('TL-T10-6: fatura/extrato continuam com os rótulos "fatura"/"extrato" após a adição de fatura_itau_cc', () => {
+    const { rerender } = render(<FonteRotulo fonte="Nubank" tipo="fatura" />)
+    expect(screen.getByText('fatura')).toBeInTheDocument()
+    rerender(<FonteRotulo fonte="Itaú" tipo="extrato" />)
+    expect(screen.getByText('extrato')).toBeInTheDocument()
+  })
+})
+
 describe('FonteRotulo — discriminação visual', () => {
   it('TL6-5: fatura e extrato têm aria-label distintos', () => {
     const { container, rerender } = render(<FonteRotulo fonte="Nubank" tipo="fatura" />)
