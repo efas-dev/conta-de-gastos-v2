@@ -3,9 +3,11 @@
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 // ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see spec/fatura-itau-xlsx.adr.md
 
-import type { Lancamento, DicEntry, Aviso } from '../types'
+import type { Lancamento, DicEntry, Aviso, ResultadoParse } from '../types'
 import { detectar } from '../parsers/index'
+import { parsersBinarios } from '../parsers/binario'
 import { enriquecerLancamento } from '../dominio/dicionario'
 import { detectarConciliacao } from '../dominio/deteccoes'
 import { detectores, orquestrarDeteccao } from '../dominio/registry'
@@ -88,7 +90,10 @@ export interface ResultadoProduzir {
  * detecções passaram para `App.tsx` (`handleProduzir`), rodando sobre `todosLancamentos` já
  * concatenado, mesmo padrão já usado por `detectarConciliacao` no call-site real.
  *
- * @param csvConteudo       Conteúdo do arquivo CSV (já lido como string)
+ * @param entrada           Conteúdo do arquivo já lido: `string` para CSV/TXT (pipeline de texto,
+ *   `detectar`/`parsers/index.ts`) ou `Uint8Array` para um arquivo binário (ex.: fatura Itaú
+ *   `.xlsx` reconhecida por `parsersBinarios`, Task T9 da spec `fatura-itau-xlsx`, Decisão 6 do
+ *   ADR). O tipo do valor decide o roteamento — nenhum parâmetro extra é necessário.
  * @param dicEntries        Entradas do dicionário já lidas, ou [] se não fornecido
  * @param iniciais          Iniciais do usuário
  * @param lancamentosExtrato Lançamentos do extrato a conciliar com esta fatura (opcional).
@@ -96,13 +101,19 @@ export interface ResultadoProduzir {
  *   em importações de um único arquivo sem contraparte de extrato.
  * @param adicionarAvisos  Callback chamado sempre, com o array de `Aviso[]` combinado das
  *   detecções (vazio se nenhuma gerar aviso). No-op por padrão.
+ * @param mesReferencia    Mês de referência escolhido na tela (`YYYY-MM`), repassado como
+ *   segundo argumento ao parser binário aceito — usado por `fatura_itau_cc.parsear` como
+ *   fallback de data para parcelas de meses anteriores sem vencimento no arquivo (Decisão 1 do
+ *   ADR `fatura-itau-xlsx`). Ignorado no caminho de texto (os 5 parsers existentes não o
+ *   recebem — contrato `Parser` inalterado).
  */
 export function produzirLancamentos(
-  csvConteudo: string,
+  entrada: string | Uint8Array,
   dicEntries: DicEntry[],
   iniciais: string,
   lancamentosExtrato: Lancamento[] = [],
   adicionarAvisos: (avisos: Aviso[]) => void = () => {},
+  mesReferencia?: string,
 ): ResultadoProduzir {
   const avisos: string[] = []
   // Avisos informativos migrados para o canal único (slice `avisosAcionaveis`,
@@ -111,9 +122,28 @@ export function produzirLancamentos(
   // logo abaixo, num único array combinado.
   const avisosInformativosMigrados: Aviso[] = []
 
-  // 1. Parse CSV (modo best-effort)
-  const parser = detectar(csvConteudo)
-  const { lancamentos, linhasIgnoradas } = parser.parsear(csvConteudo)
+  // 1. Parse (modo best-effort) — roteia pelo TIPO de `entrada` (Task T9, Decisão 6 do ADR
+  // `fatura-itau-xlsx`): `Uint8Array` vai para o parser binário aceito em `parsersBinarios`
+  // (ex.: fatura Itaú `.xlsx`); `string` continua no pipeline de texto (`detectar`, os 5
+  // parsers existentes, intocados por esta spec — contrato `Parser` inalterado).
+  let lancamentos: Lancamento[]
+  let linhasIgnoradas: number
+  if (entrada instanceof Uint8Array) {
+    const parserBinario = parsersBinarios.find((p) => p.aceita(entrada))
+    const resultado: ResultadoParse = parserBinario
+      ? (parserBinario.parsear as (bytes: Uint8Array, mesReferencia?: string) => ResultadoParse)(
+          entrada,
+          mesReferencia,
+        )
+      : { lancamentos: [], linhasIgnoradas: 0, excluidosPendentes: [] }
+    lancamentos = resultado.lancamentos
+    linhasIgnoradas = resultado.linhasIgnoradas
+  } else {
+    const parser = detectar(entrada)
+    const resultado = parser.parsear(entrada)
+    lancamentos = resultado.lancamentos
+    linhasIgnoradas = resultado.linhasIgnoradas
+  }
 
   if (linhasIgnoradas > 0) {
     const plural = linhasIgnoradas > 1 ? 's' : ''

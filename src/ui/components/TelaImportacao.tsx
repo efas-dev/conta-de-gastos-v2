@@ -2,6 +2,7 @@
 // ADR: see spec/conciliacao-robusta.adr.md
 // ADR: see spec/rendimentos.adr.md
 // ADR: see Docs/specs/patches-ui-ux.adr.md
+// ADR: see spec/fatura-itau-xlsx.adr.md
 
 import { useRef, useState } from 'react'
 import { useAppStore } from '../store/appStore'
@@ -15,7 +16,7 @@ import { lerDicionario, ehDicionario, lerIniciais, lerSaldoAnterior } from '../.
 import { detectarMesSugerido, classificarFontePorPrefixo } from '../../dominio/mes'
 import { detectar } from '../../parsers/index'
 import { parsersBinarios } from '../../parsers/binario'
-import type { Lancamento } from '../../types'
+import type { Lancamento, ResultadoParse } from '../../types'
 import { FonteRotulo } from './FonteRotulo'
 import { Cabecalho } from './Cabecalho'
 import { PainelLateral, type AbaPainelLateral } from './PainelLateral'
@@ -168,6 +169,12 @@ export function TelaImportacao({
     // --- Processa arquivos .xlsx ---
     // Controla se já havia dicionário carregado antes deste upload
     let dicCarregado = dicEntries.length > 0
+    // Faturas .xlsx reconhecidas pelo registry binário nesta leitura (Task T9, Decisão 6 do
+    // ADR `fatura-itau-xlsx`): entram como arquivo de primeira classe na mesma lista dos
+    // extratos, com os lançamentos já antecipados (`parsear` chamado aqui, reaproveitando os
+    // bytes já lidos para `aceita`) para exibição de `FonteRotulo`/detecção de mês sugerido —
+    // mesma UX que os extratos CSV/TXT já têm.
+    const faturasReconhecidas: { arquivo: File; lancamentos: Lancamento[] }[] = []
     for (const arquivo of arquivosXlsx) {
       try {
         const buf = await arquivo.arrayBuffer()
@@ -193,17 +200,28 @@ export function TelaImportacao({
           if (saldoDoDic !== null) {
             setSaldoAnterior(saldoDoDic)
           }
-        } else if (parsersBinarios.some((parser) => parser.aceita(bytes))) {
-          // Reconhecido pelo registry binário (ex.: fatura Itaú .xlsx, Decisão 3/4 do
-          // ADR desta spec) — roteado para fora do caminho de "não reconhecido". O
-          // wiring do arquivo como item de primeira classe na lista/`handleProduzir`
-          // é da Task T9 (fora do escopo desta task, que é só a decisão de roteamento).
         } else {
-          const mensagem = `${arquivo.name}: arquivo .xlsx não reconhecido como dicionário, ignorado`
-          addAviso(mensagem)
-          adicionarAvisosAcionaveis([
-            criarAvisoInformativo(crypto.randomUUID(), 'xlsx-nao-reconhecido', mensagem),
-          ])
+          const parserBinario = parsersBinarios.find((parser) => parser.aceita(bytes))
+          if (parserBinario) {
+            // Reconhecido pelo registry binário (ex.: fatura Itaú .xlsx, Decisão 3/4 do ADR
+            // desta spec). `ParserBinario.parsear` declara só `(bytes)`, mas `fatura_itau_cc.
+            // parsear` aceita um segundo parâmetro opcional (`mesReferencia`) como fallback de
+            // data para parcelas antigas sem vencimento no arquivo (Decisão 1 do ADR) — a UI é
+            // quem conhece o mês escolhido na tela, então o cast abaixo repassa esse argumento
+            // sem alterar o contrato `ParserBinario` (fora das Áreas tocadas desta task).
+            const parsearComMes = parserBinario.parsear as (
+              bytes: Uint8Array,
+              mesReferencia?: string,
+            ) => ResultadoParse
+            const { lancamentos: lansFatura } = parsearComMes(bytes, mesEscolhido)
+            faturasReconhecidas.push({ arquivo, lancamentos: lansFatura })
+          } else {
+            const mensagem = `${arquivo.name}: arquivo .xlsx não reconhecido como dicionário, ignorado`
+            addAviso(mensagem)
+            adicionarAvisosAcionaveis([
+              criarAvisoInformativo(crypto.randomUUID(), 'xlsx-nao-reconhecido', mensagem),
+            ])
+          }
         }
       } catch {
         // best-effort: erro silenciado — não quebra o fluxo
@@ -215,20 +233,25 @@ export function TelaImportacao({
       }
     }
 
-    // --- Processa arquivos CSV/TXT ---
+    // --- Processa arquivos CSV/TXT + faturas .xlsx reconhecidas (Task T9) ---
     // Upload incremental (item 22): cada seleção ACUMULA na lista existente,
     // com dedup por nome (re-selecionar o mesmo arquivo substitui — último
-    // vence). Seleção só de .xlsx não mexe na lista nem nos antecipados.
-    if (arquivosCsv.length === 0) return
+    // vence). Seleção só de .xlsx não reconhecido (dicionário ou nada) não
+    // mexe na lista nem nos antecipados.
+    const arquivosNovos: File[] = [...arquivosCsv, ...faturasReconhecidas.map((f) => f.arquivo)]
+    if (arquivosNovos.length === 0) return
 
-    const nomesNovos = new Set(arquivosCsv.map((f) => f.name))
+    const nomesNovos = new Set(arquivosNovos.map((f) => f.name))
     const listaAcumulada = [
       ...csvArquivos.filter((f) => !nomesNovos.has(f.name)),
-      ...arquivosCsv,
+      ...arquivosNovos,
     ]
     setCsvArquivos(listaAcumulada)
 
     const porArquivo: Record<string, Lancamento[]> = {}
+    for (const { arquivo, lancamentos: lansFatura } of faturasReconhecidas) {
+      porArquivo[arquivo.name] = lansFatura
+    }
     for (const arquivo of arquivosCsv) {
       try {
         const conteudo = await lerTextoArquivo(arquivo)
