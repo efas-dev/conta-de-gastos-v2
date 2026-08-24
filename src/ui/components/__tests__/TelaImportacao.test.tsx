@@ -114,6 +114,18 @@ vi.mock('../../../parsers/index', () => ({
   detectar: vi.fn(() => ({ parsear: mockParsear })),
 }))
 
+// Task T8 (spec fatura-itau-xlsx): registry binário mockado — os testes de
+// roteamento controlam o veredito de `aceita` de cada parser binário sem
+// depender de nenhum parser binário concreto real (fatura_itau_cc só ganha
+// `aceita` na Task T3, já integrada; `parsersBinarios` em si segue vazio até
+// uma task futura popular com um parser completo — T4).
+const { mockBinarioAceita } = vi.hoisted(() => ({
+  mockBinarioAceita: vi.fn(() => false),
+}))
+vi.mock('../../../parsers/binario', () => ({
+  parsersBinarios: [{ aceita: (bytes: Uint8Array) => mockBinarioAceita(bytes), parsear: vi.fn() }],
+}))
+
 vi.mock('../FonteRotulo', () => ({
   FonteRotulo: ({ fonte, tipo }: { fonte: string; tipo: string }) =>
     React.createElement('span', { 'data-testid': 'fonte-rotulo', 'data-fonte': fonte, 'data-tipo': tipo }),
@@ -431,5 +443,73 @@ describe('TelaImportacao', () => {
     await waitFor(() => expect(addAviso).toHaveBeenCalled())
     expect(leitor.lerSaldoAnterior).not.toHaveBeenCalled()
     expect(setSaldoAnterior).not.toHaveBeenCalled()
+  })
+
+  // Task T8 (spec fatura-itau-xlsx): roteamento no upload — dicionário → registry
+  // binário → não reconhecido. Três desfechos exigidos pela Definition of done.
+  describe('roteamento de .xlsx (Task T8)', () => {
+    it('dicionário aceita: segue o fluxo de dicionário existente e não consulta o registry binário para emitir o aviso de não reconhecido', async () => {
+      vi.mocked(leitor.ehDicionario).mockResolvedValueOnce(true)
+      const { container } = render(<TelaImportacao {...props()} />)
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [xlsxFile()] } })
+      })
+
+      await waitFor(() => expect(setDic).toHaveBeenCalled())
+      expect(addAviso).not.toHaveBeenCalledWith(expect.stringContaining('não reconhecido'))
+    })
+
+    it('registry binário aceita: não emite o aviso xlsx-nao-reconhecido', async () => {
+      vi.mocked(leitor.ehDicionario).mockResolvedValueOnce(false)
+      mockBinarioAceita.mockReturnValueOnce(true)
+      const { container } = render(<TelaImportacao {...props()} />)
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [xlsxFile('fatura_itau.xlsx')] } })
+      })
+
+      await waitFor(() => expect(mockBinarioAceita).toHaveBeenCalled())
+      expect(adicionarAvisos).not.toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ origem: 'xlsx-nao-reconhecido' })]),
+      )
+    })
+
+    it('registry binário aceita: não aciona o caminho de dicionário (setDic/lerIniciais/lerSaldoAnterior não chamados)', async () => {
+      vi.mocked(leitor.ehDicionario).mockResolvedValueOnce(false)
+      mockBinarioAceita.mockReturnValueOnce(true)
+      const { container } = render(<TelaImportacao {...props()} />)
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [xlsxFile('fatura_itau.xlsx')] } })
+      })
+
+      await waitFor(() => expect(mockBinarioAceita).toHaveBeenCalled())
+      expect(setDic).not.toHaveBeenCalled()
+      expect(leitor.lerIniciais).not.toHaveBeenCalled()
+      expect(leitor.lerSaldoAnterior).not.toHaveBeenCalled()
+    })
+
+    it('nenhum aceita: mantém o aviso xlsx-nao-reconhecido já existente, mesmo consultando o registry binário', async () => {
+      vi.mocked(leitor.ehDicionario).mockResolvedValueOnce(false)
+      mockBinarioAceita.mockReturnValueOnce(false)
+      const { container } = render(<TelaImportacao {...props()} />)
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [xlsxFile('desconhecido.xlsx')] } })
+      })
+
+      await waitFor(() => expect(mockBinarioAceita).toHaveBeenCalled())
+      expect(addAviso).toHaveBeenCalledWith(
+        expect.stringContaining('desconhecido.xlsx: arquivo .xlsx não reconhecido como dicionário, ignorado'),
+      )
+      expect(adicionarAvisos).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ origem: 'xlsx-nao-reconhecido' })]),
+      )
+    })
   })
 })

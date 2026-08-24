@@ -14,6 +14,7 @@ import {
 import { lerDicionario, ehDicionario, lerIniciais, lerSaldoAnterior } from '../../excel/reader/leitor'
 import { detectarMesSugerido, classificarFontePorPrefixo } from '../../dominio/mes'
 import { detectar } from '../../parsers/index'
+import { parsersBinarios } from '../../parsers/binario'
 import type { Lancamento } from '../../types'
 import { FonteRotulo } from './FonteRotulo'
 import { Cabecalho } from './Cabecalho'
@@ -192,6 +193,11 @@ export function TelaImportacao({
           if (saldoDoDic !== null) {
             setSaldoAnterior(saldoDoDic)
           }
+        } else if (parsersBinarios.some((parser) => parser.aceita(bytes))) {
+          // Reconhecido pelo registry binário (ex.: fatura Itaú .xlsx, Decisão 3/4 do
+          // ADR desta spec) — roteado para fora do caminho de "não reconhecido". O
+          // wiring do arquivo como item de primeira classe na lista/`handleProduzir`
+          // é da Task T9 (fora do escopo desta task, que é só a decisão de roteamento).
         } else {
           const mensagem = `${arquivo.name}: arquivo .xlsx não reconhecido como dicionário, ignorado`
           addAviso(mensagem)
