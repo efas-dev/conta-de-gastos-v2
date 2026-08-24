@@ -1,0 +1,68 @@
+// ADR: see spec/fatura-itau-xlsx.adr.md
+
+import { describe, it, expect } from 'vitest'
+import type { ResultadoParse } from '../../types'
+import type { ParserBinario } from '../binario'
+import { parsersBinarios } from '../binario'
+import { detectar, ErroArquivoNaoReconhecido } from '../index'
+import { faturaNumbank } from '../fatura_nubank'
+
+describe('parsersBinarios — registry irmão de parsers, sobre bytes', () => {
+  describe('TL-T2-01: array começa vazio', () => {
+    it('não tem nenhum parser binário concreto registrado ainda', () => {
+      expect(parsersBinarios).toEqual([])
+    })
+  })
+
+  describe('TL-T2-02: interface ParserBinario aceita implementação sobre Uint8Array', () => {
+    it('aceita() e parsear() de um mock satisfazem o contrato e podem ser registrados no array', () => {
+      const resultadoMock: ResultadoParse = {
+        lancamentos: [],
+        linhasIgnoradas: 0,
+        excluidosPendentes: [],
+      }
+      const mock: ParserBinario = {
+        aceita(bytes: Uint8Array): boolean {
+          return bytes.length > 0
+        },
+        parsear(): ResultadoParse {
+          return resultadoMock
+        },
+      }
+
+      parsersBinarios.push(mock)
+
+      expect(mock.aceita(new Uint8Array([1, 2, 3]))).toBe(true)
+      expect(mock.aceita(new Uint8Array([]))).toBe(false)
+      expect(mock.parsear(new Uint8Array([1]))).toBe(resultadoMock)
+
+      parsersBinarios.pop()
+    })
+  })
+
+  describe('TL-T2-03: ResultadoParse de ParserBinario reaproveita o tipo de ../../types', () => {
+    it('o retorno de parsear() tem o mesmo formato usado pelos parsers de texto', () => {
+      const mock: ParserBinario = {
+        aceita: () => true,
+        parsear: () => ({ lancamentos: [], linhasIgnoradas: 0, excluidosPendentes: [] }),
+      }
+
+      const resultado = mock.parsear(new Uint8Array())
+
+      expect(resultado).toHaveProperty('lancamentos')
+      expect(resultado).toHaveProperty('linhasIgnoradas')
+      expect(resultado).toHaveProperty('excluidosPendentes')
+    })
+  })
+
+  describe('TL-T2-04: src/parsers/index.ts permanece com comportamento inalterado', () => {
+    it('detectar() continua reconhecendo o contrato de texto (Parser sobre string) sem alteração', () => {
+      const conteudo = 'date,title,amount\n2024-01-01,Mercado,10.00'
+      expect(detectar(conteudo)).toBe(faturaNumbank)
+    })
+
+    it('detectar() continua lançando ErroArquivoNaoReconhecido para conteúdo desconhecido', () => {
+      expect(() => detectar('lixo,arbitrario\n1,2')).toThrow(ErroArquivoNaoReconhecido)
+    })
+  })
+})
