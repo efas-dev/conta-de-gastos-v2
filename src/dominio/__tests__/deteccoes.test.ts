@@ -414,3 +414,83 @@ describe('detectarConciliacao', () => {
     expect(avisosForaDaBorda[0].candidatos).toBeUndefined()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Task T6 (ADR fatura-itau-xlsx, Decisão 5): o texto compartilhado de
+// COMPLEMENTO_RESUMO_ORIGEM_ESPECIAL citava "Nubank" literalmente — com a
+// fatura Itaú entrando no app pela mesma marcação de origemEspecial, o texto
+// precisa servir às duas fontes sem mentir o nome do banco.
+// ---------------------------------------------------------------------------
+
+describe('texto neutro da proposta de remoção (T6 — sem citar banco)', () => {
+  it('detectarPagamentoRecebido: resumo não cita "Nubank" para lançamento de fonte fatura_itau_cc', () => {
+    const lancamentos = [
+      lancamento({
+        fonte: 'fatura_itau_cc',
+        transcricao: 'Pagamento Debito Automatico',
+        valor: 1723.92,
+        origemEspecial: 'pagamento-recebido',
+      }),
+    ]
+    const avisos = detectarPagamentoRecebido(lancamentos)
+    expect(avisos[0].resumo).not.toMatch(/nubank/i)
+  })
+
+  it('detectarPagamentoRecebido: resumo não cita "Nubank" para lançamento de fonte fatura_nubank_cc (regressão)', () => {
+    const lancamentos = [
+      lancamento({
+        fonte: 'fatura_nubank_cc',
+        transcricao: 'Pagamento recebido',
+        valor: 300,
+        origemEspecial: 'pagamento-recebido',
+      }),
+    ]
+    const avisos = detectarPagamentoRecebido(lancamentos)
+    expect(avisos[0].resumo).not.toMatch(/nubank/i)
+  })
+
+  it('detectarValorPendente: resumo não cita "Nubank" (regressão do texto compartilhado)', () => {
+    const lancamentos = [
+      lancamento({
+        fonte: 'fatura_nubank_cc',
+        transcricao: 'Valor pendente do mês anterior',
+        valor: -120.5,
+        origemEspecial: 'valor-pendente',
+      }),
+    ]
+    const avisos = detectarValorPendente(lancamentos)
+    expect(avisos[0].resumo).not.toMatch(/nubank/i)
+  })
+
+  it('detectarPagamentoRecebido: resumo preserva o contrato semântico (quitação, não é gasto/receita, se anula, aprovar remove)', () => {
+    const lancamentos = [
+      lancamento({
+        fonte: 'fatura_itau_cc',
+        transcricao: 'Pagamento Debito Automatico',
+        valor: 1723.92,
+        origemEspecial: 'pagamento-recebido',
+      }),
+    ]
+    const resumo = detectarPagamentoRecebido(lancamentos)[0].resumo ?? ''
+    expect(resumo).toContain('quitação da fatura anterior')
+    expect(resumo).toContain('Não é gasto nem receita deste mês')
+    expect(resumo).toContain('anula')
+    expect(resumo).toContain('Aprovar tira a linha da planilha')
+  })
+
+  it('detectarValorPendente: resumo preserva o contrato semântico (pendência do ciclo anterior, não é compra, se anula, aprovar remove)', () => {
+    const lancamentos = [
+      lancamento({
+        fonte: 'fatura_nubank_cc',
+        transcricao: 'Valor pendente do mês anterior',
+        valor: -120.5,
+        origemEspecial: 'valor-pendente',
+      }),
+    ]
+    const resumo = detectarValorPendente(lancamentos)[0].resumo ?? ''
+    expect(resumo).toContain('ficou em aberto na fatura passada')
+    expect(resumo).toContain('Não é uma compra deste mês')
+    expect(resumo).toContain('anula')
+    expect(resumo).toContain('Aprovar tira a linha da planilha')
+  })
+})

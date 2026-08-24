@@ -3,6 +3,14 @@
 import type { Lancamento, ResultadoParse } from '../types'
 import { lerCelulas } from '../excel/celulas/leitorCelulas'
 import { atribuirIds } from './idSerial'
+import { normalizarParaBusca } from '../dominio/normalizacao'
+
+/**
+ * Título da linha de quitação da fatura anterior, normalizado (NFD sem acentos,
+ * minúsculas) para comparação tolerante a variações de acentuação/caixa entre
+ * exportações do banco — mesmo padrão de `fatura_nubank.ts` (`TITULO_PAGAMENTO_RECEBIDO`).
+ */
+const TITULO_PAGAMENTO_RECEBIDO = normalizarParaBusca('Pagamento Debito Automatico')
 
 /**
  * Retorna `true` quando `bytes` contém uma tabela de fatura de cartão Itaú:
@@ -129,8 +137,12 @@ function mesIso(dataIso: string): string {
  * argumento; um parâmetro opcional extra não quebra o contrato `ParserBinario`
  * (`src/parsers/binario.ts`), que declara menos parâmetros.
  *
- * A linha "Pagamento Debito Automatico" é tratada como lançamento comum, sem
- * `origemEspecial` — a marcação é da Task T6.
+ * A linha "Pagamento Debito Automatico" (quitação da fatura anterior) recebe
+ * `origemEspecial='pagamento-recebido'` (Decisão 5 do ADR, Task T6) — mesmo
+ * mecanismo que `fatura_nubank.ts` já usa, gerando a proposta de remoção já
+ * existente em `src/dominio/deteccoes.ts` sem duplicar a linha no mês corrente.
+ * A comparação é normalizada (`normalizarParaBusca`) para tolerar variação de
+ * acentuação/caixa entre exportações do banco.
  */
 export function parsear(bytes: Uint8Array, mesReferencia?: string): ResultadoParse {
   const matriz = lerCelulas(bytes)
@@ -164,6 +176,9 @@ export function parsear(bytes: Uint8Array, mesReferencia?: string): ResultadoPar
         ? (dataVencimentoIso ?? (mesReferencia ? `${mesReferencia}-01` : dataCompraIso))
         : dataCompraIso
 
+    const origemEspecial: Lancamento['origemEspecial'] =
+      normalizarParaBusca(transcricao) === TITULO_PAGAMENTO_RECEBIDO ? 'pagamento-recebido' : undefined
+
     lancamentos.push({
       fonte: 'fatura_itau_cc',
       data,
@@ -172,6 +187,7 @@ export function parsear(bytes: Uint8Array, mesReferencia?: string): ResultadoPar
       iniciais: '',
       natureza: '',
       descricao: parcelamento,
+      ...(origemEspecial ? { origemEspecial } : {}),
     })
   }
 

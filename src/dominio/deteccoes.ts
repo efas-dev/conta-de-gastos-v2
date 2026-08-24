@@ -72,20 +72,23 @@ const ROTULO_ORIGEM_ESPECIAL: Record<'valor-pendente' | 'pagamento-recebido', st
 }
 
 /**
- * Explicação exibida no resumo do aviso. As duas linhas são uma particularidade do CSV do
- * Nubank, que abre a fatura repetindo o saldo que ficou em aberto no ciclo anterior e, em
- * seguida, o crédito da quitação desse saldo. Quando o usuário não atrasa a fatura, as duas
- * se anulam (mesmo valor, sinais opostos) — daí "em geral": com atraso entram multa e juros
- * e os módulos deixam de coincidir, mas nenhuma das duas linhas é gasto do mês corrente.
- * O texto nomeia a contraparte para que o usuário entenda o par ao tratar cada aviso.
+ * Explicação exibida no resumo do aviso. As duas linhas são uma particularidade da fatura de
+ * cartão de crédito (observada tanto no CSV do Nubank quanto no .xlsx do Itaú — ADR
+ * `fatura-itau-xlsx`, Decisão 5): a fatura abre repetindo o saldo que ficou em aberto no ciclo
+ * anterior e, em seguida, traz o crédito da quitação desse saldo. Quando o usuário não atrasa a
+ * fatura, as duas se anulam (mesmo valor, sinais opostos) — daí "em geral": com atraso entram
+ * multa e juros e os valores deixam de coincidir, mas nenhuma das duas linhas é gasto do mês
+ * corrente. O texto nomeia a contraparte para que o usuário entenda o par ao tratar cada aviso,
+ * sem citar o emissor da fatura — o mesmo texto serve a qualquer fonte que marque
+ * `origemEspecial`.
  */
 const COMPLEMENTO_RESUMO_ORIGEM_ESPECIAL: Record<'valor-pendente' | 'pagamento-recebido', string> = {
   'valor-pendente':
-    'É o que ficou em aberto na fatura passada, que o Nubank repete no começo desta. ' +
+    'É o que ficou em aberto na fatura passada, que a própria fatura repete no começo desta. ' +
     'Não é uma compra deste mês: em geral se anula com o "Pagamento recebido" de mesmo valor. ' +
     'Aprovar tira a linha da planilha.',
   'pagamento-recebido':
-    'É a quitação da fatura anterior, que o Nubank lança dentro desta fatura. ' +
+    'É a quitação da fatura anterior, que a própria fatura lança dentro desta. ' +
     'Não é gasto nem receita deste mês: em geral se anula com o "Valor pendente do mês anterior". ' +
     'Aprovar tira a linha da planilha.',
 }

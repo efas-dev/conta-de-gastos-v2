@@ -261,13 +261,28 @@ describe('fatura_itau_cc — parsear()', () => {
     expect(textoCompleto).not.toContain('1234')
   })
 
-  it('trata a linha de pagamento como lançamento comum: linhasIgnoradas=0, excluidosPendentes=[], sem origemEspecial', () => {
+  it('marca a linha de pagamento com origemEspecial=pagamento-recebido (T6); linhasIgnoradas=0, excluidosPendentes=[]', () => {
     const resultado = parsear(lerFixtureBytes('./fixtures/fatura_itau_cc_sintetica.xlsx'))
     expect(resultado.linhasIgnoradas).toBe(0)
     expect(resultado.excluidosPendentes).toEqual([])
     const pagamento = resultado.lancamentos.find((l) => l.transcricao === 'Pagamento Debito Automatico')
-    expect(pagamento?.origemEspecial).toBeUndefined()
+    expect(pagamento?.origemEspecial).toBe('pagamento-recebido')
     expect(pagamento?.valor).toBeCloseTo(1723.92)
+  })
+
+  it('não marca origemEspecial em nenhuma outra linha de dado além da linha de pagamento (T6)', () => {
+    const outras = lancamentosDaFixture().filter((l) => l.transcricao !== 'Pagamento Debito Automatico')
+    expect(outras.length).toBeGreaterThan(0)
+    outras.forEach((l) => expect(l.origemEspecial).toBeUndefined())
+  })
+
+  it('marca origemEspecial mesmo com variação de acentuação/caixa no texto da linha (T6, comparação normalizada)', () => {
+    const bytes = construirXlsx('Fatura 09-26', [
+      construirLinhaCabecalho(5),
+      construirLinhaDado(6, '46177', 'Pagamento Débito Automático', -1723.92),
+    ])
+    const [lancamento] = parsear(bytes).lancamentos
+    expect(lancamento.origemEspecial).toBe('pagamento-recebido')
   })
 
   it('para de ler antes da linha de Subtotal — número de lançamentos bate com as linhas de dados da tabela', () => {
