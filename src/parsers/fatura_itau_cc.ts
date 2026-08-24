@@ -70,32 +70,78 @@ function localizarCabecalho(matriz: string[][]): {
 }
 
 /**
+ * Localiza o vencimento da fatura no bloco de metadados no topo da planilha,
+ * pelo rótulo "Vencimento" (mesmo espírito de `localizarCabecalho`/Decisão 7
+ * do ADR: nunca por posição fixa). Na amostra real o rótulo mora numa linha e
+ * o serial Excel do vencimento mora na célula imediatamente abaixo, na mesma
+ * coluna — é essa adjacência que a busca segue.
+ *
+ * Retorna `null` quando o rótulo não existe (arquivo sem vencimento
+ * informado): a Decisão 1 do ADR cai então para o mês de referência escolhido
+ * na tela, via `mesReferencia`.
+ */
+function localizarVencimento(matriz: string[][]): number | null {
+  for (let i = 0; i < matriz.length; i++) {
+    const colRotulo = matriz[i].findIndex((celula) => celula.trim() === 'Vencimento')
+    if (colRotulo === -1) continue
+    const valor = Number((matriz[i + 1]?.[colRotulo] ?? '').trim())
+    return Number.isFinite(valor) && valor > 0 ? valor : null
+  }
+  return null
+}
+
+/** Mês (`YYYY-MM`) de uma data ISO 8601 (`YYYY-MM-DD`). */
+function mesIso(dataIso: string): string {
+  return dataIso.slice(0, 7)
+}
+
+/**
  * Parseia a tabela de lançamentos de uma fatura de cartão Itaú (.xlsx) em
  * `Lancamento`s (ver Decisões 1, 2 e 7 do ADR desta spec).
  *
  * Cada linha de dado após o cabeçalho vira um lançamento com `fonte
  * ='fatura_itau_cc'`, valor com sinal invertido em relação ao arquivo (compra
- * positiva → negativa no app; estorno negativo → positivo), data convertida do
- * serial Excel, `descricao` = texto de Parcelamento (vazio quando ausente) e
- * `transcricao` = texto de Lançamento, sem mistura com Parcelamento — a
- * transcrição limpa preserva a chave do dicionário (Decisão 2).
+ * positiva → negativa no app; estorno negativo → positivo), `descricao` =
+ * texto de Parcelamento (vazio quando ausente) e `transcricao` = texto de
+ * Lançamento, sem mistura com Parcelamento — a transcrição limpa preserva a
+ * chave do dicionário (Decisão 2).
  *
  * A leitura para assim que a coluna Data de uma linha vem vazia — é como a
  * linha de "Subtotal" (e qualquer linha em branco antes dela) se manifesta na
  * matriz esparsa devolvida por `lerCelulas` (linhas sem nenhuma célula não
  * aparecem na matriz).
  *
- * Nesta task (T4), a data é sempre a conversão direta do serial da coluna Data
- * — a regra condicional de parcela antiga usar o vencimento da fatura (Decisão
- * 1) é da Task T5. A linha "Pagamento Debito Automatico" é tratada como
- * lançamento comum, sem `origemEspecial` — a marcação é da Task T6.
+ * Regra de data (Decisão 1 do ADR, Task T5): quando o mês da data de compra
+ * coincide com o mês da fatura, a data do lançamento é a própria data de
+ * compra. Quando a compra é de um mês anterior ("parcela antiga"), a data do
+ * lançamento vira a data de vencimento da fatura (`localizarVencimento`);
+ * quando o arquivo não informa vencimento, vira o mês de referência escolhido
+ * na tela (`mesReferencia`, formato `YYYY-MM`, dia fixo em `01` por ser o
+ * único componente conhecido). O "mês da fatura" para efeito de comparação
+ * sai do próprio arquivo (o vencimento é a fonte natural); só na ausência de
+ * vencimento é que `mesReferencia` também assume esse papel de comparação.
+ * Sem vencimento e sem `mesReferencia`, não há como determinar o mês da
+ * fatura — mantém-se a data de compra (comportamento best-effort herdado da
+ * Task T4).
+ *
+ * `mesReferencia` é opcional porque o parser não conhece o mês escolhido na
+ * tela — é a UI (Task T9, wiring pendente) quem efetivamente passa esse
+ * argumento; um parâmetro opcional extra não quebra o contrato `ParserBinario`
+ * (`src/parsers/binario.ts`), que declara menos parâmetros.
+ *
+ * A linha "Pagamento Debito Automatico" é tratada como lançamento comum, sem
+ * `origemEspecial` — a marcação é da Task T6.
  */
-export function parsear(bytes: Uint8Array): ResultadoParse {
+export function parsear(bytes: Uint8Array, mesReferencia?: string): ResultadoParse {
   const matriz = lerCelulas(bytes)
   const cabecalho = localizarCabecalho(matriz)
   if (!cabecalho) {
     return { lancamentos: [], linhasIgnoradas: 0, excluidosPendentes: [] }
   }
+
+  const vencimentoSerial = localizarVencimento(matriz)
+  const dataVencimentoIso = vencimentoSerial !== null ? serialExcelParaIso(vencimentoSerial) : null
+  const mesFatura = dataVencimentoIso !== null ? mesIso(dataVencimentoIso) : (mesReferencia ?? null)
 
   const { indiceLinha, colData, colLancamento, colParcelamento, colValor } = cabecalho
   const lancamentos: Omit<Lancamento, 'id'>[] = []
@@ -112,9 +158,15 @@ export function parsear(bytes: Uint8Array): ResultadoParse {
     const parcelamento = colParcelamento >= 0 ? (linha[colParcelamento] ?? '').trim() : ''
     const valorArquivo = Number((linha[colValor] ?? '').trim())
 
+    const dataCompraIso = serialExcelParaIso(dataSerial)
+    const data =
+      mesFatura !== null && mesIso(dataCompraIso) !== mesFatura
+        ? (dataVencimentoIso ?? (mesReferencia ? `${mesReferencia}-01` : dataCompraIso))
+        : dataCompraIso
+
     lancamentos.push({
       fonte: 'fatura_itau_cc',
-      data: serialExcelParaIso(dataSerial),
+      data,
       transcricao,
       valor: -valorArquivo,
       iniciais: '',

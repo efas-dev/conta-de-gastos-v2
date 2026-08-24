@@ -274,3 +274,79 @@ describe('fatura_itau_cc — parsear()', () => {
     expect(lancamentosDaFixture()).toHaveLength(10)
   })
 })
+
+// ---------------------------------------------------------------------------
+// parsear() — Task T5: regra de data para parcelas antigas (Decisão 1 do ADR).
+// A fixture compartilhada `fatura_itau_cc_sintetica.xlsx` não traz o rótulo
+// "Vencimento" em nenhuma célula (só o serial cru em I10, sem rótulo em I9),
+// então ela não serve para os casos com vencimento presente — os três casos
+// abaixo usam `.xlsx` sintéticos construídos aqui mesmo, incluindo o bloco de
+// rótulo+valor quando o caso exige vencimento. Ver decisão registrada no log
+// de iteração.
+// ---------------------------------------------------------------------------
+
+/** Bloco de metadados "Vencimento": rótulo numa linha, serial na linha seguinte, mesma coluna. */
+function construirBlocoVencimento(
+  numeroRotulo: number,
+  coluna: string,
+  serialVencimento: number,
+): { numero: number; celulasXml: string }[] {
+  return [
+    { numero: numeroRotulo, celulasXml: celulaTexto(`${coluna}${numeroRotulo}`, 'Vencimento') },
+    { numero: numeroRotulo + 1, celulasXml: celulaNumero(`${coluna}${numeroRotulo + 1}`, serialVencimento) },
+  ]
+}
+
+/** Linha de dado mínima (Data serial + Lançamento), suficiente para os testes de data de T5. */
+function construirLinhaDadoSerial(
+  numero: number,
+  serialData: number,
+  lancamento: string,
+): { numero: number; celulasXml: string } {
+  return {
+    numero,
+    celulasXml: celulaNumero(`B${numero}`, serialData) + celulaTexto(`C${numero}`, lancamento),
+  }
+}
+
+describe('fatura_itau_cc — parsear() — regra de data para parcelas antigas (T5)', () => {
+  beforeEach(() => reiniciarContadorIds())
+
+  // Vencimento = 20/08/2026 (serial 46254) → mês da fatura = 2026-08.
+  const SERIAL_VENCIMENTO_AGOSTO = 46254
+
+  it('compra no mesmo mês da fatura mantém a data de compra, mesmo com vencimento informado', () => {
+    // Compra em 05/08/2026 (serial 46239) — mesmo mês do vencimento (2026-08).
+    // Linhas em ordem ascendente (2,3,5,6): a ordem física na planilha importa
+    // para `lerCelulas`, que preserva a ordem de documento dos elementos <row>.
+    const bytes = construirXlsx('Fatura 08-26', [
+      ...construirBlocoVencimento(2, 'I', SERIAL_VENCIMENTO_AGOSTO),
+      construirLinhaCabecalho(5),
+      construirLinhaDadoSerial(6, 46239, 'Compra Loja Alfa'),
+    ])
+    const [lancamento] = parsear(bytes).lancamentos
+    expect(lancamento.data).toBe('2026-08-05')
+  })
+
+  it('parcela antiga com vencimento informado no arquivo recebe a data de vencimento, não a data de compra', () => {
+    // Compra em 15/07/2026 (serial 46218) — mês anterior ao vencimento (2026-08).
+    const bytes = construirXlsx('Fatura 08-26', [
+      ...construirBlocoVencimento(2, 'I', SERIAL_VENCIMENTO_AGOSTO),
+      construirLinhaCabecalho(5),
+      construirLinhaDadoSerial(6, 46218, 'Compra Loja Beta'),
+    ])
+    const [lancamento] = parsear(bytes).lancamentos
+    expect(lancamento.data).toBe('2026-08-20')
+  })
+
+  it('parcela antiga sem vencimento no arquivo cai no mês de referência escolhido na tela', () => {
+    // Sem bloco de Vencimento no arquivo. Compra em 15/07/2026 (serial 46218);
+    // mesReferencia='2026-08' é passado como segundo argumento de parsear().
+    const bytes = construirXlsx('Fatura 08-26', [
+      construirLinhaCabecalho(5),
+      construirLinhaDadoSerial(6, 46218, 'Compra Loja Gama'),
+    ])
+    const [lancamento] = parsear(bytes, '2026-08').lancamentos
+    expect(lancamento.data).toBe('2026-08-01')
+  })
+})
