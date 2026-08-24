@@ -1,10 +1,11 @@
 // ADR: see spec/fatura-itau-xlsx.adr.md
 
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, beforeEach } from 'vitest'
 import { zipSync, strToU8 } from 'fflate'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
-import { aceita } from '../fatura_itau_cc'
+import { aceita, parsear } from '../fatura_itau_cc'
+import { reiniciarContadorIds } from '../idSerial'
 
 // ---------------------------------------------------------------------------
 // Helper: constrói um .xlsx OOXML mínimo com uma única aba nomeável e um
@@ -153,5 +154,123 @@ describe('fatura_itau_cc — aceita()', () => {
     const bytesInvalidos = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8])
     expect(() => aceita(bytesInvalidos)).not.toThrow()
     expect(aceita(bytesInvalidos)).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// parsear() — Task T4: mapeamento linha→lançamento (fonte, sinal, data serial,
+// Parcelamento→Descrição). A fixture `fatura_itau_cc_sintetica.xlsx` (T11) traz
+// 10 linhas de dados (linhas 15 a 24 da planilha original): a linha 15 é o
+// pagamento ("Pagamento Debito Automatico"), as demais são compras/estornos.
+// ---------------------------------------------------------------------------
+
+/** Constrói um cabeçalho com as 8 colunas reais do banco (B..J), incluindo as 4 que não devem ser lidas. */
+function construirLinhaCabecalhoCompleto(numero: number): { numero: number; celulasXml: string } {
+  return {
+    numero,
+    celulasXml:
+      celulaTexto(`B${numero}`, 'Data') +
+      celulaTexto(`C${numero}`, 'Lançamento') +
+      celulaTexto(`D${numero}`, 'Parcelamento') +
+      celulaTexto(`E${numero}`, 'Valor') +
+      celulaTexto(`G${numero}`, 'Titularidade') +
+      celulaTexto(`H${numero}`, 'Nome') +
+      celulaTexto(`I${numero}`, 'Tipo do cartão') +
+      celulaTexto(`J${numero}`, 'Número do cartão'),
+  }
+}
+
+/** Linha de dado com as 4 colunas de portador preenchidas — usada só para provar que não são lidas. */
+function construirLinhaDadoComPortador(
+  numero: number,
+  data: string,
+  lancamento: string,
+  valor: number,
+): { numero: number; celulasXml: string } {
+  return {
+    numero,
+    celulasXml:
+      celulaNumero(`B${numero}`, Number(data)) +
+      celulaTexto(`C${numero}`, lancamento) +
+      celulaNumero(`E${numero}`, valor) +
+      celulaTexto(`G${numero}`, 'Titular') +
+      celulaTexto(`H${numero}`, 'Fulano da Silva') +
+      celulaTexto(`I${numero}`, 'Físico') +
+      celulaTexto(`J${numero}`, '**** **** **** 1234'),
+  }
+}
+
+describe('fatura_itau_cc — parsear()', () => {
+  beforeEach(() => reiniciarContadorIds())
+
+  function lancamentosDaFixture() {
+    const bytes = lerFixtureBytes('./fixtures/fatura_itau_cc_sintetica.xlsx')
+    return parsear(bytes).lancamentos
+  }
+
+  it('mapeia cada linha de dado para um Lancamento com fonte fatura_itau_cc', () => {
+    const lancamentos = lancamentosDaFixture()
+    expect(lancamentos).toHaveLength(10)
+    lancamentos.forEach((l) => expect(l.fonte).toBe('fatura_itau_cc'))
+  })
+
+  it('inverte o sinal: compra positiva no xlsx vira valor negativo no app', () => {
+    const compra = lancamentosDaFixture().find((l) => l.transcricao === 'Compra Supermercado Alfa')
+    expect(compra?.valor).toBeCloseTo(-245.67)
+  })
+
+  it('inverte o sinal: estorno negativo no xlsx vira valor positivo no app', () => {
+    const estorno = lancamentosDaFixture().find((l) => l.transcricao === 'Estorno Compra Loja Epsilon')
+    expect(estorno?.valor).toBeCloseTo(178.89)
+  })
+
+  it('converte a data do serial Excel (base 1899-12-30) para ISO 8601', () => {
+    const compra = lancamentosDaFixture().find((l) => l.transcricao === 'Compra Supermercado Alfa')
+    expect(compra?.data).toBe('2026-06-04')
+  })
+
+  it('preenche Descricao com o texto de Parcelamento quando presente', () => {
+    const parcela = lancamentosDaFixture().find((l) => l.transcricao === 'Compra Farmacia Gama')
+    expect(parcela?.descricao).toBe('Parcela 1 de 2')
+    expect(parcela?.transcricao).toBe('Compra Farmacia Gama')
+  })
+
+  it('deixa Descricao vazia quando a coluna Parcelamento está ausente na linha', () => {
+    const semParcela = lancamentosDaFixture().find((l) => l.transcricao === 'Compra Restaurante Delta')
+    expect(semParcela?.descricao).toBe('')
+  })
+
+  it('atribui ids sequenciais via atribuirIds, um por lançamento, sem repetição', () => {
+    const ids = lancamentosDaFixture().map((l) => l.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    for (let i = 1; i < ids.length; i++) {
+      expect(ids[i]).toBe(ids[i - 1] + 1)
+    }
+  })
+
+  it('não lê Titularidade/Nome/Tipo do cartão/Número do cartão em nenhum campo do Lancamento', () => {
+    const bytes = construirXlsx('Fatura 09-26', [
+      construirLinhaCabecalhoCompleto(5),
+      construirLinhaDadoComPortador(6, '46177', 'Compra Loja Alfa', 120.5),
+    ])
+    const [lancamento] = parsear(bytes).lancamentos
+    const textoCompleto = JSON.stringify(lancamento)
+    expect(textoCompleto).not.toContain('Titular')
+    expect(textoCompleto).not.toContain('Fulano da Silva')
+    expect(textoCompleto).not.toContain('Físico')
+    expect(textoCompleto).not.toContain('1234')
+  })
+
+  it('trata a linha de pagamento como lançamento comum: linhasIgnoradas=0, excluidosPendentes=[], sem origemEspecial', () => {
+    const resultado = parsear(lerFixtureBytes('./fixtures/fatura_itau_cc_sintetica.xlsx'))
+    expect(resultado.linhasIgnoradas).toBe(0)
+    expect(resultado.excluidosPendentes).toEqual([])
+    const pagamento = resultado.lancamentos.find((l) => l.transcricao === 'Pagamento Debito Automatico')
+    expect(pagamento?.origemEspecial).toBeUndefined()
+    expect(pagamento?.valor).toBeCloseTo(1723.92)
+  })
+
+  it('para de ler antes da linha de Subtotal — número de lançamentos bate com as linhas de dados da tabela', () => {
+    expect(lancamentosDaFixture()).toHaveLength(10)
   })
 })
