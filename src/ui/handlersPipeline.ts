@@ -147,6 +147,21 @@ export async function handleProduzir(deps: DepsHandleProduzir): Promise<void> {
     for (const av of avs) {
       addAviso(`${arquivo.name}: ${av}`)
     }
+
+    // Task T7 (spec `fatura-itau-xlsx`, Decisão 9 do ADR): um arquivo `.xlsx` só chega a
+    // `csvArquivos` (e portanto a este loop) depois de já ter sido reconhecido por algum
+    // `parsersBinarios[i].aceita` (T8/T9) — o que nenhum parser binário reconhece nunca sai do
+    // estado local de `TelaImportacao.tsx` e mantém apenas o aviso `xlsx-nao-reconhecido`
+    // existente. Logo, `ehXlsx && lans.length === 0` aqui significa exatamente "reconhecido, mas
+    // a tabela não produziu nenhum lançamento" — sinal distinto de "não reconhecido", sem exigir
+    // nenhum campo novo em `ResultadoParse` (KISS).
+    if (ehXlsx && lans.length === 0) {
+      const mensagem = `${arquivo.name}: fatura reconhecida, mas nenhum lançamento foi extraído`
+      addAviso(mensagem)
+      adicionarAvisosAcionaveis([
+        criarAvisoInformativo(crypto.randomUUID(), 'fatura-reconhecida-sem-lancamentos', mensagem),
+      ])
+    }
   }
 
   // Task T14 (spec `fundacao-operacoes`): cutover para o registry — política D8 (T09):

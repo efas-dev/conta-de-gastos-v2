@@ -150,3 +150,68 @@ describe('handlersPipeline.handleProduzir — fatura .xlsx de primeira classe (T
     expect(chamadaFinal.map((l) => l.fonte)).toEqual(['Nubank', 'fatura_itau_cc'])
   })
 })
+
+/**
+ * Task T7 (spec `fatura-itau-xlsx`, Decisão 9 do ADR) — arquivo `.xlsx` reconhecido como fatura
+ * Itaú (por construção do roteamento T8/T9, só chega a `csvArquivos` depois de aceito por algum
+ * `parsersBinarios[i].aceita`) cuja tabela não produz nenhum lançamento gera aviso explícito
+ * nomeando o arquivo, distinto do aviso `'xlsx-nao-reconhecido'` (que significa outra coisa: o app
+ * nem achou que era fatura).
+ */
+describe('handlersPipeline.handleProduzir — aviso de fatura reconhecida sem lançamentos (Task T7)', () => {
+  it('emite aviso acionável nomeando o arquivo quando a fatura .xlsx reconhecida produz zero lançamentos', async () => {
+    mockProduzirLancamentos.mockReturnValue({ lancamentos: [], dicEntries: [], avisos: [] })
+    const deps = criarDeps({ csvArquivos: [xlsxFile('fatura_itau_vazia.xlsx')] })
+
+    await handleProduzir(deps)
+
+    const chamadas = (deps.adicionarAvisosAcionaveis as ReturnType<typeof vi.fn>).mock.calls
+    const avisosDespachados = chamadas.flatMap((args) => args[0])
+    const avisoVazio = avisosDespachados.find((a) => a.mensagem.includes('fatura_itau_vazia.xlsx'))
+    expect(avisoVazio).toBeDefined()
+  })
+
+  it('o aviso de fatura vazia tem origem distinta de xlsx-nao-reconhecido', async () => {
+    mockProduzirLancamentos.mockReturnValue({ lancamentos: [], dicEntries: [], avisos: [] })
+    const deps = criarDeps({ csvArquivos: [xlsxFile('fatura_itau_vazia.xlsx')] })
+
+    await handleProduzir(deps)
+
+    const chamadas = (deps.adicionarAvisosAcionaveis as ReturnType<typeof vi.fn>).mock.calls
+    const avisosDespachados = chamadas.flatMap((args) => args[0])
+    const avisoVazio = avisosDespachados.find((a) => a.mensagem.includes('fatura_itau_vazia.xlsx'))
+    expect(avisoVazio?.origem).not.toBe('xlsx-nao-reconhecido')
+  })
+
+  it('também dispara o canal legado addAviso com o nome do arquivo', async () => {
+    mockProduzirLancamentos.mockReturnValue({ lancamentos: [], dicEntries: [], avisos: [] })
+    const deps = criarDeps({ csvArquivos: [xlsxFile('fatura_itau_vazia.xlsx')] })
+
+    await handleProduzir(deps)
+
+    const mensagens = (deps.addAviso as ReturnType<typeof vi.fn>).mock.calls.map((args) => args[0])
+    expect(mensagens.some((m) => m.includes('fatura_itau_vazia.xlsx'))).toBe(true)
+  })
+
+  it('não emite o aviso de fatura vazia quando a fatura .xlsx produz ao menos um lançamento', async () => {
+    mockProduzirLancamentos.mockReturnValue({ lancamentos: lancamentosFatura, dicEntries: [], avisos: [] })
+    const deps = criarDeps({ csvArquivos: [xlsxFile('fatura_itau.xlsx')] })
+
+    await handleProduzir(deps)
+
+    const chamadas = (deps.adicionarAvisosAcionaveis as ReturnType<typeof vi.fn>).mock.calls
+    const avisosDespachados = chamadas.flatMap((args) => args[0])
+    expect(avisosDespachados.find((a) => a.mensagem.includes('fatura_itau.xlsx'))).toBeUndefined()
+  })
+
+  it('não emite o aviso de fatura vazia para um arquivo CSV/TXT comum com zero lançamentos', async () => {
+    mockProduzirLancamentos.mockReturnValue({ lancamentos: [], dicEntries: [], avisos: [] })
+    const deps = criarDeps({ csvArquivos: [csvFile('extrato_vazio.csv', 'a,b\n')] })
+
+    await handleProduzir(deps)
+
+    const chamadas = (deps.adicionarAvisosAcionaveis as ReturnType<typeof vi.fn>).mock.calls
+    const avisosDespachados = chamadas.flatMap((args) => args[0])
+    expect(avisosDespachados.find((a) => a.mensagem.includes('extrato_vazio.csv'))).toBeUndefined()
+  })
+})
