@@ -1,6 +1,7 @@
 // ADR: see spec/fatura-itau-xlsx.adr.md
 
 import type { ResultadoParse } from '../types'
+import { aceita as aceitaFaturaItauCc, parsear as parsearFaturaItauCc } from './fatura_itau_cc'
 
 /**
  * Contrato de um parser de arquivo binário (ex.: `.xlsx`).
@@ -21,7 +22,11 @@ export interface ParserBinario {
  * do ADR desta spec) — não é um terceiro registry, é uma variação do mesmo ponto
  * de extensão comunitário.
  *
- * Vazio nesta task: os parsers binários concretos (ex.: `fatura_itau_cc`) são
- * entregues por tasks futuras/paralelas desta mesma spec.
+ * `fatura_itau_cc` (`./fatura_itau_cc.ts`) é o único parser binário desta spec
+ * (Task T13) — sem este registro, nenhum `.xlsx` de fatura Itaú é reconhecido
+ * em produção mesmo com o parser e o roteamento (T8) já implementados; fechava
+ * o débito `Docs/debt/tecnica/task-underspecified-parsersBinarios-registro.md`.
  */
-export const parsersBinarios: ParserBinario[] = []
+export const parsersBinarios: ParserBinario[] = [
+  { aceita: aceitaFaturaItauCc, parsear: parsearFaturaItauCc },
+]

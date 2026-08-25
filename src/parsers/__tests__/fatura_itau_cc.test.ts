@@ -1,7 +1,7 @@
 // ADR: see spec/fatura-itau-xlsx.adr.md
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { zipSync, strToU8 } from 'fflate'
+import { zipSync, strToU8, unzipSync } from 'fflate'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { aceita, parsear } from '../fatura_itau_cc'
@@ -224,9 +224,11 @@ describe('fatura_itau_cc — parsear()', () => {
     expect(estorno?.valor).toBeCloseTo(178.89)
   })
 
-  it('converte a data do serial Excel (base 1899-12-30) para ISO 8601', () => {
+  it('TL-T13-04: com o rótulo Vencimento presente na fixture compartilhada, uma compra de mês anterior ao vencimento (parcela antiga, T5) recebe a data de vencimento, não a data de compra crua', () => {
+    // Vencimento na fixture: 2026-07-10 (bloco "Vencimento"/serial em I9/I10).
+    // Compra 'Compra Supermercado Alfa': serial 46177 = 2026-06-04, mês anterior ao vencimento.
     const compra = lancamentosDaFixture().find((l) => l.transcricao === 'Compra Supermercado Alfa')
-    expect(compra?.data).toBe('2026-06-04')
+    expect(compra?.data).toBe('2026-07-10')
   })
 
   it('preenche Descricao com o texto de Parcelamento quando presente', () => {
@@ -287,6 +289,14 @@ describe('fatura_itau_cc — parsear()', () => {
 
   it('para de ler antes da linha de Subtotal — número de lançamentos bate com as linhas de dados da tabela', () => {
     expect(lancamentosDaFixture()).toHaveLength(10)
+  })
+
+  it('TL-T13-03: a fixture compartilhada traz o rótulo "Vencimento" na linha imediatamente anterior ao serial de vencimento, mesma coluna (fidelidade ao layout real)', () => {
+    const bytes = lerFixtureBytes('./fixtures/fatura_itau_cc_sintetica.xlsx')
+    const zip = unzipSync(bytes) as Record<string, Uint8Array>
+    const sheetXml = new TextDecoder().decode(zip['xl/worksheets/sheet1.xml'])
+    expect(sheetXml).toContain('<c r="I9" t="inlineStr"><is><t>Vencimento</t></is></c>')
+    expect(sheetXml).toContain('<c r="I10"><v>46213</v></c>')
   })
 })
 
