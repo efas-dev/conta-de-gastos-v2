@@ -104,6 +104,17 @@ function mesIso(dataIso: string): string {
 }
 
 /**
+ * Mês (`YYYY-MM`) imediatamente anterior a `mes` (`YYYY-MM`), atravessando a
+ * fronteira de ano corretamente (dezembro do ano anterior precede janeiro) —
+ * por aritmética de ano/mês, nunca por subtração ingênua de string (Task T14).
+ */
+function mesAnterior(mes: string): string {
+  const ano = Number(mes.slice(0, 4))
+  const mesNumero = Number(mes.slice(5, 7))
+  return mesNumero === 1 ? `${ano - 1}-12` : `${ano}-${String(mesNumero - 1).padStart(2, '0')}`
+}
+
+/**
  * Parseia a tabela de lançamentos de uma fatura de cartão Itaú (.xlsx) em
  * `Lancamento`s (ver Decisões 1, 2 e 7 do ADR desta spec).
  *
@@ -119,18 +130,23 @@ function mesIso(dataIso: string): string {
  * matriz esparsa devolvida por `lerCelulas` (linhas sem nenhuma célula não
  * aparecem na matriz).
  *
- * Regra de data (Decisão 1 do ADR, Task T5): quando o mês da data de compra
- * coincide com o mês da fatura, a data do lançamento é a própria data de
- * compra. Quando a compra é de um mês anterior ("parcela antiga"), a data do
- * lançamento vira a data de vencimento da fatura (`localizarVencimento`);
- * quando o arquivo não informa vencimento, vira o mês de referência escolhido
- * na tela (`mesReferencia`, formato `YYYY-MM`, dia fixo em `01` por ser o
- * único componente conhecido). O "mês da fatura" para efeito de comparação
- * sai do próprio arquivo (o vencimento é a fonte natural); só na ausência de
- * vencimento é que `mesReferencia` também assume esse papel de comparação.
- * Sem vencimento e sem `mesReferencia`, não há como determinar o mês da
- * fatura — mantém-se a data de compra (comportamento best-effort herdado da
- * Task T4).
+ * Regra de data (Decisão 1 do ADR, corte revisado na Task T14): o ciclo do
+ * cartão fecha no mês anterior ao vencimento, então a data de compra é
+ * preservada quando o mês da compra coincide com o mês da fatura **ou** com o
+ * mês imediatamente anterior (`mesAnterior`, aritmética de ano/mês que
+ * atravessa a virada de ano corretamente). Só compras mais antigas que isso
+ * ("parcela antiga" de fato) recebem a data de vencimento da fatura
+ * (`localizarVencimento`); quando o arquivo não informa vencimento, caem no
+ * mês de referência escolhido na tela (`mesReferencia`, formato `YYYY-MM`,
+ * dia fixo em `01` por ser o único componente conhecido). O "mês da fatura"
+ * para efeito de comparação sai do próprio arquivo (o vencimento é a fonte
+ * natural); só na ausência de vencimento é que `mesReferencia` também assume
+ * esse papel de comparação. Sem vencimento e sem `mesReferencia`, não há como
+ * determinar o mês da fatura — mantém-se a data de compra (comportamento
+ * best-effort herdado da Task T4). A leitura original da Task T5 ("mês da
+ * compra diferente do mês do vencimento → parcela antiga") classificava as
+ * compras normais do ciclo como antigas; a T14 corrigiu esse corte sem
+ * revogar a intenção da Decisão 1.
  *
  * `mesReferencia` é opcional porque o parser não conhece o mês escolhido na
  * tela — é a UI (Task T9, wiring pendente) quem efetivamente passa esse
@@ -171,10 +187,12 @@ export function parsear(bytes: Uint8Array, mesReferencia?: string): ResultadoPar
     const valorArquivo = Number((linha[colValor] ?? '').trim())
 
     const dataCompraIso = serialExcelParaIso(dataSerial)
-    const data =
-      mesFatura !== null && mesIso(dataCompraIso) !== mesFatura
-        ? (dataVencimentoIso ?? (mesReferencia ? `${mesReferencia}-01` : dataCompraIso))
-        : dataCompraIso
+    const mesCompra = mesIso(dataCompraIso)
+    const dentroDoCiclo =
+      mesFatura === null || mesCompra === mesFatura || mesCompra === mesAnterior(mesFatura)
+    const data = dentroDoCiclo
+      ? dataCompraIso
+      : (dataVencimentoIso ?? (mesReferencia ? `${mesReferencia}-01` : dataCompraIso))
 
     const origemEspecial: Lancamento['origemEspecial'] =
       normalizarParaBusca(transcricao) === TITULO_PAGAMENTO_RECEBIDO ? 'pagamento-recebido' : undefined

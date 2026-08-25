@@ -224,11 +224,12 @@ describe('fatura_itau_cc — parsear()', () => {
     expect(estorno?.valor).toBeCloseTo(178.89)
   })
 
-  it('TL-T13-04: com o rótulo Vencimento presente na fixture compartilhada, uma compra de mês anterior ao vencimento (parcela antiga, T5) recebe a data de vencimento, não a data de compra crua', () => {
+  it('TL-T13-04/TL-T14-07: com o rótulo Vencimento presente na fixture compartilhada, uma compra do mês imediatamente anterior ao vencimento (ciclo do cartão, T14) preserva a data real de compra', () => {
     // Vencimento na fixture: 2026-07-10 (bloco "Vencimento"/serial em I9/I10).
-    // Compra 'Compra Supermercado Alfa': serial 46177 = 2026-06-04, mês anterior ao vencimento.
+    // Compra 'Compra Supermercado Alfa': serial 46177 = 2026-06-04, mês imediatamente anterior ao
+    // vencimento (2026-06 é o ciclo de uma fatura que vence em 2026-07) — preserva a data real.
     const compra = lancamentosDaFixture().find((l) => l.transcricao === 'Compra Supermercado Alfa')
-    expect(compra?.data).toBe('2026-07-10')
+    expect(compra?.data).toBe('2026-06-04')
   })
 
   it('preenche Descricao com o texto de Parcelamento quando presente', () => {
@@ -353,23 +354,59 @@ describe('fatura_itau_cc — parsear() — regra de data para parcelas antigas (
     expect(lancamento.data).toBe('2026-08-05')
   })
 
-  it('parcela antiga com vencimento informado no arquivo recebe a data de vencimento, não a data de compra', () => {
-    // Compra em 15/07/2026 (serial 46218) — mês anterior ao vencimento (2026-08).
+  it('TL-T14-02: compra no mês imediatamente anterior ao vencimento (ciclo do cartão) preserva a data de compra, não recebe o vencimento', () => {
+    // Compra em 15/07/2026 (serial 46218) — mês imediatamente anterior ao vencimento (2026-08):
+    // é o ciclo normal de uma fatura que fecha em julho e vence em agosto.
     const bytes = construirXlsx('Fatura 08-26', [
       ...construirBlocoVencimento(2, 'I', SERIAL_VENCIMENTO_AGOSTO),
       construirLinhaCabecalho(5),
       construirLinhaDadoSerial(6, 46218, 'Compra Loja Beta'),
     ])
     const [lancamento] = parsear(bytes).lancamentos
+    expect(lancamento.data).toBe('2026-07-15')
+  })
+
+  it('TL-T14-03: compra mais antiga que o mês imediatamente anterior ao vencimento recebe a data de vencimento', () => {
+    // Compra em 10/06/2026 (serial 46183) — dois meses antes do vencimento (2026-08): parcela
+    // genuinamente antiga, fora do ciclo (mês do vencimento ou o imediatamente anterior).
+    const bytes = construirXlsx('Fatura 08-26', [
+      ...construirBlocoVencimento(2, 'I', SERIAL_VENCIMENTO_AGOSTO),
+      construirLinhaCabecalho(5),
+      construirLinhaDadoSerial(6, 46183, 'Compra Loja Beta'),
+    ])
+    const [lancamento] = parsear(bytes).lancamentos
     expect(lancamento.data).toBe('2026-08-20')
   })
 
-  it('parcela antiga sem vencimento no arquivo cai no mês de referência escolhido na tela', () => {
+  it('TL-T14-04: virada de ano — compra em dezembro com vencimento em janeiro do ano seguinte é o mês imediatamente anterior (ciclo) e preserva a data de compra', () => {
+    // Vencimento em 05/01/2027 (serial 46392); compra em 20/12/2026 (serial 46376).
+    const SERIAL_VENCIMENTO_JANEIRO_2027 = 46392
+    const bytes = construirXlsx('Fatura 01-27', [
+      ...construirBlocoVencimento(2, 'I', SERIAL_VENCIMENTO_JANEIRO_2027),
+      construirLinhaCabecalho(5),
+      construirLinhaDadoSerial(6, 46376, 'Compra Loja Virada'),
+    ])
+    const [lancamento] = parsear(bytes).lancamentos
+    expect(lancamento.data).toBe('2026-12-20')
+  })
+
+  it('TL-T14-05: fallback por mesReferencia — compra no mês imediatamente anterior a mesReferencia preserva a data de compra', () => {
     // Sem bloco de Vencimento no arquivo. Compra em 15/07/2026 (serial 46218);
-    // mesReferencia='2026-08' é passado como segundo argumento de parsear().
+    // mesReferencia='2026-08' é o mês imediatamente seguinte — ciclo, preserva a data real.
     const bytes = construirXlsx('Fatura 08-26', [
       construirLinhaCabecalho(5),
       construirLinhaDadoSerial(6, 46218, 'Compra Loja Gama'),
+    ])
+    const [lancamento] = parsear(bytes, '2026-08').lancamentos
+    expect(lancamento.data).toBe('2026-07-15')
+  })
+
+  it('TL-T14-06: fallback por mesReferencia — compra mais antiga que o mês imediatamente anterior cai no mês de referência escolhido na tela', () => {
+    // Sem bloco de Vencimento no arquivo. Compra em 10/06/2026 (serial 46183) — dois meses antes
+    // de mesReferencia='2026-08'.
+    const bytes = construirXlsx('Fatura 08-26', [
+      construirLinhaCabecalho(5),
+      construirLinhaDadoSerial(6, 46183, 'Compra Loja Gama'),
     ])
     const [lancamento] = parsear(bytes, '2026-08').lancamentos
     expect(lancamento.data).toBe('2026-08-01')
