@@ -299,6 +299,42 @@ describe('fatura_itau_cc — parsear()', () => {
     expect(sheetXml).toContain('<c r="I9" t="inlineStr"><is><t>Vencimento</t></is></c>')
     expect(sheetXml).toContain('<c r="I10"><v>46213</v></c>')
   })
+
+  it('TL-T12-01: soma dos lançamentos importados (excl. pagamento) é igual, em módulo, ao SUBTOTAL(9,E16:E44) calculado a partir da mesma fixture (F11)', () => {
+    // Referência independente: soma "à mão" das células brutas E16:E44 do XML
+    // da própria fixture — exatamente o intervalo que a fórmula
+    // `SUBTOTAL(9,E16:E44)` do banco soma (linha 15, o pagamento, fica FORA
+    // do intervalo, então já exclui o pagamento por construção). Não lemos o
+    // valor cacheado da célula E46 (que guarda a fórmula, não um número
+    // pronto — a própria fixture só chega a ter esse `<v>` porque o Excel
+    // recalculou ao salvar; um XLSX gerado programaticamente pode nem trazer
+    // esse cache): a soma é derivada das mesmas células que a fórmula do
+    // banco soma, não do resultado que ela já publicou.
+    const bytes = lerFixtureBytes('./fixtures/fatura_itau_cc_sintetica.xlsx')
+    const zip = unzipSync(bytes) as Record<string, Uint8Array>
+    const sheetXml = new TextDecoder().decode(zip['xl/worksheets/sheet1.xml'])
+
+    let subtotalReferencia = 0
+    for (let linha = 16; linha <= 44; linha++) {
+      const match = sheetXml.match(new RegExp(`<c r="E${linha}"><v>(-?[0-9.]+)</v></c>`))
+      if (match) subtotalReferencia += Number(match[1])
+    }
+    // Sanidade: a soma derivada bate com o valor cacheado da própria fórmula
+    // do banco na fixture (célula E46), confirmando que a leitura acima
+    // reproduz fielmente o intervalo somado por `SUBTOTAL(9,E16:E44)`.
+    expect(subtotalReferencia).toBeCloseTo(967.48)
+
+    // Sinal invertido (F7): o app guarda valor negativo para compra/positivo
+    // para estorno — o oposto do arquivo. Por isso a comparação com o
+    // SUBTOTAL (que soma os valores como estão no arquivo) é feita em
+    // módulo, e a exclusão do pagamento é feita explicitamente por
+    // `origemEspecial`, não por posição de linha (T6).
+    const somaLancamentosApp = parsear(bytes)
+      .lancamentos.filter((l) => l.origemEspecial !== 'pagamento-recebido')
+      .reduce((acumulado, l) => acumulado + l.valor, 0)
+
+    expect(Math.abs(somaLancamentosApp)).toBeCloseTo(subtotalReferencia)
+  })
 })
 
 // ---------------------------------------------------------------------------
