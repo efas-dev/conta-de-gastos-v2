@@ -1,4 +1,4 @@
-// ADR: see spec/inspecao-proposta-conciliacao.adr.md
+// ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 
 /**
  * Teste de regressão para a Task T11 do spec `inspecao-proposta-conciliacao`.

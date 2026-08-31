@@ -1,5 +1,5 @@
-// ADR: see spec/fundacao-operacoes.adr.md
-// ADR: see spec/fatura-itau-xlsx.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fatura-itau-xlsx.adr.md
 import {
   produzirLancamentos,
   gerarAPartirDosRevisados,

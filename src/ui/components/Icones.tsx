@@ -1,4 +1,4 @@
-// ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
 
 /**
  * Ícones inline (SVG) usados por `TelaImportacao`/`TelaRevisao` — coerentes com

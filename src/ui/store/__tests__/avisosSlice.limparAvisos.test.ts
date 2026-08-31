@@ -1,4 +1,4 @@
-// ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
 
 import { describe, expect, it } from 'vitest'
 import { criarAvisosSlice, type StoreComAvisos } from '../avisosSlice'

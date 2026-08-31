@@ -1,5 +1,5 @@
 // ADR: see Docs/specs/dominio-transferencia-investimento-iniciais.adr.md
-// ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
 
 import type { Aviso, Lancamento } from '../types'
 

@@ -1,5 +1,5 @@
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
-// ADR: see spec/vr-despesas.adr.md
+// ADR: see Docs/specs/vr-despesas.adr.md
 
 import { useAppStore } from '../store/appStore'
 import { selecionarContagemPendentes } from '../store/avisosSlice'

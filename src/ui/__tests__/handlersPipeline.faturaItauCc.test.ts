@@ -1,4 +1,4 @@
-// ADR: see spec/fatura-itau-xlsx.adr.md
+// ADR: see Docs/specs/fatura-itau-xlsx.adr.md
 
 /**
  * Task T9 (spec `fatura-itau-xlsx`) — `handlersPipeline.handleProduzir` deixa de retornar

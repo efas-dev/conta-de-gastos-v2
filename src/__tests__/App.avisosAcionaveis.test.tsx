@@ -1,5 +1,5 @@
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
-// ADR: see spec/inspecao-proposta-conciliacao.adr.md
+// ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 
 /**
  * Testes de integração para T6 (CentralDeAvisos conectada ao slice em App.tsx) e

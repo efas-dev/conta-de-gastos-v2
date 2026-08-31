@@ -1,4 +1,4 @@
-// ADR: see spec/inspecao-proposta-conciliacao.adr.md
+// ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 
 /**
  * Teste de integração — Task T5 (prova final, spec `inspecao-proposta-conciliacao`).

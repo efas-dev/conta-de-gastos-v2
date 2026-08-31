@@ -1,4 +1,4 @@
-// ADR: see spec/vr-despesas.adr.md
+// ADR: see Docs/specs/vr-despesas.adr.md
 
 /**
  * Prova E2E — Task 9 do ADR `vr-despesas`: a jornada completa do registro manual de despesas

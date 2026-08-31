@@ -2,8 +2,8 @@
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
-// ADR: see spec/fundacao-operacoes.adr.md
-// ADR: see spec/fatura-itau-xlsx.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fatura-itau-xlsx.adr.md
 
 import type { Lancamento, DicEntry, Aviso, ResultadoParse } from '../types'
 import { detectar } from '../parsers/index'

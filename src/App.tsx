@@ -5,7 +5,7 @@
 // ADR: see Docs/specs/colinha-naturezas.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
-// ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
 
 import { useRef, useState } from 'react'
 import { useAppStore } from './ui/store/appStore'

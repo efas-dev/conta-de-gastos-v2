@@ -1,4 +1,4 @@
-// ADR: see spec/rendimentos.adr.md
+// ADR: see Docs/specs/rendimentos.adr.md
 
 /**
  * Prova E2E — Task 13 do ADR/spec `rendimentos` (F8): a jornada completa do lançamento de

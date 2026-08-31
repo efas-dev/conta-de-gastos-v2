@@ -1,4 +1,4 @@
-// ADR: see spec/fatura-itau-xlsx.adr.md
+// ADR: see Docs/specs/fatura-itau-xlsx.adr.md
 
 import type { Lancamento, ResultadoParse } from '../types'
 import { lerCelulas } from '../excel/celulas/leitorCelulas'

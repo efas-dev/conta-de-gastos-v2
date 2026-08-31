@@ -1,8 +1,8 @@
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
-// ADR: see spec/vr-despesas.adr.md
-// ADR: see spec/rendimentos.adr.md
+// ADR: see Docs/specs/vr-despesas.adr.md
+// ADR: see Docs/specs/rendimentos.adr.md
 // ADR: see Docs/specs/patches-ui-ux.adr.md
 
 import { useState, type KeyboardEvent } from 'react'

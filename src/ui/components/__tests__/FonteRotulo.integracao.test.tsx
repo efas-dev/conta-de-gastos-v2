@@ -1,4 +1,4 @@
-// ADR: see spec/conciliacao-robusta.adr.md
+// ADR: see Docs/specs/conciliacao-robusta.adr.md
 
 import { describe, it, expect } from 'vitest'
 import { render, screen } from '@testing-library/react'

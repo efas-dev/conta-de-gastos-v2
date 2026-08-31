@@ -1,4 +1,4 @@
-// ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
 
 import { describe, it, expect, vi } from 'vitest'

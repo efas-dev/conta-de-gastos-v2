@@ -1,4 +1,4 @@
-// ADR: see spec/fatura-itau-xlsx.adr.md
+// ADR: see Docs/specs/fatura-itau-xlsx.adr.md
 
 /**
  * Prova E2E — Task T12 desta spec (`fatura-itau-xlsx`), quarto item da sua

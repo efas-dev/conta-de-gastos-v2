@@ -1,4 +1,4 @@
-// ADR: see spec/rendimentos.adr.md
+// ADR: see Docs/specs/rendimentos.adr.md
 
 import { describe, expect, it } from 'vitest'
 import { zipSync, strToU8 } from 'fflate'

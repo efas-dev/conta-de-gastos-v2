@@ -1,4 +1,4 @@
-// ADR: see spec/fatura-itau-xlsx.adr.md
+// ADR: see Docs/specs/fatura-itau-xlsx.adr.md
 
 import type { ResultadoParse } from '../types'
 import { aceita as aceitaFaturaItauCc, parsear as parsearFaturaItauCc } from './fatura_itau_cc'

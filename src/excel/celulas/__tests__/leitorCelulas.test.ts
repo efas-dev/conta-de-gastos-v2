@@ -1,4 +1,4 @@
-// ADR: see spec/fatura-itau-xlsx.adr.md
+// ADR: see Docs/specs/fatura-itau-xlsx.adr.md
 
 import { describe, it, expect } from 'vitest'
 import { zipSync, strToU8 } from 'fflate'
