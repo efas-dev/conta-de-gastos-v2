@@ -467,15 +467,29 @@ export function calcularTemaLinhaComInspecao(
  * ou quando o índice-âncora não está (ainda) presente no mapa — o chamador é responsável por
  * revelar a linha antes de rolar (`aplicarRevelacaoInspecao`). Estendido a `'valor-pendente'`/
  * `'pagamento-recebido'` na Task T8 (revisão de D11 — essas origens agora têm linha real).
+ *
+ * `alvo[0]` obedece às duas convenções de `ORIGENS_ALVO_POR_ID`: para `transferencia-interna` e
+ * `investimento` ele é `Lancamento.id` e precisa da tradução id→índice que `indicesEnvolvidos`
+ * já fazia para o realce. Sem ela, o id casava por acidente com a POSIÇÃO de outra linha (os
+ * ids são seriais a partir de 1) e o scroll ia para a linha errada.
  */
 export function calcularLinhaAncoraVisual(
   mapaIndiceVisualReal: number[],
   aviso: Aviso | undefined,
+  lancamentos: Lancamento[] = [],
 ): number | undefined {
   if (!aviso || !ORIGENS_COM_EFEITO_GRID.has(aviso.origem) || aviso.alvo.length === 0) {
     return undefined
   }
-  const indiceRealAncora = Number(aviso.alvo[0])
+  let indiceRealAncora: number | undefined
+  if (ORIGENS_ALVO_POR_ID.has(aviso.origem)) {
+    const posicaoPorId = new Map(lancamentos.map((l, i) => [String(l.id), i]))
+    indiceRealAncora = posicaoPorId.get(aviso.alvo[0])
+  } else {
+    indiceRealAncora = Number(aviso.alvo[0])
+  }
+  if (indiceRealAncora === undefined) return undefined
+
   const posicaoVisual = mapaIndiceVisualReal.indexOf(indiceRealAncora)
   return posicaoVisual >= 0 ? posicaoVisual : undefined
 }
@@ -613,10 +627,10 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   // Auto-scroll até a linha-âncora ("sai") ao entrar em inspeção de conciliação (D3).
   const dataEditorRef = useRef<DataEditorRef | null>(null)
   useEffect(() => {
-    const linhaAncora = calcularLinhaAncoraVisual(mapaExibidoReal, avisoEmInspecao)
+    const linhaAncora = calcularLinhaAncoraVisual(mapaExibidoReal, avisoEmInspecao, lancamentos)
     if (linhaAncora === undefined) return
     dataEditorRef.current?.scrollTo(0, linhaAncora, 'vertical')
-  }, [mapaExibidoReal, avisoEmInspecao])
+  }, [mapaExibidoReal, avisoEmInspecao, lancamentos])
 
   // -----------------------------------------------------------------
   // Estado local de larguras de coluna — D16/D17/D18 do ADR grid-ux-filtros

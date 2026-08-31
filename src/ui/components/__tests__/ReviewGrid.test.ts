@@ -493,6 +493,49 @@ describe('calcularLinhaAncoraVisual', () => {
     const aviso = avisoConciliacaoFake({ origem: 'outra-origem', alvo: ['2'] })
     expect(calcularLinhaAncoraVisual([0, 1, 2], aviso)).toBeUndefined()
   })
+
+  it('TL-39a-1: origem por id traduz o alvo antes de procurar a posição visual', () => {
+    // `transferencia-interna` grava `Lancamento.id` em `alvo` (ver ORIGENS_ALVO_POR_ID). Sem a
+    // tradução, `Number('7')` casaria com a POSIÇÃO 7 e o scroll iria para a linha errada.
+    const lancamentos = [
+      lancamentoFake({ id: 5, transcricao: 'Linha A' }), // índice real 0
+      lancamentoFake({ id: 7, transcricao: 'Transferência' }), // índice real 1
+      lancamentoFake({ id: 9, transcricao: 'Linha C' }), // índice real 2
+    ]
+    const aviso = avisoConciliacaoFake({ origem: 'transferencia-interna', alvo: ['7'] })
+
+    expect(calcularLinhaAncoraVisual([0, 1, 2], aviso, lancamentos)).toBe(1)
+  })
+
+  it('TL-39a-2: origem por id continua achando a linha sob ordenação ativa', () => {
+    const lancamentos = [
+      lancamentoFake({ id: 5, transcricao: 'Linha A' }),
+      lancamentoFake({ id: 7, transcricao: 'Aplicação' }),
+      lancamentoFake({ id: 9, transcricao: 'Linha C' }),
+    ]
+    const aviso = avisoConciliacaoFake({ origem: 'investimento', alvo: ['7'] })
+
+    // Ordenação ativa: posição visual 0 -> índice real 2, posição 2 -> índice real 1.
+    expect(calcularLinhaAncoraVisual([2, 0, 1], aviso, lancamentos)).toBe(2)
+  })
+
+  it('TL-39a-3: origem por id sem lançamento correspondente devolve undefined', () => {
+    const lancamentos = [lancamentoFake({ id: 5, transcricao: 'Linha A' })]
+    const aviso = avisoConciliacaoFake({ origem: 'investimento', alvo: ['404'] })
+
+    expect(calcularLinhaAncoraVisual([0], aviso, lancamentos)).toBeUndefined()
+  })
+
+  it('TL-39a-4: origem posicional ignora os lançamentos e segue usando o índice', () => {
+    const lancamentos = [
+      lancamentoFake({ id: 5, transcricao: 'Linha A' }),
+      lancamentoFake({ id: 7, transcricao: 'Linha B' }),
+      lancamentoFake({ id: 9, transcricao: 'Pagamento' }),
+    ]
+    const aviso = avisoConciliacaoFake({ alvo: ['2'] })
+
+    expect(calcularLinhaAncoraVisual([0, 1, 2], aviso, lancamentos)).toBe(2)
+  })
 })
 
 // ---------------------------------------------------------------------------
