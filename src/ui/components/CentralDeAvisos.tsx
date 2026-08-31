@@ -57,6 +57,7 @@ export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
   const avisoEmInspecao = useAppStore((s) => s.avisosAcionaveis.avisoEmInspecao)
   const entrarInspecao = useAppStore((s) => s.entrarInspecao)
   const sairInspecao = useAppStore((s) => s.sairInspecao)
+  const focarInspecao = useAppStore((s) => s.focarInspecao)
 
   // Estado local do painel — `formVRAberto` (Task 7): abre/fecha o `FormVR` no clique do card do
   // aviso `origem==='vr'`. Deliberadamente NÃO vai para o store (invariante "etapa da jornada é
@@ -105,6 +106,7 @@ export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
                 emInspecao={avisoEmInspecao === aviso.id}
                 entrarInspecao={entrarInspecao}
                 sairInspecao={sairInspecao}
+                focarInspecao={focarInspecao}
                 formVRAberto={formVRAberto}
                 alternarFormVR={() => setFormVRAberto((atual) => !atual)}
                 formRendimentosAberto={formRendimentosAberto}
@@ -152,6 +154,8 @@ interface CartaoPropostaProps extends AcoesPropostaProps {
   emInspecao: boolean
   entrarInspecao: (id: string) => void
   sairInspecao: () => void
+  /** Pede foco na linha-âncora sem sair da inspeção — botão "Ir para a linha" (item 39.1). */
+  focarInspecao: () => void
   /**
    * `true` quando o `FormVR` está aberto neste painel — só tem efeito visual/de renderização para
    * o aviso `origem==='vr'` (Task 7, ADR `vr-despesas`). Estado local de `CentralDeAvisos`, não do
@@ -193,6 +197,7 @@ function CartaoProposta({
   emInspecao,
   entrarInspecao,
   sairInspecao,
+  focarInspecao,
   formVRAberto,
   alternarFormVR,
   formRendimentosAberto,
@@ -264,6 +269,19 @@ function CartaoProposta({
             <span aria-label="Papel: fica">Fica: {aviso.permanece.length} lançamento(s)</span>
           )}
           {aviso.resumo && <p aria-label="Resumo da regra" style={{ margin: 0 }}>{aviso.resumo}</p>}
+          {/* O card é um toggle: re-clicá-lo SAI da inspeção. Depois de rolar a grid à mão não
+              havia como voltar à linha sem perder o realce — daí o botão dedicado, que só pede
+              foco (`stopPropagation` impede o toggle do card). Resíduo do item 39.1 do TODO. */}
+          <button
+            type="button"
+            className="btn sec mini"
+            onClick={(e) => {
+              e.stopPropagation()
+              focarInspecao()
+            }}
+          >
+            Ir para a linha
+          </button>
         </div>
       )}
 

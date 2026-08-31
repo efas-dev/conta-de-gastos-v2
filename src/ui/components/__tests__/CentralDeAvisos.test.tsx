@@ -29,6 +29,7 @@ const mockEntrarInspecao = vi.fn((id: string) => {
 const mockSairInspecao = vi.fn(() => {
   avisoEmInspecaoMock = null
 })
+const mockFocarInspecao = vi.fn()
 
 let avisosMock: Aviso[] = []
 let avisoEmInspecaoMock: string | null = null
@@ -44,6 +45,7 @@ vi.mock('../../store/appStore', () => ({
       dispensar: mockDispensar,
       entrarInspecao: mockEntrarInspecao,
       sairInspecao: mockSairInspecao,
+      focarInspecao: mockFocarInspecao,
     }),
 }))
 
@@ -85,6 +87,7 @@ beforeEach(() => {
   mockSairInspecao.mockReset().mockImplementation(() => {
     avisoEmInspecaoMock = null
   })
+  mockFocarInspecao.mockReset()
   spyGerarLancamentosVR.mockClear()
   spyGerarLancamentoRendimento.mockClear()
 })
@@ -253,6 +256,42 @@ describe('CentralDeAvisos — modo inspeção (TL-10, TL-11)', () => {
     fireEvent.click(screen.getByText('Fatura conciliável com pagamento do extrato.'))
 
     expect(mockSairInspecao).toHaveBeenCalled()
+    expect(mockEntrarInspecao).not.toHaveBeenCalled()
+  })
+
+  /**
+   * "Ir para a linha" (resíduo do item 39.1 do TODO). O card é um TOGGLE: clicar nele de novo
+   * SAI da inspeção, então não havia como pedir o scroll outra vez depois de rolar a grid à mão
+   * sem antes perder o realce. O botão dedicado pede foco sem mexer no estado de inspeção.
+   *
+   * TL-39c-1: card em inspeção mostra o botão
+   * TL-39c-2: card fora de inspeção não mostra
+   * TL-39c-3: clicar chama focarInspecao e NÃO sai da inspeção (stopPropagation)
+   */
+  it('TL-39c-1: card em inspeção mostra o botão "Ir para a linha"', () => {
+    avisosMock = [proposta({ id: 'prop-1' })]
+    avisoEmInspecaoMock = 'prop-1'
+    render(<CentralDeAvisos />)
+
+    expect(screen.getByRole('button', { name: /ir para a linha/i })).toBeInTheDocument()
+  })
+
+  it('TL-39c-2: card fora de inspeção não mostra o botão "Ir para a linha"', () => {
+    avisosMock = [proposta({ id: 'prop-1' })]
+    render(<CentralDeAvisos />)
+
+    expect(screen.queryByRole('button', { name: /ir para a linha/i })).not.toBeInTheDocument()
+  })
+
+  it('TL-39c-3: clicar em "Ir para a linha" chama focarInspecao sem sair da inspeção', () => {
+    avisosMock = [proposta({ id: 'prop-1' })]
+    avisoEmInspecaoMock = 'prop-1'
+    render(<CentralDeAvisos />)
+
+    fireEvent.click(screen.getByRole('button', { name: /ir para a linha/i }))
+
+    expect(mockFocarInspecao).toHaveBeenCalledTimes(1)
+    expect(mockSairInspecao).not.toHaveBeenCalled()
     expect(mockEntrarInspecao).not.toHaveBeenCalled()
   })
 

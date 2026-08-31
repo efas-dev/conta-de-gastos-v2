@@ -98,7 +98,53 @@ describe('avisosSlice', () => {
         removidos: {},
         adicionados: {},
         avisoEmInspecao: null,
+        focoInspecao: 0,
       })
+    })
+  })
+
+  /**
+   * Foco da inspeção (resíduo do item 39.1 do TODO). O auto-scroll da grid é um efeito que
+   * depende do estado; pedir foco na MESMA linha que já está em inspeção não muda estado nenhum
+   * e por isso não re-dispara o scroll. `focoInspecao` é um contador monotônico: cada pedido de
+   * foco muda o estado, ainda que o aviso inspecionado seja o mesmo.
+   *
+   * TL-39b-1: entrarInspecao incrementa o foco (entrar já é um pedido de foco)
+   * TL-39b-2: focarInspecao incrementa sem mexer no aviso inspecionado
+   * TL-39b-3: focarInspecao sem inspeção ativa é no-op
+   * TL-39b-4: sairInspecao não incrementa (não há para onde rolar)
+   */
+  describe('focoInspecao (resíduo do item 39.1)', () => {
+    it('TL-39b-1: entrarInspecao incrementa o contador de foco', () => {
+      const { get, acoes } = criarStoreDeTeste()
+      expect(get().avisosAcionaveis.focoInspecao).toBe(0)
+      acoes.entrarInspecao('a1')
+      expect(get().avisosAcionaveis.focoInspecao).toBe(1)
+      acoes.entrarInspecao('a2')
+      expect(get().avisosAcionaveis.focoInspecao).toBe(2)
+    })
+
+    it('TL-39b-2: focarInspecao incrementa o foco sem trocar o aviso inspecionado', () => {
+      const { get, acoes } = criarStoreDeTeste()
+      acoes.entrarInspecao('a1')
+      acoes.focarInspecao()
+      expect(get().avisosAcionaveis.focoInspecao).toBe(2)
+      expect(get().avisosAcionaveis.avisoEmInspecao).toBe('a1')
+    })
+
+    it('TL-39b-3: focarInspecao sem inspeção ativa não faz nada', () => {
+      const { get, acoes } = criarStoreDeTeste()
+      acoes.focarInspecao()
+      expect(get().avisosAcionaveis.focoInspecao).toBe(0)
+      expect(get().avisosAcionaveis.avisoEmInspecao).toBeNull()
+    })
+
+    it('TL-39b-4: sairInspecao não incrementa o foco', () => {
+      const { get, acoes } = criarStoreDeTeste()
+      acoes.entrarInspecao('a1')
+      acoes.sairInspecao()
+      expect(get().avisosAcionaveis.focoInspecao).toBe(1)
+      expect(get().avisosAcionaveis.avisoEmInspecao).toBeNull()
     })
   })
 
