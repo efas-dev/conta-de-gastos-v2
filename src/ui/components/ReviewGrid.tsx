@@ -261,6 +261,16 @@ export const TEMA_INSPECAO_FICA = criarTemaLinha('--insp-fica-bg')
  * de superfície clara com viés de acento) — decisão local registrada no
  * log de iteração da Task T2.
  */
+/**
+ * Altura da linha e do cabeçalho da grid, em px (item 45 do TODO).
+ *
+ * Alvo: a densidade de uma planilha (Google Sheets usa ~21-30px), não a de um formulário. As
+ * duas altura vêm juntas porque o tema de fonte/padding em `criarTemaGrid` foi calibrado para
+ * elas — mexer numa sem a outra descasa o respiro vertical do texto.
+ */
+const ALTURA_LINHA = 30
+const ALTURA_CABECALHO = 30
+
 function criarTemaGrid() {
   return {
     accentColor: lerVarCSS('--verde'),
@@ -279,10 +289,12 @@ function criarTemaGrid() {
     horizontalBorderColor: lerVarCSS('--borda-linha'),
     drilldownBorder: lerVarCSS('--borda-3'),
     fontFamily: "'Manrope', system-ui, sans-serif",
-    baseFontStyle: '600 14px',
-    headerFontStyle: '700 12px',
-    editorFontSize: '14px',
-    cellHorizontalPadding: 14,
+    /* Densidade estilo Google Sheets (item 45): fonte e respiro menores acompanham a linha mais
+       baixa de `ALTURA_LINHA`, para caber mais lançamentos na tela sem perder legibilidade. */
+    baseFontStyle: '500 13px',
+    headerFontStyle: '700 11px',
+    editorFontSize: '13px',
+    cellHorizontalPadding: 9,
     headerBottomBorderColor: lerVarCSS('--borda'),
   }
 }
@@ -1184,14 +1196,17 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
           drawCell={drawCell}
           gridSelection={gridSelection}
           onGridSelectionChange={onGridSelectionChange}
-          rowMarkers="number"
+          /* `clickable-number`: o clique no número seleciona a linha inteira, como no Sheets
+             (item 38). Com `"number"` o Glide trata o marcador como decorativo e ignora o
+             clique. */
+          rowMarkers="clickable-number"
           smoothScrollX
           smoothScrollY
           width="100%"
           height="100%"
           theme={temaGrid}
-          headerHeight={38}
-          rowHeight={40}
+          headerHeight={ALTURA_CABECALHO}
+          rowHeight={ALTURA_LINHA}
           /* Copiar (Ctrl/Cmd+C) usa getCellsForSelection; colar (Ctrl/Cmd+V) via onPaste
              customizado, que preenche TODAS as células selecionadas (estilo Sheets). */
           getCellsForSelection={true}
@@ -1220,6 +1235,10 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
             selectColumn: true,
             copy: true,
             paste: true,
+            /* Ctrl/Cmd+F abre a busca nativa do Glide (item 43). Vem desligado por default; o
+               Glide dá preventDefault no atalho, então a busca do navegador — que só enxerga as
+               linhas renderizadas pelo virtualizador — não rouba a tecla. */
+            search: true,
             /* F2 abre a edição da célula, além do default (Espaço/Enter/Shift+Enter). */
             activateCell: ' |Enter|shift+Enter|F2',
           }}
