@@ -59,7 +59,7 @@ export function PainelLateral({ aba, setAba, naturezas, fechavel = false, mesRef
           className={'aba' + (aba === 'avisos' ? ' on' : '')}
           onClick={() => setAba('avisos')}
         >
-          Avisos
+          Sugestões
           {contagemPendentes > 0 && (
             <span
               className="badge inline"

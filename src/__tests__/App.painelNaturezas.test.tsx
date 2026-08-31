@@ -106,9 +106,9 @@ describe('T5/T11 — integração PainelNaturezas + App.tsx (botão "Naturezas")
     }
 
     // Caso concreto: a descrição de VR foi preenchida no Modelo e precisa chegar à UI.
-    expect(ricas.some((n) => n.sigla === 'VR' && n.descricao === 'Materiais de escritório')).toBe(
-      true,
-    )
+    expect(
+      ricas.some((n) => n.sigla === 'VR' && n.descricao === 'Materiais de escritório, Farmácia da Casa'),
+    ).toBe(true)
   })
 
   // [TL-T5-2][unit] Botão "Naturezas" aparece quando naturezasRicas filtrado é não-vazio

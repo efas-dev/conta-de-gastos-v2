@@ -29,12 +29,15 @@ export const LIMIAR_REPLICACAO = 1
  * classificação (Natureza + Descrição) a elas.
  *
  * Regras:
- * - A linha-base precisa ter **Natureza** preenchida (é o que se replica).
+ * - A linha-base precisa ter **Natureza e Descrição** preenchidas — a sugestão
+ *   só aparece com a classificação completa. Propor logo no primeiro campo
+ *   interrompia o usuário no meio da digitação e replicaria uma Descrição
+ *   ainda vazia.
  * - Casamento por transcrição **normalizada** (`normalizarChave`).
  * - Alvos: linhas com a mesma chave e **Natureza vazia** (não sobrescreve
  *   classificações existentes; não inclui a própria base).
- * - Retorna `null` se a base não tem Natureza, a chave é vazia, ou há menos de
- *   `LIMIAR_REPLICACAO` alvos.
+ * - Retorna `null` se a base não tem Natureza ou Descrição, a chave é vazia, ou
+ *   há menos de `LIMIAR_REPLICACAO` alvos.
  *
  * Função pura — sem store, sem efeito colateral.
  */
@@ -43,7 +46,7 @@ export function detectarReplicacao(
   indiceBase: number,
 ): SugestaoReplicacao | null {
   const base = lancamentos[indiceBase]
-  if (!base || base.natureza.trim() === '') return null
+  if (!base || base.natureza.trim() === '' || base.descricao.trim() === '') return null
 
   const chave = normalizarChave(base.transcricao).trim()
   if (chave === '') return null

@@ -375,6 +375,46 @@ export function derivarContextoInspecao(
 }
 
 /**
+ * Folga vertical mínima (px) para o tooltip caber acima da célula. Abaixo disso ele vai para
+ * baixo, senão ficaria cortado no topo da janela.
+ */
+const ALTURA_TOOLTIP_FOLGA = 90
+
+/** Tooltip da coluna Transcrição: o texto integral e a âncora (a própria célula sob o cursor). */
+export interface TooltipTranscricao {
+  texto: string
+  /** Coordenadas de viewport da célula — Glide soma o `getBoundingClientRect()` do canvas. */
+  x: number
+  y: number
+  alturaCelula: number
+}
+
+/**
+ * Decide se o item sob o cursor rende tooltip e onde ancorá-lo.
+ *
+ * A Transcrição é a única coluna que trunca de verdade (texto longo do banco numa largura fixa) e
+ * é somente-leitura — não dá para abrir o editor e ler o resto. O tooltip cobre esse buraco.
+ *
+ * Retorna `null` fora da coluna Transcrição, no cabeçalho (`row < 0`), em linha inexistente, sem
+ * `bounds` (Glide não devolve âncora fora da área de células) ou com transcrição em branco.
+ *
+ * Função pura — a posição na tela vem só de `bounds`, sem tocar no DOM.
+ */
+export function derivarTooltipTranscricao(
+  location: readonly [number, number],
+  bounds: { x: number; y: number; width: number; height: number } | undefined,
+  lancamentos: Lancamento[],
+): TooltipTranscricao | null {
+  const [col, row] = location
+  if (col !== COL_TRANSCRICAO || row < 0 || bounds === undefined) return null
+
+  const texto = lancamentos[row]?.transcricao ?? ''
+  if (texto.trim() === '') return null
+
+  return { texto, x: bounds.x, y: bounds.y, alturaCelula: bounds.height }
+}
+
+/**
  * Índices reais em `lancamentos` de todas as linhas envolvidas na inspeção ativa — união de
  * `alvo` (sai) e `permanece` (fica). Vazio quando não há inspeção com efeito de grid ativa
  * (origem fora de `ORIGENS_COM_EFEITO_GRID`).
@@ -1102,6 +1142,17 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
     [lancamentosExibidos],
   )
 
+  // Tooltip da Transcrição: o texto integral da célula sob o cursor. Estado local e puramente
+  // visual — some junto com o hover, não entra no store.
+  const [tooltip, setTooltip] = useState<TooltipTranscricao | null>(null)
+
+  const onItemHovered = useCallback(
+    (args: { location: readonly [number, number]; bounds?: { x: number; y: number; width: number; height: number } }) => {
+      setTooltip(derivarTooltipTranscricao(args.location, args.bounds, lancamentosExibidos))
+    },
+    [lancamentosExibidos],
+  )
+
   // -----------------------------------------------------------------
   // Render
   // -----------------------------------------------------------------
@@ -1143,6 +1194,8 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
           provideEditor={provideEditor}
           onCellActivated={onCellActivated}
           onHeaderClicked={onHeaderClicked}
+          /* Tooltip da Transcrição (coluna somente-leitura que trunca o texto no canvas). */
+          onItemHovered={onItemHovered}
           rangeSelect="multi-rect"
           columnSelect="multi"
           rowSelect="multi"
@@ -1158,6 +1211,27 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
           }}
         />
       </div>
+
+      {/* Tooltip da Transcrição: `position: fixed` porque os `bounds` do Glide já vêm em
+          coordenadas de viewport (ele soma o `getBoundingClientRect()` do canvas). Ancora acima
+          da célula; quando não cabe (linha no topo da tela), desce para baixo dela.
+          `pointerEvents: none` para não roubar o hover da própria célula. */}
+      {tooltip !== null && (
+        <div
+          role="tooltip"
+          className="tooltip-transcricao"
+          style={{
+            left: tooltip.x,
+            top: tooltip.y,
+            transform:
+              tooltip.y > ALTURA_TOOLTIP_FOLGA
+                ? 'translateY(calc(-100% - 6px))'
+                : `translateY(${tooltip.alturaCelula + 6}px)`,
+          }}
+        >
+          {tooltip.texto}
+        </div>
+      )}
 
       {somaSelecao !== null && (
         <div className="rodape-soma">

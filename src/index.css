@@ -753,6 +753,26 @@ tr.insp-fica td.ro {
   width: 30px;
 }
 
+/* Tooltip da coluna Transcrição — o texto integral da célula sob o cursor, que o canvas
+   trunca. Posicionado por estilo inline (coordenadas de viewport vindas do Glide); aqui
+   ficam só a aparência e os limites de largura. */
+.tooltip-transcricao {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  max-width: min(520px, 90vw);
+  padding: 8px 11px;
+  border-radius: var(--raio-campo);
+  border: 1px solid var(--borda-3);
+  background: var(--texto);
+  color: var(--superficie);
+  box-shadow: var(--sombra-card);
+  font-size: 12.5px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .rodape-soma {
   display: flex;
   align-items: center;

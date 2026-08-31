@@ -168,7 +168,7 @@ describe('E2E — Task 7: import fatura+extrato → avisos → conciliação →
    * expandido. Mesmo padrão de `CentralDeAvisos.test.tsx`/`App.avisosAcionaveis.test.tsx`.
    */
   function abrirCentralDeAvisos(): void {
-    fireEvent.click(screen.getByRole('button', { name: /^avisos/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^sugestões/i }))
   }
 
   it('upload fatura+extrato sintéticos → proposta de valor pendente aparece na CentralDeAvisos', async () => {

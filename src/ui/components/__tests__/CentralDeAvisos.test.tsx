@@ -98,6 +98,16 @@ describe('CentralDeAvisos — lista vazia (TL-13, Task B3)', () => {
     expect(painelVazio).toBeInTheDocument()
     expect(painelVazio?.children).toHaveLength(2)
   })
+
+  it('o texto do estado vazio fala em "sugestão", não em "aviso"', () => {
+    avisosMock = []
+    const { container } = render(<CentralDeAvisos />)
+
+    const texto = container.querySelector('.painel-vazio')?.textContent ?? ''
+    expect(texto).toContain('Nenhuma sugestão pendente')
+    expect(texto).toMatch(/Novas sugestões aparecem aqui/)
+    expect(texto.toLowerCase()).not.toContain('aviso')
+  })
 })
 
 describe('CentralDeAvisos — conteúdo puro, sem toggle/overlay (TL-06, TL-12)', () => {
@@ -127,6 +137,26 @@ describe('CentralDeAvisos — rótulos e ações por estado de proposta (TL-07, 
     expect(botaoAplicar.className).toBe('btn pri mini')
     expect(screen.getByRole('button', { name: /dispensar/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /reverter/i })).toBeNull()
+  })
+
+  it('a barra de ações fica alinhada à direita, com "Dispensar" antes de "Aplicar"', () => {
+    avisosMock = [proposta({ estado: 'pendente' })]
+    const { container } = render(<CentralDeAvisos />)
+
+    const barra = container.querySelector('.card-aviso .acoes-aviso') as HTMLElement
+    expect(barra).toBeInTheDocument()
+    expect(barra).toHaveStyle({ justifyContent: 'flex-end' })
+
+    const rotulos = Array.from(barra.querySelectorAll('button')).map((b) => b.textContent)
+    expect(rotulos).toEqual(['Dispensar', 'Aplicar'])
+  })
+
+  it('a barra de ações do informativo também fica alinhada à direita', () => {
+    avisosMock = [informativo()]
+    const { container } = render(<CentralDeAvisos />)
+
+    const barra = container.querySelector('.card-aviso .acoes-aviso') as HTMLElement
+    expect(barra).toHaveStyle({ justifyContent: 'flex-end' })
   })
 
   it('clicar em "Aplicar" chama aplicar(id) com o id do aviso', () => {

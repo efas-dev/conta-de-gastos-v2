@@ -29,7 +29,7 @@ describe('detectarReplicacao', () => {
 
   it('TL-REP-2: não inclui linhas já classificadas nos alvos', () => {
     const lancs = [
-      L('RAIA DROGASIL SA', 'SA'),
+      L('RAIA DROGASIL SA', 'SA', 'Farmácia'),
       L('RAIA DROGASIL SA', 'AL'), // já classificada → não é alvo
       L('RAIA DROGASIL SA'), // alvo
     ]
@@ -52,12 +52,35 @@ describe('detectarReplicacao', () => {
   })
 
   it('TL-REP-5: sem nenhuma outra linha igual não classificada → null', () => {
-    const lancs = [L('RAIA DROGASIL SA', 'SA'), L('MERCADO')]
+    const lancs = [L('RAIA DROGASIL SA', 'SA', 'Farmácia'), L('MERCADO')]
     expect(detectarReplicacao(lancs, 0)).toBeNull()
   })
 
   it('TL-REP-6: transcrição vazia (chave vazia) não gera sugestão', () => {
-    const lancs = [L('', 'AL'), L('')]
+    const lancs = [L('', 'AL', 'Almoço'), L('')]
+    expect(detectarReplicacao(lancs, 0)).toBeNull()
+  })
+
+  it('TL-REP-7: base com Natureza mas sem Descrição ainda não gera sugestão', () => {
+    const lancs = [L('RAIA DROGASIL SA', 'SA'), L('RAIA DROGASIL SA')]
+    expect(detectarReplicacao(lancs, 0)).toBeNull()
+  })
+
+  it('TL-REP-8: base com Descrição mas sem Natureza não gera sugestão', () => {
+    const lancs = [L('RAIA DROGASIL SA', '', 'Farmácia'), L('RAIA DROGASIL SA')]
+    expect(detectarReplicacao(lancs, 0)).toBeNull()
+  })
+
+  it('TL-REP-9: sugestão só surge quando o segundo campo é preenchido', () => {
+    const soNatureza = [L('RAIA DROGASIL SA', 'SA'), L('RAIA DROGASIL SA')]
+    expect(detectarReplicacao(soNatureza, 0)).toBeNull()
+
+    const completa = [L('RAIA DROGASIL SA', 'SA', 'Farmácia'), L('RAIA DROGASIL SA')]
+    expect(detectarReplicacao(completa, 0)).not.toBeNull()
+  })
+
+  it('TL-REP-10: Descrição só com espaços em branco não conta como preenchida', () => {
+    const lancs = [L('RAIA DROGASIL SA', 'SA', '   '), L('RAIA DROGASIL SA')]
     expect(detectarReplicacao(lancs, 0)).toBeNull()
   })
 })

@@ -372,7 +372,7 @@ export function TelaImportacao({
                 style={{ marginTop: 14 }}
                 onClick={() => togglePainel('avisos')}
               >
-                Avisos
+                Sugestões
                 {contagemAvisosPendentes > 0 && (
                   <span className="badge">{contagemAvisosPendentes}</span>
                 )}

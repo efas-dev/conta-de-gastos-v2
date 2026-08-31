@@ -1077,9 +1077,28 @@ describe('sugestão de replicação (item 36)', () => {
   it('TLREP-INT-3: dispensarReplicacao limpa a sugestão sem tocar nas linhas', () => {
     semearTres()
     useAppStore.getState().editarCelula(0, 'natureza', 'SA')
+    useAppStore.getState().editarCelula(0, 'descricao', 'Farmácia')
     expect(useAppStore.getState().sugestaoReplicacao).not.toBeNull()
     useAppStore.getState().dispensarReplicacao()
     expect(useAppStore.getState().sugestaoReplicacao).toBeNull()
     expect(useAppStore.getState().lancamentos[1].natureza).toBe('')
+  })
+
+  it('TLREP-INT-4: preencher só a Natureza não gera sugestão — ela surge ao completar a Descrição', () => {
+    semearTres()
+    useAppStore.getState().editarCelula(0, 'natureza', 'SA')
+    expect(useAppStore.getState().sugestaoReplicacao).toBeNull()
+
+    useAppStore.getState().editarCelula(0, 'descricao', 'Farmácia')
+    expect(useAppStore.getState().sugestaoReplicacao).not.toBeNull()
+  })
+
+  it('TLREP-INT-5: preencher só a Descrição não gera sugestão — ela surge ao completar a Natureza', () => {
+    semearTres()
+    useAppStore.getState().editarCelula(0, 'descricao', 'Farmácia')
+    expect(useAppStore.getState().sugestaoReplicacao).toBeNull()
+
+    useAppStore.getState().editarCelula(0, 'natureza', 'SA')
+    expect(useAppStore.getState().sugestaoReplicacao).not.toBeNull()
   })
 })

@@ -118,6 +118,13 @@ linha certa da visão derivada); linha em branco nasce incompleta (interação c
 chips de incompletos e avisos); e o Glide Data Grid já expõe `onCellContextMenu`/seleção de
 linha — verificar o suporte nativo antes de customizar.
 
+**Emenda (2026-08-31):** além do menu de contexto, entregar os **atalhos de teclado do Google
+Sheets** para as mesmas ações — `Shift+Espaço` (selecionar linha inteira), `Ctrl+Espaço`
+(selecionar coluna inteira), `Ctrl+-` (excluir a linha selecionada) e `Ctrl++` (inserir linha
+em branco). Cuidados extras: os atalhos não podem disparar com célula em edição (o GhostEditor
+intercepta o teclado), `Ctrl+-`/`Ctrl++` colidem com o **zoom nativo do navegador** e exigem
+`preventDefault`, e cada ação continua sendo **1 mutação única** no undo/redo.
+
 ### 39. Navegar até as linhas relevantes (inspeção e incompletos) — achado da faxina 2026-08-16
 Hoje o app **aponta** para linhas mas não **leva** até elas. Dois sintomas do mesmo buraco:
 
@@ -155,6 +162,89 @@ quando a linha tem iniciais de outras pessoas (ex.: despesas rateadas da casa). 
 ligado, filtra por `iniciais === iniciais da sessão`; desligado, mantém o total geral.
 Decidir: estado default do switch e se o filtro do cartão sobre a grid (clique no cartão)
 acompanha o mesmo recorte.
+
+### 42. Bug: pagamento da fatura Nubank não concilia nem propõe remoção corretamente
+Reportado pelo usuário (2026-08-24): o **pagamento da fatura do Nubank** não está sendo
+conciliado nem virando proposta de remoção "de modo adequado". Sintoma a caracterizar melhor
+com dados reais antes de corrigir — não está claro se é **ausência** da proposta (o par
+fatura × extrato não é encontrado), **proposta errada** (casa o lançamento errado / valor
+errado) ou **ruído** (candidatos/ambiguidade demais, o débito conhecido do subset-sum).
+
+Contexto: a conciliação é o item **26**, entregue via `detectarConciliacao` e endurecida pela
+spec `conciliacao-robusta` (classificação de fonte por prefixo autoritativo + cross-check +
+candidatos como aviso). Pontos de partida: `src/dominio/deteccoes.ts`, o registry
+(`src/dominio/registry.ts:183`, origem `conciliacao`), `classificarFontePorPrefixo` em
+`src/dominio/mes.ts` e o parser da fatura Nubank. Investigar com reprodução no app rodando
+(dados de `data_sample/`), seguindo `/debug-sistematico` — sem fix sem causa raiz.
+
+### 43. Grid: busca com `Ctrl+F`
+Permitir **`Ctrl+F` na grid de revisão** para localizar texto nas células (caso típico: achar
+um lançamento pela transcrição no meio de centenas de linhas). Hoje não existe nada — o
+`Ctrl+F` cai na busca nativa do navegador, que só enxerga as linhas **renderizadas** pelo
+virtualizador do Glide e portanto não acha o que está fora da viewport. O Glide Data Grid já
+expõe busca nativa (`showSearch`/`onSearchClose`/`onSearchResultsChanged`) — verificar o
+suporte pronto antes de customizar. Decidir na spec: quais colunas entram na busca, se o
+resultado navega (n/N com setas, reusando o mecanismo do item 39) ou filtra, e o
+`preventDefault` do `Ctrl+F` do navegador. Parente dos itens 39 (navegar até a linha) e 38.
+
+### 44. Bug: app puxando o mês errado
+Reportado pelo usuário (2026-08-31): o app está **puxando o mês errado**. Falta caracterizar
+antes de corrigir — não está claro se o defeito é na **detecção antecipada do mês de
+referência** no upload (mês mais recente < corrente, item 7 / spec `mes-referencia-ui`), na
+**classificação fatura × extrato por prefixo** (`classificarFontePorPrefixo`,
+`src/dominio/mes.ts`, spec `conciliacao-robusta`), no **filtro de lançamentos do mês** ou na
+gravação de `B3` no export. Reproduzir no app rodando com `data_sample/`, anotando mês
+sugerido × mês esperado por fonte. Pode ter relação com o item 42 (conciliação da fatura
+Nubank), que também depende da classificação de fonte/mês.
+
+### 45. Layout da grid mais parecido com o do Google Sheets (células menores)
+A grid hoje usa `rowHeight={40}` e `headerHeight={38}` (`src/ui/components/ReviewGrid.tsx:1179`),
+o que deixa poucas linhas visíveis por tela e dá uma sensação de "formulário", não de planilha.
+Aproximar do **Google Sheets**: células mais baixas e compactas (densidade maior), tipografia e
+paddings proporcionais, para caber mais lançamentos na viewport. Cuidados: legibilidade dos
+valores e da transcrição na altura reduzida (interage com o item 14 — tooltip do texto
+truncado), alvo de clique/arraste ainda confortável (fill handle, resize de coluna, seleção de
+linha do item 38), e o realce do modo inspeção continuar visível. Decidir na spec: altura alvo,
+se vira preferência do usuário (compacto/confortável) ou valor fixo.
+
+### 46. Jornada de usuário mais intuitiva — induzir a ordem correta das etapas
+O app tem todas as peças, mas não **conduz** o usuário: ele precisa saber por conta própria o
+que fazer, em que ordem. A feature é transformar a sequência abaixo — hoje implícita — em
+jornada explícita e induzida pela UI (nos moldes do stepper do item 32/37, mas com o conteúdo
+real de cada etapa):
+
+1. **Importar os dois grupos de arquivos.** Na primeira tela, induzir o envio tanto do
+   **`.xlsx` gerado no mês anterior** (que traz o **saldo final do mês anterior** — `B5`,
+   `lerSaldoAnterior` — e o **dicionário** de lançamentos) quanto das **faturas e extratos do
+   mês de referência** atual. Hoje o input aceita tudo, mas nada diz ao usuário que o Excel do
+   mês passado é parte esperada do fluxo — quem não envia perde saldo inicial e classificação
+   automática sem saber. Interage com o item 22 (upload incremental) e o 37 (voltar à
+   importação).
+2. **Limpeza primeiro.** Na tela de revisão, induzir o usuário a resolver antes de tudo as
+   **propostas dos detectores** (registry em `src/dominio/registry.ts`): remover
+   aplicações/resgates (`investimento`), conciliar fatura × extrato (`conciliacao`),
+   transferência interna (`transferencia-interna`) e os casos especiais marcados pelo parser
+   via `origemEspecial` (`valor-pendente` e `pagamento-recebido`, `detectarPorOrigemEspecial`
+   em `src/dominio/deteccoes.ts:105`) — inclusive o caso do **Nubank**, em que o pagamento da
+   fatura vem duplicado pela própria fatura importada e precisa sair. Limpar antes evita
+   classificar linhas que vão ser removidas.
+3. **Classificar o que sobrou.** Induzir o usuário a zerar os **incompletos** (linha sem
+   natureza/descrição): a etapa só fecha quando o contador "X de Y classificados" bate. Depende
+   do item 39 (levar até as linhas incompletas, não só contá-las).
+4. **Lançamentos finais.** Induzir os dois lançamentos que **não vêm dos arquivos** e são
+   digitados pelo usuário: **despesas pagas com VR** (`detectarVR`, `src/dominio/vr.ts`, verbo
+   `adicionar` + `FormVR`) e **rendimentos** (`detectarRendimentos`,
+   `src/dominio/rendimentos.ts`, form de soma inline que zera a diferença contra o saldo). Hoje
+   os dois já são os **últimos avisos** da lista, por decisão de spec — a jornada deve tornar
+   essa posição visível como etapa, não como "mais dois cards no fim".
+5. **Exportar.** Só então induzir o **export do `.xlsx`**, idealmente com as etapas anteriores
+   sinalizadas como concluídas (e um aviso claro quando alguma não estiver).
+
+Decidir na spec: se as etapas viram degraus do stepper (retomando a pergunta das 6 etapas do
+item 32) ou seções ordenadas do painel de avisos; se a UI **bloqueia** ou apenas **sinaliza**
+etapa fora de ordem (a preferência do projeto tem sido nunca bloquear); qual é o critério de
+"etapa concluída" para cada uma; e como a jornada se comporta ao voltar para a importação
+(item 37) e ao carregar arquivos novos no meio do caminho (item 22).
 
 ---
 
