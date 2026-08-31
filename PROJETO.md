@@ -97,7 +97,7 @@ estado guardado — é sempre derivada do estado existente (ex.: há lançamento
 ## Injeção no Excel
 
 - `Modelo.xlsx` é **imutável**. O sistema escreve **somente**: `B2` (Iniciais da Configuração),
-  o corpo da `Tabela1` em **`A8:G503`**, e a aba `Dicionario`. Ajusta o `ref` da `Tabela1` ao nº de
+  `B3` (mês de referência), o corpo da `Tabela1` em **`A9:H504`**, e a aba `Dicionario`. Ajusta o `ref` da `Tabela1` ao nº de
   linhas. Tudo o mais (fórmulas `LET/REDUCE/LAMBDA/XLOOKUP`, totais, CF, estilos, tabelas) fica intacto.
 - A aba `Dicionario` já existe vazia no template → injeção é só escrever valores, sem cirurgia de OPC.
 - A aba `Naturezas` é **referência intocada** — alimenta fórmulas internas em células que o sistema nunca escreve.

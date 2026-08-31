@@ -29,7 +29,7 @@ Requer Node 18+.
 ```bash
 npm install
 npm run dev       # servidor de desenvolvimento (Vite)
-npm test          # suíte de testes (Vitest) — 1432 testes
+npm test          # suíte de testes (Vitest) — 1458 testes
 npm run build     # typecheck + build estático em dist/
 npm run preview   # serve o build de produção localmente
 ```
@@ -84,8 +84,8 @@ Os parsers são o único ponto que a comunidade precisa tocar. Cada um implement
 
 ## O modelo (`Modelo.xlsx`)
 
-O template é **imutável e sagrado**. O sistema escreve **somente** a célula `B2` (iniciais), o
-corpo da `Tabela1` (`A8:G503`) e a aba `Dicionario`. Fórmulas dinâmicas (`LET/REDUCE/LAMBDA/
+O template é **imutável e sagrado**. O sistema escreve **somente** as células `B2` (iniciais) e
+`B3` (mês de referência), o corpo da `Tabela1` (`A9:H504`) e a aba `Dicionario`. Fórmulas dinâmicas (`LET/REDUCE/LAMBDA/
 XLOOKUP`), formatação condicional, totais, estilos e a aba `Naturezas` (referência das fórmulas)
 ficam intactos. O próprio workbook **é o banco de dados** do dicionário — visível e legível na
 aba `Dicionario`.
