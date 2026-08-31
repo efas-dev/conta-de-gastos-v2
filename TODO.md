@@ -7,18 +7,21 @@
 > dados reais de `data_sample/`), não só por leitura de código. O que sobrou abaixo foi
 > verificado como **ausente** — não é backlog herdado por inércia.
 
-### 14. UX: legibilidade de dados colapsados pela largura das colunas → tooltip no hover
-Na grid de revisão, dados colapsados/truncados pelo tamanho das colunas (caso típico: a
-coluna de transcrição com texto longo) ficam ruins de ler por inteiro. **Abordagem decidida
-(2026-07-18): tooltip com o conteúdo completo ao passar o mouse sobre a célula truncada**,
-sem prejuízo do redimensionamento de coluna já implementado (drag to resize) — os dois
-mecanismos convivem. Vale para qualquer coluna cujo conteúdo não caiba na largura atual,
-não só a transcrição.
+### 14. UX: tooltip no hover para conteúdo truncado — **parcialmente entregue**
+Na grid de revisão, dados colapsados/truncados pelo tamanho das colunas ficam ruins de ler por
+inteiro. **Abordagem decidida (2026-07-18): tooltip com o conteúdo completo ao passar o mouse
+sobre a célula truncada**, convivendo com o resize de coluna. Vale para qualquer coluna cujo
+conteúdo não caiba na largura atual, não só a transcrição.
 
-**Verificado 2026-08-16:** não existe. Zero `title`/`role=tooltip` na área da grid; a
-transcrição corta sem reticências e sem nenhuma affordance (ex.: "Transferência recebida pelo
-Pix - LIS IMOVEIS L"). Relacionado: `Docs/debt/tecnica/valor-truncado-auto-largura-*.md` e
-`bug-visualizacao-valor-grande-coluna-valor.md` — mesma família, valeria uma spec só.
+**O que já existe** (commit `3a88f18`): `derivarTooltipTranscricao` + `onItemHovered` no
+`ReviewGrid` e o estilo `.tooltip-transcricao`, com testes TL-TT-1..6.
+
+**O que falta — e é o item:** (a) só a coluna **Transcrição** tem tooltip; Descrição, Natureza e
+Valor ficam de fora (a dívida `bug-visualizacao-valor-grande-coluna-valor.md` segue aberta);
+(b) o tooltip aparece **sempre**, sem comparar o texto com a largura da coluna — falta o
+predicado de truncamento, que pode reusar `medirLarguraHeuristica`; (c) nenhuma affordance
+visual de corte (reticências) no `drawCell`. Ficou mais urgente com a densidade menor da grid
+(item 45, entregue em 2026-08-31 — célula menor trunca mais).
 
 ### 23. Detecção de reembolso: entrada e saída de igual valor em períodos próximos
 Funcionalidade que detecta pares de entrada e saída de **igual valor** (sinais opostos) em
@@ -125,14 +128,30 @@ em branco). Cuidados extras: os atalhos não podem disparar com célula em ediç
 intercepta o teclado), `Ctrl+-`/`Ctrl++` colidem com o **zoom nativo do navegador** e exigem
 `preventDefault`, e cada ação continua sendo **1 mutação única** no undo/redo.
 
-### 39. Navegar até as linhas relevantes (inspeção e incompletos) — achado da faxina 2026-08-16
-Hoje o app **aponta** para linhas mas não **leva** até elas. Dois sintomas do mesmo buraco:
+**O que já existe** (auditoria de 2026-08-31): `Shift+Espaço` e `Ctrl+Espaço` **já funcionam** —
+são defaults do Glide 6.0.3 e o `keybindings` do `ReviewGrid` já traz `selectRow`/`selectColumn`.
+O clique no número da linha passou a selecionar a linha inteira (`rowMarkers="clickable-number"`,
+commit `ea6c1e5`). `excluirLinha` já existe no store.
 
-1. **Modo inspeção sem auto-scroll.** Ao inspecionar uma proposta, o realce sai/fica é
-   aplicado corretamente (verificado: linha 39 realçada em `--insp-sai-bg`), mas se a linha
-   estiver fora da viewport é preciso rolar para achá-la — sem nenhuma indicação de onde.
-   O item 33 previa isto ("decidir na spec: auto-scroll/filtro para as linhas envolvidas") e
-   a spec entregou o realce sem a navegação.
+**O que falta — e é o grosso do item:** (a) o **menu de contexto** em si — nada parecido existe
+no repo, nem componente nem CSS; falta passar `onCellContextMenu` e dar `preventDefault` no menu
+nativo; (b) uma action de **inserir linha em branco** no store (não existe; `excluirLinha` só
+precisa ser fiada na UI); (c) os atalhos `Ctrl+-`/`Ctrl++` no `onKeyDown`, com `preventDefault`
+contra o zoom; (d) a tradução índice-visual→real sob filtro/ordenação. **Não é hotfix: é spec.**
+
+### 39. Navegar até as linhas relevantes (inspeção e incompletos) — achado da faxina 2026-08-16
+Hoje o app **aponta** para linhas mas não **leva** até elas.
+
+> **Correção da auditoria de 2026-08-31.** O sintoma 1 abaixo estava **errado**: o auto-scroll
+> existe desde a spec `inspecao-proposta-conciliacao` (`ReviewGrid.tsx`, `scrollTo` no efeito de
+> inspeção) e tem testes. O que havia era um **bug de âncora** — nas origens que gravam
+> `Lancamento.id` no `alvo` (`transferencia-interna`, `investimento`) o id era usado como
+> posição e a grid rolava para a linha errada. **Corrigido** (commit `e3dfe6c`, testes
+> TL-39a-1..4, verificado no app). Sobra do sintoma 1: reclicar o **mesmo** card depois de rolar
+> não re-dispara o scroll (o efeito depende de `[mapaExibidoReal, avisoEmInspecao]`) — falta um
+> botão "ir para" ou equivalente.
+
+1. ~~**Modo inspeção sem auto-scroll.**~~ Ver a correção acima — restou só o re-disparo.
 2. **Incompletos sem localizador.** O item 34 alertava: "revisar o que os chips filtram para
    não perder a localização de linhas incompletas". A linha de filterchips foi aposentada
    (2026-08-02, commit `034221f`, que registra `filtroFontes`/só-incompletos ficando "sem UI")
@@ -162,50 +181,6 @@ quando a linha tem iniciais de outras pessoas (ex.: despesas rateadas da casa). 
 ligado, filtra por `iniciais === iniciais da sessão`; desligado, mantém o total geral.
 Decidir: estado default do switch e se o filtro do cartão sobre a grid (clique no cartão)
 acompanha o mesmo recorte.
-
-### 42. Bug: pagamento da fatura Nubank não concilia nem propõe remoção corretamente
-Reportado pelo usuário (2026-08-24): o **pagamento da fatura do Nubank** não está sendo
-conciliado nem virando proposta de remoção "de modo adequado". Sintoma a caracterizar melhor
-com dados reais antes de corrigir — não está claro se é **ausência** da proposta (o par
-fatura × extrato não é encontrado), **proposta errada** (casa o lançamento errado / valor
-errado) ou **ruído** (candidatos/ambiguidade demais, o débito conhecido do subset-sum).
-
-Contexto: a conciliação é o item **26**, entregue via `detectarConciliacao` e endurecida pela
-spec `conciliacao-robusta` (classificação de fonte por prefixo autoritativo + cross-check +
-candidatos como aviso). Pontos de partida: `src/dominio/deteccoes.ts`, o registry
-(`src/dominio/registry.ts:183`, origem `conciliacao`), `classificarFontePorPrefixo` em
-`src/dominio/mes.ts` e o parser da fatura Nubank. Investigar com reprodução no app rodando
-(dados de `data_sample/`), seguindo `/debug-sistematico` — sem fix sem causa raiz.
-
-### 43. Grid: busca com `Ctrl+F`
-Permitir **`Ctrl+F` na grid de revisão** para localizar texto nas células (caso típico: achar
-um lançamento pela transcrição no meio de centenas de linhas). Hoje não existe nada — o
-`Ctrl+F` cai na busca nativa do navegador, que só enxerga as linhas **renderizadas** pelo
-virtualizador do Glide e portanto não acha o que está fora da viewport. O Glide Data Grid já
-expõe busca nativa (`showSearch`/`onSearchClose`/`onSearchResultsChanged`) — verificar o
-suporte pronto antes de customizar. Decidir na spec: quais colunas entram na busca, se o
-resultado navega (n/N com setas, reusando o mecanismo do item 39) ou filtra, e o
-`preventDefault` do `Ctrl+F` do navegador. Parente dos itens 39 (navegar até a linha) e 38.
-
-### 44. Bug: app puxando o mês errado
-Reportado pelo usuário (2026-08-31): o app está **puxando o mês errado**. Falta caracterizar
-antes de corrigir — não está claro se o defeito é na **detecção antecipada do mês de
-referência** no upload (mês mais recente < corrente, item 7 / spec `mes-referencia-ui`), na
-**classificação fatura × extrato por prefixo** (`classificarFontePorPrefixo`,
-`src/dominio/mes.ts`, spec `conciliacao-robusta`), no **filtro de lançamentos do mês** ou na
-gravação de `B3` no export. Reproduzir no app rodando com `data_sample/`, anotando mês
-sugerido × mês esperado por fonte. Pode ter relação com o item 42 (conciliação da fatura
-Nubank), que também depende da classificação de fonte/mês.
-
-### 45. Layout da grid mais parecido com o do Google Sheets (células menores)
-A grid hoje usa `rowHeight={40}` e `headerHeight={38}` (`src/ui/components/ReviewGrid.tsx:1179`),
-o que deixa poucas linhas visíveis por tela e dá uma sensação de "formulário", não de planilha.
-Aproximar do **Google Sheets**: células mais baixas e compactas (densidade maior), tipografia e
-paddings proporcionais, para caber mais lançamentos na viewport. Cuidados: legibilidade dos
-valores e da transcrição na altura reduzida (interage com o item 14 — tooltip do texto
-truncado), alvo de clique/arraste ainda confortável (fill handle, resize de coluna, seleção de
-linha do item 38), e o realce do modo inspeção continuar visível. Decidir na spec: altura alvo,
-se vira preferência do usuário (compacto/confortável) ou valor fixo.
 
 ### 46. Jornada de usuário mais intuitiva — induzir a ordem correta das etapas
 O app tem todas as peças, mas não **conduz** o usuário: ele precisa saber por conta própria o
@@ -264,6 +239,36 @@ etapa fora de ordem (a preferência do projeto tem sido nunca bloquear); qual é
 ---
 
 ## ✅ Concluídos
+
+### Onda 1 de hotfixes — itens 42, 44, 43, 45 e parte do 38/39 (2026-08-31)
+Auditoria multiagente do TODO contra o código (6 verificadores + checagem adversarial), seguida
+de 4 hotfixes test-first. Verificado no app rodando com `data_sample/` (fatura + extrato Nubank).
+
+- **Item 42 — conciliação da fatura Nubank** (commit `713c44e`). Causa raiz: a fatura deixou de
+  descartar `Pagamento recebido`/`Valor pendente` no parse (D16/D17 de
+  `inspecao-proposta-conciliacao`), mas `detectarConciliacao` continuou somando a fatura
+  inteira. O total ia a R$ 3.394,57 em vez dos R$ 7.083,06 pagos no extrato, o casamento por
+  total falhava e o fallback de subset-sum devolvia 17 candidatos — a proposta de remoção virava
+  informativo. Agora `entraNoSomatorioDaFatura` exclui essas linhas **por predicado**, sem
+  reindexar (os índices são o espaço de `Aviso.permanece`, remapeado pelo registry — reindexar
+  removeria a linha errada). Testes TL-42-1..4; no app a proposta "Pagamento desta fatura no
+  extrato (R$ 7.083,06)" voltou. ✅
+- **Item 44 — mês de referência** (commit `1a13a69`). Dois defeitos: (a) `detectarMesSugerido`
+  olhava todos os lançamentos, mas na fatura a data é a da **compra** — decisão do usuário:
+  **o extrato é a fonte de verdade**, e a fatura só conta se nenhum extrato foi carregado;
+  (b) a autodetecção chamava `onMudarMes`, que marca `usuarioEditouMes=true`, então do segundo
+  upload incremental em diante o mês congelava — a sugestão bloqueava a si mesma. Nasceu
+  `onSugerirMes`. Testes TL-44-1..7. ✅
+- **Item 39, sintoma 1 — âncora do auto-scroll** (commit `e3dfe6c`). Ver a correção registrada no
+  próprio item 39: o auto-scroll existia; o bug era o id usado como índice. Testes TL-39a-1..4. ✅
+- **Itens 43 e 45, e parte do 38** (commit `ea6c1e5`). `keybindings.search` liga o Ctrl+F nativo
+  do Glide (3 resultados navegáveis com ↑↓ no teste real); linha/cabeçalho a 30px com fonte e
+  padding recalibrados (22 linhas visíveis contra ~16); `rowMarkers="clickable-number"` faz o
+  clique no número selecionar a linha inteira. Sem teste automatizado — as três dependem do
+  canvas do Glide, que não roda em jsdom; verificação visual no browser. ✅
+
+**Também corrigido no próprio TODO:** o item 14 estava listado como ausente e já tinha sido
+entregue (commit `3a88f18`); o item 39 afirmava que não havia auto-scroll, e havia.
 
 ### Faxina do TODO — 10 itens entregues saíram de "Pendentes" (2026-08-16)
 Auditoria cruzando cada item pendente com o código e com o **app rodando** (Playwright, dados
