@@ -181,7 +181,7 @@ describe('E2E — Task 9: fluxo completo VR (F7) + F6/D6 (recomposição não pr
   }
 
   function abrirCentralDeAvisos(): void {
-    fireEvent.click(screen.getByRole('button', { name: /^avisos/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^sugestões/i }))
   }
 
   function cardPorTexto(regex: RegExp): HTMLElement {

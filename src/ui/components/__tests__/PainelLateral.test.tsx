@@ -79,11 +79,11 @@ describe('PainelLateral — estrutura (TL-13)', () => {
     expect(container.querySelector('.painel-corpo')).not.toBeNull()
   })
 
-  it('renderiza as abas "Avisos" e "Naturezas" — sem botão de fechar por padrão (painel fixo)', () => {
+  it('renderiza as abas "Sugestões" e "Naturezas" — sem botão de fechar por padrão (painel fixo)', () => {
     const setAba = vi.fn()
     render(<PainelLateral aba="avisos" setAba={setAba} naturezas={naturezasFicticias} />)
 
-    expect(screen.getByRole('button', { name: /avisos/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /sugestões/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /naturezas/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /fechar/i })).toBeNull()
   })
@@ -119,11 +119,11 @@ describe('PainelLateral — alternância de abas (TL-14 a TL-18, TL-21)', () => 
     expect(setAba).toHaveBeenCalledWith('naturezas')
   })
 
-  it('clicar na aba "Avisos" chama setAba("avisos")', () => {
+  it('clicar na aba "Sugestões" chama setAba("avisos")', () => {
     const setAba = vi.fn()
     render(<PainelLateral aba="naturezas" setAba={setAba} naturezas={naturezasFicticias} />)
 
-    screen.getByRole('button', { name: /^avisos/i }).click()
+    screen.getByRole('button', { name: /^sugestões/i }).click()
     expect(setAba).toHaveBeenCalledWith('avisos')
   })
 
@@ -139,7 +139,7 @@ describe('PainelLateral — alternância de abas (TL-14 a TL-18, TL-21)', () => 
     render(<PainelLateral aba="naturezas" setAba={vi.fn()} naturezas={naturezasFicticias} />)
 
     expect(screen.getByRole('button', { name: /naturezas/i })).toHaveClass('on')
-    expect(screen.getByRole('button', { name: /^avisos/i })).not.toHaveClass('on')
+    expect(screen.getByRole('button', { name: /^sugestões/i })).not.toHaveClass('on')
   })
 })
 
@@ -152,14 +152,14 @@ describe('PainelLateral — badge de propostas pendentes (TL-19, TL-20)', () => 
     ]
     render(<PainelLateral aba="avisos" setAba={vi.fn()} naturezas={naturezasFicticias} />)
 
-    expect(screen.getByRole('button', { name: /^avisos/i })).toHaveTextContent('2')
+    expect(screen.getByRole('button', { name: /^sugestões/i })).toHaveTextContent('2')
   })
 
   it('não exibe badge quando não há propostas pendentes', () => {
     avisosMock = []
     render(<PainelLateral aba="avisos" setAba={vi.fn()} naturezas={naturezasFicticias} />)
 
-    const botaoAvisos = screen.getByRole('button', { name: /^avisos/i })
+    const botaoAvisos = screen.getByRole('button', { name: /^sugestões/i })
     expect(botaoAvisos.querySelector('.badge')).toBeNull()
   })
 })

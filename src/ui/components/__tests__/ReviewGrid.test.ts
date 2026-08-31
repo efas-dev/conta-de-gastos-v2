@@ -28,6 +28,7 @@ import {
   ehColunaLeituraApenas,
   proximaCelulaAposTab,
   derivarContextoInspecao,
+  derivarTooltipTranscricao,
   calcularTemaLinhaComInspecao,
   calcularLinhaAncoraVisual,
   aplicarRevelacaoInspecao,
@@ -751,5 +752,56 @@ describe('temas de linha leem variáveis CSS de :root (Task T2)', () => {
   it('TL-23 (regressão, identidade): temas de inspeção continuam referências estáveis usadas por calcularTemaLinhaComInspecao', () => {
     const contexto = derivarContextoInspecao(avisoConciliacaoFake())!
     expect(calcularTemaLinhaComInspecao(2, contexto)).toBe(TEMA_INSPECAO_SAI)
+  })
+})
+
+/**
+ * Tooltip da coluna Transcrição — a célula trunca o texto no canvas e o usuário
+ * precisava ver a transcrição inteira. `derivarTooltipTranscricao` é a parte pura:
+ * decide SE há tooltip e ONDE ancorá-lo, a partir do item sob o cursor.
+ *
+ * TL-TT-1: célula de Transcrição com texto → tooltip ancorado nos bounds da célula
+ * TL-TT-2: outra coluna → null
+ * TL-TT-3: cabeçalho (row < 0) → null
+ * TL-TT-4: transcrição vazia / só espaços → null
+ * TL-TT-5: linha inexistente → null
+ * TL-TT-6: bounds ausente → null
+ */
+describe('derivarTooltipTranscricao', () => {
+  const bounds = { x: 120, y: 300, width: 320, height: 40 }
+  const lancamentos = [
+    lancamentoFake({ transcricao: 'PIX ENVIADO CP :12345678 FULANO DE TAL LTDA 07/07' }),
+    lancamentoFake({ transcricao: '   ' }),
+  ]
+
+  it('TL-TT-1: célula de Transcrição com texto devolve o texto integral ancorado na célula', () => {
+    const t = derivarTooltipTranscricao([2, 0], bounds, lancamentos)
+    expect(t).not.toBeNull()
+    expect(t!.texto).toBe('PIX ENVIADO CP :12345678 FULANO DE TAL LTDA 07/07')
+    expect(t!.x).toBe(120)
+    expect(t!.y).toBe(300)
+    expect(t!.alturaCelula).toBe(40)
+  })
+
+  it('TL-TT-2: qualquer outra coluna não gera tooltip', () => {
+    for (const col of [0, 1, 3, 4, 5, 6]) {
+      expect(derivarTooltipTranscricao([col, 0], bounds, lancamentos)).toBeNull()
+    }
+  })
+
+  it('TL-TT-3: cabeçalho (row negativo) não gera tooltip', () => {
+    expect(derivarTooltipTranscricao([2, -1], bounds, lancamentos)).toBeNull()
+  })
+
+  it('TL-TT-4: transcrição só com espaços não gera tooltip', () => {
+    expect(derivarTooltipTranscricao([2, 1], bounds, lancamentos)).toBeNull()
+  })
+
+  it('TL-TT-5: linha fora da lista não gera tooltip', () => {
+    expect(derivarTooltipTranscricao([2, 99], bounds, lancamentos)).toBeNull()
+  })
+
+  it('TL-TT-6: sem bounds não há onde ancorar → null', () => {
+    expect(derivarTooltipTranscricao([2, 0], undefined, lancamentos)).toBeNull()
   })
 })

@@ -78,8 +78,8 @@ export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
   if (avisos.length === 0) {
     return (
       <div className="painel-vazio">
-        <p style={{ margin: 0 }}>Nenhum aviso pendente no momento.</p>
-        <p style={{ margin: 0 }}>Novos avisos aparecem aqui conforme você importa ou revisa lançamentos.</p>
+        <p style={{ margin: 0 }}>Nenhuma sugestão pendente no momento.</p>
+        <p style={{ margin: 0 }}>Novas sugestões aparecem aqui conforme você importa ou revisa lançamentos.</p>
       </div>
     )
   }
@@ -117,7 +117,7 @@ export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
       )}
 
       {informativos.length > 0 && (
-        <section aria-label="Avisos informativos">
+        <section aria-label="Sugestões informativas">
           <div className="painel-secao">Informativos</div>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
             {informativos.map((aviso) => (
@@ -126,7 +126,7 @@ export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
                   <span className="icone-aviso info" />
                   <div style={{ flex: 1, fontSize: 13, lineHeight: 1.5 }}>{aviso.mensagem}</div>
                 </div>
-                <div style={{ display: 'flex', marginTop: 8 }}>
+                <div className="acoes-aviso" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
                   <button type="button" className="btn sec mini" onClick={() => dispensar(aviso.id)}>
                     OK, entendi
                   </button>
@@ -279,7 +279,7 @@ function CartaoProposta({
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 7, marginTop: 10 }}>
+      <div className="acoes-aviso" style={{ display: 'flex', justifyContent: 'flex-end', gap: 7, marginTop: 10 }}>
         <AcoesProposta aviso={aviso} aplicar={aplicar} desfazer={desfazer} dispensar={dispensar} />
       </div>
     </li>
@@ -293,8 +293,20 @@ function AcoesProposta({ aviso, aplicar, desfazer, dispensar }: AcoesPropostaPro
     // daqui — quem aplica a proposta é o botão "Aplicar" do próprio `FormVR`/`FormRendimentos`
     // (ver `CartaoProposta` acima), não este componente. "Dispensar" continua disponível.
     const afirmativoSuprimido = aviso.origem === 'vr' || aviso.origem === 'rendimentos'
+    // Ordem visual: "Dispensar" à esquerda, "Aplicar" à direita — a ação afirmativa fica na ponta
+    // direita da barra, junto ao canto onde o olhar termina a leitura do card.
     return (
       <>
+        <button
+          type="button"
+          className="btn sec mini"
+          onClick={(e) => {
+            e.stopPropagation()
+            dispensar(aviso.id)
+          }}
+        >
+          Dispensar
+        </button>
         {!afirmativoSuprimido && (
           <button
             type="button"
@@ -307,16 +319,6 @@ function AcoesProposta({ aviso, aplicar, desfazer, dispensar }: AcoesPropostaPro
             Aplicar
           </button>
         )}
-        <button
-          type="button"
-          className="btn sec mini"
-          onClick={(e) => {
-            e.stopPropagation()
-            dispensar(aviso.id)
-          }}
-        >
-          Dispensar
-        </button>
       </>
     )
   }

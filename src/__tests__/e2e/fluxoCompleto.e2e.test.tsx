@@ -170,7 +170,7 @@ describe('E2E — Task T17: jornada completa ponta a ponta', () => {
   })
 
   function abrirCentralDeAvisos(): void {
-    fireEvent.click(screen.getByRole('button', { name: /^avisos/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^sugestões/i }))
   }
 
   function cardPorTexto(regex: RegExp): HTMLElement {

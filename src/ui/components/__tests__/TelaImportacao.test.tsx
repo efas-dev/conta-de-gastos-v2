@@ -259,13 +259,13 @@ describe('TelaImportacao', () => {
     expect(tela).toHaveAttribute('data-arrastando', 'false')
   })
 
-  it('botão "Avisos" não aparece quando avisosAcionaveis.avisos está vazio', () => {
+  it('botão "Sugestões" não aparece quando avisosAcionaveis.avisos está vazio', () => {
     render(<TelaImportacao {...props()} />)
 
-    expect(screen.queryByText('Avisos')).not.toBeInTheDocument()
+    expect(screen.queryByText('Sugestões')).not.toBeInTheDocument()
   })
 
-  it('botão "Avisos" aparece com badge de pendentes e alterna o painel ao clicar', () => {
+  it('botão "Sugestões" aparece com badge de pendentes e alterna o painel ao clicar', () => {
     estado.avisosAcionaveis = {
       avisos: [
         {
@@ -284,7 +284,7 @@ describe('TelaImportacao', () => {
     const setPainel = vi.fn()
     render(<TelaImportacao {...props({ setPainel })} />)
 
-    const botao = screen.getByText('Avisos').closest('button')!
+    const botao = screen.getByText('Sugestões').closest('button')!
     expect(botao.textContent).toContain('1')
 
     fireEvent.click(botao)

@@ -277,7 +277,7 @@ describe('E2E — Task 13: fluxo completo rendimentos (F6/F8) + diferença negat
   }
 
   function abrirCentralDeAvisos(): void {
-    fireEvent.click(screen.getByRole('button', { name: /^avisos/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^sugestões/i }))
   }
 
   function cardPorTexto(regex: RegExp): HTMLElement {

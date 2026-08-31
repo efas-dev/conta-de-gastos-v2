@@ -255,7 +255,7 @@ describe('TelaRevisao', () => {
 
     // O PainelLateral está mockado sem botões: qualquer botão Avisos/Naturezas
     // encontrado seria o toggle antigo da toolbar, que não deve mais existir.
-    expect(screen.queryByRole('button', { name: /^avisos/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^sugestões/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /^naturezas/i })).toBeNull()
   })
 
