@@ -59,3 +59,46 @@ describe('montarColagem', () => {
     expect(montarColagem([4, 0], [[]], undefined, ID, COLS, RO)).toEqual([])
   })
 })
+
+/**
+ * Item 40 do TODO — "colar múltiplas células às vezes buga". Os dois defeitos que a investigação
+ * de 2026-08-31 isolou na lógica pura, ambos com o mesmo sintoma relatado ("não cola as duas de
+ * uma vez / cola errado") e ambos dependentes de COMO a seleção estava no momento do Ctrl+V —
+ * daí o "às vezes".
+ */
+describe('montarColagem — defeitos do item 40', () => {
+  it('TL-40-1: bloco 1×2 numa seleção de 2 linhas × 1 coluna cola as DUAS colunas nas duas linhas', () => {
+    // O usuário copia Natureza+Descrição de uma linha e, no destino, arrasta sobre duas linhas
+    // da coluna Natureza. O destino tem de crescer para caber o bloco (como no Sheets); clampado
+    // à seleção, a Descrição some — exatamente o "não cola as duas de uma vez".
+    const sel = { x: 4, y: 0, width: 1, height: 2 }
+    const ed = montarColagem([4, 0], [['AL', 'Almoço']], sel, ID, COLS, RO)
+    expect(ed).toEqual([
+      { indiceReal: 0, colId: 'natureza', valor: 'AL' },
+      { indiceReal: 0, colId: 'descricao', valor: 'Almoço' },
+      { indiceReal: 1, colId: 'natureza', valor: 'AL' },
+      { indiceReal: 1, colId: 'descricao', valor: 'Almoço' },
+    ])
+  })
+
+  it('TL-40-2: linha curta no clipboard (TSV terminado em quebra) não vira edição com undefined', () => {
+    // Copiar do Excel/Sheets costuma trazer um `\n` final: o Glide entrega uma última linha com
+    // menos colunas. `valores[dr % h][dc % w]` devolvia `undefined` e a célula era sobrescrita
+    // com lixo em vez de ficar intacta.
+    const sel = { x: 4, y: 0, width: 2, height: 2 }
+    const ed = montarColagem([4, 0], [['AL', 'Almoço'], ['']], sel, ID, COLS, RO)
+    expect(ed.every((e) => typeof e.valor === 'string')).toBe(true)
+    expect(ed).toEqual([
+      { indiceReal: 0, colId: 'natureza', valor: 'AL' },
+      { indiceReal: 0, colId: 'descricao', valor: 'Almoço' },
+      { indiceReal: 1, colId: 'natureza', valor: '' },
+    ])
+  })
+
+  it('TL-40-3 (regressão): seleção maior que o bloco em ambas as dimensões continua replicando', () => {
+    const sel = { x: 4, y: 0, width: 2, height: 2 }
+    const ed = montarColagem([4, 0], [['AL']], sel, ID, COLS, RO)
+    expect(ed).toHaveLength(4)
+    expect(ed.map((e) => e.valor)).toEqual(['AL', 'AL', 'AL', 'AL'])
+  })
+})

@@ -7,22 +7,6 @@
 > dados reais de `data_sample/`), não só por leitura de código. O que sobrou abaixo foi
 > verificado como **ausente** — não é backlog herdado por inércia.
 
-### 14. UX: tooltip no hover para conteúdo truncado — **parcialmente entregue**
-Na grid de revisão, dados colapsados/truncados pelo tamanho das colunas ficam ruins de ler por
-inteiro. **Abordagem decidida (2026-07-18): tooltip com o conteúdo completo ao passar o mouse
-sobre a célula truncada**, convivendo com o resize de coluna. Vale para qualquer coluna cujo
-conteúdo não caiba na largura atual, não só a transcrição.
-
-**O que já existe** (commit `3a88f18`): `derivarTooltipTranscricao` + `onItemHovered` no
-`ReviewGrid` e o estilo `.tooltip-transcricao`, com testes TL-TT-1..6.
-
-**O que falta — e é o item:** (a) só a coluna **Transcrição** tem tooltip; Descrição, Natureza e
-Valor ficam de fora (a dívida `bug-visualizacao-valor-grande-coluna-valor.md` segue aberta);
-(b) o tooltip aparece **sempre**, sem comparar o texto com a largura da coluna — falta o
-predicado de truncamento, que pode reusar `medirLarguraHeuristica`; (c) nenhuma affordance
-visual de corte (reticências) no `drawCell`. Ficou mais urgente com a densidade menor da grid
-(item 45, entregue em 2026-08-31 — célula menor trunca mais).
-
 ### 23. Detecção de reembolso: entrada e saída de igual valor em períodos próximos
 Funcionalidade que detecta pares de entrada e saída de **igual valor** (sinais opostos) em
 **datas próximas** e propõe ao usuário considerá-los reembolso de despesa, anulando os dois
@@ -147,11 +131,12 @@ Hoje o app **aponta** para linhas mas não **leva** até elas.
 > inspeção) e tem testes. O que havia era um **bug de âncora** — nas origens que gravam
 > `Lancamento.id` no `alvo` (`transferencia-interna`, `investimento`) o id era usado como
 > posição e a grid rolava para a linha errada. **Corrigido** (commit `e3dfe6c`, testes
-> TL-39a-1..4, verificado no app). Sobra do sintoma 1: reclicar o **mesmo** card depois de rolar
-> não re-dispara o scroll (o efeito depende de `[mapaExibidoReal, avisoEmInspecao]`) — falta um
-> botão "ir para" ou equivalente.
+> TL-39a-1..4, verificado no app). **O resíduo também foi fechado em 2026-08-31**: nasceu o botão
+> "Ir para a linha" no card em inspeção (`focoInspecao` no slice + `focarInspecao`), porque o card
+> é um toggle e re-clicá-lo saía da inspeção em vez de rolar. Testes TL-39b-1..4 e TL-39c-1..3;
+> verificado no app (rolei ao topo, cliquei, a grid voltou à linha 45 sem sair da inspeção).
 
-1. ~~**Modo inspeção sem auto-scroll.**~~ Ver a correção acima — restou só o re-disparo.
+1. ~~**Modo inspeção sem auto-scroll.**~~ Entregue por inteiro — ver a correção acima.
 2. **Incompletos sem localizador.** O item 34 alertava: "revisar o que os chips filtram para
    não perder a localização de linhas incompletas". A linha de filterchips foi aposentada
    (2026-08-02, commit `034221f`, que registra `filtroFontes`/só-incompletos ficando "sem UI")
@@ -164,14 +149,27 @@ próxima/anterior entre as linhas de um mesmo aviso; e se os incompletos voltam 
 como salto (n/N com setas), ou ambos. Interage com o item 38 (seleção de linha) e com o 32/33
 (jornada) — a etapa "Classificar" só fecha quando não há incompletos.
 
-### 40. Bug: colar múltiplas células às vezes buga na grid
+### 40. Bug: colar múltiplas células às vezes buga na grid — **parcialmente entregue**
 Ao copiar duas células (ex.: Natureza + Descrição de uma linha) e colar em outra linha, às
-vezes o paste de múltiplas células buga — não cola as duas de uma vez / cola errado. Bug
-intermitente ("às vezes"): investigar com reprodução no app antes de corrigir. Suspeitos:
-o caminho de paste do Glide Data Grid (`onPaste`/`getCellsForSelection` e o formato TSV do
-clipboard), interação com colunas não editáveis no intervalo alvo, e o GhostEditor/edição
-por digitação direta interceptando o clipboard. Conferir também colar vindo de fora
-(Excel/Sheets → grid) e o efeito no undo/redo (a colagem deve ser 1 mutação única).
+vezes o paste de múltiplas células buga — não cola as duas de uma vez / cola errado.
+
+**Entregue em 2026-08-31** (investigação + 4 correções, testes TL-40-1..12): o "às vezes" era o
+formato da **seleção no momento do Ctrl+V**. (a) `montarColagem` clampava o destino ao retângulo
+selecionado — colar um bloco 1×2 numa seleção de 2 linhas × 1 coluna descartava a Descrição;
+agora o destino cresce até caber o bloco, como no Sheets. (b) Linha curta no clipboard (TSV
+terminado em quebra, típico do Excel) gerava edição com `undefined`; agora a célula fica intacta.
+(c) Colar na coluna **Valor** era descartado em silêncio — o clipboard traz `-R$ 1.083,06` e
+`Number()` dava `NaN`; nasceu `interpretarValorMonetario` (pt-BR, moeda e parênteses contábeis),
+ligada ao choke point `escreverCampoNoDraft`, que passou a valer também para o fill handle. (d) A
+colagem virou **1 mutação única** no undo/redo (`aplicarColagem` no store) — antes um bloco 2×3
+exigia 6 Ctrl+Z.
+
+**O que falta:** os defeitos acima foram provados por teste unitário determinístico, mas a
+colagem **não foi verificada no app rodando** — o Glide lê `navigator.clipboard.read()` e nem o
+`ClipboardEvent` sintético nem o clipboard real do Playwright (trava pedindo permissão) chegam
+lá. Falta um teste manual do usuário. Segue em aberto também o suspeito que não dá para tocar
+daqui: `navigator.clipboard.read()` sem try/catch dentro do próprio Glide
+(`data-editor.js:2215`) — se a leitura falhar, a colagem não acontece e nada é dito.
 
 ### 41. Colinha de naturezas: switch para somar só as iniciais do titular
 O somatório por natureza (cartões da colinha/painel de naturezas) deve ganhar um **switch**
@@ -239,6 +237,21 @@ etapa fora de ordem (a preferência do projeto tem sido nunca bloquear); qual é
 ---
 
 ## ✅ Concluídos
+
+### Onda 2 de hotfixes — itens 14, 39.1 e parte do 40 (2026-08-31)
+- **Item 14 — tooltip de célula truncada.** O tooltip valia só para a Transcrição e aparecia
+  **sempre**, sem olhar a largura. `derivarTooltipTranscricao` virou `derivarTooltipCelula`, que
+  serve qualquer coluna e só dispara quando a largura estimada do texto passa da largura real da
+  célula (`bounds.width`, que o Glide já entrega). O predicado reusa a heurística da auto-largura
+  de propósito: "a auto-largura coube" e "não há tooltip" viram a mesma afirmação, então o
+  tooltip só aparece quando o texto estourou o teto de 320px ou o usuário encolheu a coluna.
+  A coluna Valor mostra o formato **desenhado** (`-R$ 10.595,06`), não o número cru. O `drawCell`
+  ganhou clipe ao retângulo da célula e um layout **compacto** para quando prefixo e número não
+  cabem lado a lado — fecha a dívida `bug-visualizacao-valor-grande-coluna-valor` sem esconder
+  dígitos dentro do número. Testes TL-14-1..13; verificado no app (hover na Transcrição longa
+  mostra o texto inteiro; Fonte, Data, Iniciais e Valor, que cabem, não mostram nada). ✅
+- **Item 39, resíduo do sintoma 1 — botão "Ir para a linha".** Ver o item 39. ✅
+- **Item 40 — colagem.** Ver o item 40: quatro defeitos corrigidos, verificação no app pendente. ✅
 
 ### Onda 1 de hotfixes — itens 42, 44, 43, 45 e parte do 38/39 (2026-08-31)
 Auditoria multiagente do TODO contra o código (6 verificadores + checagem adversarial), seguida
