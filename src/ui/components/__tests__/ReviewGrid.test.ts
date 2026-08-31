@@ -28,7 +28,9 @@ import {
   ehColunaLeituraApenas,
   proximaCelulaAposTab,
   derivarContextoInspecao,
-  derivarTooltipTranscricao,
+  derivarTooltipCelula,
+  escolherLayoutValor,
+  formatarValorContabil,
   calcularTemaLinhaComInspecao,
   calcularLinhaAncoraVisual,
   aplicarRevelacaoInspecao,
@@ -799,52 +801,116 @@ describe('temas de linha leem variáveis CSS de :root (Task T2)', () => {
 })
 
 /**
- * Tooltip da coluna Transcrição — a célula trunca o texto no canvas e o usuário
- * precisava ver a transcrição inteira. `derivarTooltipTranscricao` é a parte pura:
- * decide SE há tooltip e ONDE ancorá-lo, a partir do item sob o cursor.
+ * Tooltip de célula truncada (item 14 do TODO) — a célula corta o texto no canvas e o usuário
+ * precisa ler o conteúdo inteiro. `derivarTooltipCelula` é a parte pura: decide SE há tooltip e
+ * ONDE ancorá-lo, a partir do item sob o cursor.
  *
- * TL-TT-1: célula de Transcrição com texto → tooltip ancorado nos bounds da célula
- * TL-TT-2: outra coluna → null
- * TL-TT-3: cabeçalho (row < 0) → null
- * TL-TT-4: transcrição vazia / só espaços → null
- * TL-TT-5: linha inexistente → null
- * TL-TT-6: bounds ausente → null
+ * O predicado de truncamento compara a largura ESTIMADA do texto desenhado com a largura REAL da
+ * célula (`bounds.width`, que o Glide já entrega). Como a estimativa é a mesma da auto-largura,
+ * "a auto-largura coube" ⟺ "não há tooltip": ele só aparece quando o texto estourou o teto de
+ * `LARGURA_MAXIMA_PX` ou quando o usuário encolheu a coluna à mão.
+ *
+ * TL-14-1: Transcrição estourando a largura → tooltip com o texto integral, ancorado na célula
+ * TL-14-2: Descrição estourando → tooltip (antes só a Transcrição tinha)
+ * TL-14-3: Natureza estourando → tooltip
+ * TL-14-4: Valor estourando → tooltip com o formato contábil DESENHADO, não o número cru
+ * TL-14-5: texto que cabe na largura da coluna → null (o predicado é o item)
+ * TL-14-6: cabeçalho (row < 0) → null
+ * TL-14-7: célula vazia / só espaços → null
+ * TL-14-8: linha inexistente → null
+ * TL-14-9: bounds ausente → null
+ * TL-14-10: coluna fora do range (marcador de linha) → null
  */
-describe('derivarTooltipTranscricao', () => {
-  const bounds = { x: 120, y: 300, width: 320, height: 40 }
+describe('derivarTooltipCelula', () => {
+  const TRANSCRICAO_LONGA = 'PIX ENVIADO CP :12345678 FULANO DE TAL LTDA 07/07'
+  const estreita = { x: 120, y: 300, width: 80, height: 30 }
+  const larga = { x: 120, y: 300, width: 500, height: 30 }
   const lancamentos = [
-    lancamentoFake({ transcricao: 'PIX ENVIADO CP :12345678 FULANO DE TAL LTDA 07/07' }),
-    lancamentoFake({ transcricao: '   ' }),
+    lancamentoFake({
+      transcricao: TRANSCRICAO_LONGA,
+      natureza: 'ALIMENTAÇÃO FORA DE CASA',
+      descricao: 'Almoço de trabalho com o time inteiro',
+      valor: -10595.06,
+    }),
+    lancamentoFake({ transcricao: '   ', natureza: '', descricao: '' }),
   ]
 
-  it('TL-TT-1: célula de Transcrição com texto devolve o texto integral ancorado na célula', () => {
-    const t = derivarTooltipTranscricao([2, 0], bounds, lancamentos)
+  it('TL-14-1: Transcrição que estoura a largura devolve o texto integral ancorado na célula', () => {
+    const t = derivarTooltipCelula([2, 0], estreita, lancamentos)
     expect(t).not.toBeNull()
-    expect(t!.texto).toBe('PIX ENVIADO CP :12345678 FULANO DE TAL LTDA 07/07')
+    expect(t!.texto).toBe(TRANSCRICAO_LONGA)
     expect(t!.x).toBe(120)
     expect(t!.y).toBe(300)
-    expect(t!.alturaCelula).toBe(40)
+    expect(t!.alturaCelula).toBe(30)
   })
 
-  it('TL-TT-2: qualquer outra coluna não gera tooltip', () => {
+  it('TL-14-2: Descrição que estoura a largura também gera tooltip', () => {
+    const t = derivarTooltipCelula([5, 0], estreita, lancamentos)
+    expect(t?.texto).toBe('Almoço de trabalho com o time inteiro')
+  })
+
+  it('TL-14-3: Natureza que estoura a largura também gera tooltip', () => {
+    const t = derivarTooltipCelula([4, 0], estreita, lancamentos)
+    expect(t?.texto).toBe('ALIMENTAÇÃO FORA DE CASA')
+  })
+
+  it('TL-14-4: Valor mostra o formato contábil desenhado, não o número cru', () => {
+    const t = derivarTooltipCelula([6, 0], estreita, lancamentos)
+    expect(t?.texto).toBe('-R$ 10.595,06')
+  })
+
+  it('TL-14-5: texto que cabe na largura da coluna não gera tooltip', () => {
+    // Numa coluna larga, nenhuma das células desta linha estoura.
     for (const col of [0, 1, 3, 4, 5, 6]) {
-      expect(derivarTooltipTranscricao([col, 0], bounds, lancamentos)).toBeNull()
+      expect(derivarTooltipCelula([col, 0], larga, lancamentos)).toBeNull()
     }
   })
 
-  it('TL-TT-3: cabeçalho (row negativo) não gera tooltip', () => {
-    expect(derivarTooltipTranscricao([2, -1], bounds, lancamentos)).toBeNull()
+  it('TL-14-6: cabeçalho (row negativo) não gera tooltip', () => {
+    expect(derivarTooltipCelula([2, -1], estreita, lancamentos)).toBeNull()
   })
 
-  it('TL-TT-4: transcrição só com espaços não gera tooltip', () => {
-    expect(derivarTooltipTranscricao([2, 1], bounds, lancamentos)).toBeNull()
+  it('TL-14-7: célula vazia ou só com espaços não gera tooltip', () => {
+    expect(derivarTooltipCelula([2, 1], estreita, lancamentos)).toBeNull()
+    expect(derivarTooltipCelula([4, 1], estreita, lancamentos)).toBeNull()
   })
 
-  it('TL-TT-5: linha fora da lista não gera tooltip', () => {
-    expect(derivarTooltipTranscricao([2, 99], bounds, lancamentos)).toBeNull()
+  it('TL-14-8: linha fora da lista não gera tooltip', () => {
+    expect(derivarTooltipCelula([2, 99], estreita, lancamentos)).toBeNull()
   })
 
-  it('TL-TT-6: sem bounds não há onde ancorar → null', () => {
-    expect(derivarTooltipTranscricao([2, 0], undefined, lancamentos)).toBeNull()
+  it('TL-14-9: sem bounds não há onde ancorar → null', () => {
+    expect(derivarTooltipCelula([2, 0], undefined, lancamentos)).toBeNull()
+  })
+
+  it('TL-14-10: coluna fora do range (marcador de linha) não gera tooltip', () => {
+    expect(derivarTooltipCelula([-1, 0], estreita, lancamentos)).toBeNull()
+    expect(derivarTooltipCelula([99, 0], estreita, lancamentos)).toBeNull()
+  })
+})
+
+/**
+ * Formato contábil da coluna Valor (item 14.c + dívida
+ * `bug-visualizacao-valor-grande-coluna-valor`). O `drawCell` desenha o prefixo `R$`/`-R$`
+ * ancorado à esquerda e o número alinhado à direita; quando a coluna é estreita demais, os dois
+ * blocos colidem e o começo do número some sob o prefixo. A decisão de layout é pura e testável;
+ * a pintura em si depende de Canvas e fica fora do alcance do jsdom.
+ *
+ * TL-14-11: os dois blocos cabem com folga → layout contábil (prefixo à esquerda)
+ * TL-14-12: não cabem → layout compacto (string única alinhada à direita)
+ * TL-14-13: formatarValorContabil produz o texto pt-BR com o sinal no prefixo
+ */
+describe('layout do valor contábil', () => {
+  it('TL-14-11: com espaço sobrando, mantém o formato contábil', () => {
+    expect(escolherLayoutValor(30, 70, 200)).toBe('contabil')
+  })
+
+  it('TL-14-12: sem espaço para os dois blocos e a folga, cai no compacto', () => {
+    expect(escolherLayoutValor(30, 70, 100)).toBe('compacto')
+  })
+
+  it('TL-14-13: formatarValorContabil formata em pt-BR com o sinal no prefixo', () => {
+    expect(formatarValorContabil(-10595.06)).toBe('-R$ 10.595,06')
+    expect(formatarValorContabil(1234.5)).toBe('R$ 1.234,50')
   })
 })
