@@ -187,6 +187,73 @@ describe('não-duplicação entre detecções de origemEspecial e detectarConcil
   })
 })
 
+describe('conciliação ignora linhas de origemEspecial no somatório da fatura (item 42)', () => {
+  it('TL-42-1: o total da fatura desconta a linha de pagamento recebido e casa com o extrato', () => {
+    // Cenário real do usuário: a linha "Pagamento recebido" deixou de ser descartada no parse
+    // (D16/D17 de `inspecao-proposta-conciliacao`) e entrou no somatório, empurrando o total
+    // para longe do pagamento de fatura do extrato.
+    const fatura = [
+      lancamento({ transcricao: 'Item A', valor: -100 }),
+      lancamento({ transcricao: 'Pagamento recebido', valor: 300, origemEspecial: 'pagamento-recebido' }),
+      lancamento({ transcricao: 'Item B', valor: -50 }),
+    ]
+    const extrato = [lancamento({ transcricao: 'Pagamento de fatura', valor: -150 })]
+
+    const avisos = detectarConciliacao(fatura, extrato)
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].tipo).toBe('proposta')
+    expect(avisos[0].alvo).toEqual(['0'])
+    expect(avisos[0].resumo).toContain('150,00')
+  })
+
+  it('TL-42-2: permanece lista os índices REAIS da fatura, sem a linha de origemEspecial', () => {
+    // Os índices de `permanece` são posições em `lancamentosFatura` e o registry os remapeia
+    // para o array total (`indicesFaturaNoTotal`). Excluir a linha do somatório NÃO pode
+    // reindexar as demais, senão a proposta realça/remove a linha errada.
+    const fatura = [
+      lancamento({ transcricao: 'Item A', valor: -100 }),
+      lancamento({ transcricao: 'Pagamento recebido', valor: 300, origemEspecial: 'pagamento-recebido' }),
+      lancamento({ transcricao: 'Item B', valor: -50 }),
+    ]
+    const extrato = [lancamento({ transcricao: 'Pagamento de fatura', valor: -150 })]
+
+    const avisos = detectarConciliacao(fatura, extrato)
+
+    expect(avisos[0].permanece).toEqual(['0', '2'])
+  })
+
+  it('TL-42-3: a linha de valor pendente também fica fora do somatório', () => {
+    const fatura = [
+      lancamento({ transcricao: 'Valor pendente do mês anterior', valor: -80, origemEspecial: 'valor-pendente' }),
+      lancamento({ transcricao: 'Item A', valor: -100 }),
+    ]
+    const extrato = [lancamento({ transcricao: 'Pagamento de fatura', valor: -100 })]
+
+    const avisos = detectarConciliacao(fatura, extrato)
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].tipo).toBe('proposta')
+    expect(avisos[0].permanece).toEqual(['1'])
+  })
+
+  it('TL-42-4: o fallback de subconjunto não compõe soma com linha de origemEspecial', () => {
+    const fatura = [
+      lancamento({ transcricao: 'Item A', valor: -100 }),
+      lancamento({ transcricao: 'Valor pendente do mês anterior', valor: -300, origemEspecial: 'valor-pendente' }),
+      lancamento({ transcricao: 'Item B', valor: -50 }),
+    ]
+    // 300 só é alcançável usando a linha excluída — não deve gerar proposta.
+    const extrato = [lancamento({ transcricao: 'Pagamento de fatura', valor: -300 })]
+
+    const avisos = detectarConciliacao(fatura, extrato)
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].tipo).toBe('informativo')
+    expect(avisos[0].id).toBe('conciliacao-sem-casamento')
+  })
+})
+
 describe('detectarConciliacao', () => {
   it('casamento total dentro da tolerância de R$ 0,05 gera proposta única (TL-5)', () => {
     const fatura = [
