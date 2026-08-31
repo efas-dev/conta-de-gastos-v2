@@ -29,7 +29,7 @@ Requer Node 18+.
 ```bash
 npm install
 npm run dev       # servidor de desenvolvimento (Vite)
-npm test          # suíte de testes (Vitest) — 232 testes
+npm test          # suíte de testes (Vitest) — 1432 testes
 npm run build     # typecheck + build estático em dist/
 npm run preview   # serve o build de produção localmente
 ```
