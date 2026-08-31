@@ -1,4 +1,4 @@
-// ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { atribuirIds, reiniciarContadorIds } from '../idSerial'

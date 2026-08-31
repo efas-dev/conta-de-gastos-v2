@@ -1,5 +1,5 @@
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
-// ADR: see spec/inspecao-proposta-conciliacao.adr.md
+// ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 
 /**
  * Testes de integração para T6 (CentralDeAvisos conectada ao slice em App.tsx) e
@@ -156,9 +156,9 @@ describe('App — canal único de avisos: sheet nas 2 telas, footer aposentado (
     expect(screen.getByTestId('tela-importacao')).toBeInTheDocument()
     // Sheet colapsado por padrão (D15) — o botão de abrir prova a presença do
     // componente CentralDeAvisos nesta tela.
-    expect(screen.getByRole('button', { name: /^avisos/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^sugestões/i })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /^avisos/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^sugestões/i }))
     expect(screen.getByText('Fatura conciliável com pagamento do extrato.')).toBeInTheDocument()
   })
 
@@ -232,7 +232,7 @@ describe('App — avisos legados migram para o slice como informativos dispensá
     })
 
     // Dispensar via UI — sheet ainda na tela de revisão (emRevisao=true por padrão do resetarStore).
-    fireEvent.click(screen.getByRole('button', { name: /^avisos/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^sugestões/i }))
     const idAviso = useAppStore.getState().avisosAcionaveis.avisos[0].id
     fireEvent.click(screen.getByRole('button', { name: /ok, entendi/i }))
 
@@ -359,7 +359,7 @@ describe('App — ciclo completo aviso → aplicar via store real (T6)', () => {
 
     // Sheet colapsado por padrão (D15) — abre manualmente antes de agir sobre
     // a proposta.
-    fireEvent.click(screen.getByRole('button', { name: /^avisos/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^sugestões/i }))
 
     // Escopo restrito à seção "Propostas" — o topo da tela de revisão já tem
     // botões "Desfazer"/"Refazer" de undo/redo do grid, com nome acessível

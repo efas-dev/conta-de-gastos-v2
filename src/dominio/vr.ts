@@ -1,4 +1,4 @@
-// ADR: see spec/vr-despesas.adr.md
+// ADR: see Docs/specs/vr-despesas.adr.md
 
 import type { Aviso, Lancamento } from '../types'
 import type { ContextoDeteccao } from './registry'

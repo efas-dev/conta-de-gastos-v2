@@ -1,7 +1,7 @@
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
-// ADR: see spec/fundacao-operacoes.adr.md
-// ADR: see spec/vr-despesas.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/vr-despesas.adr.md
 
 import type { Aviso, Lancamento } from '../../types'
 import { atribuirIds } from '../../parsers/idSerial'
@@ -52,6 +52,14 @@ export interface EstadoAvisosSlice {
    * troca a ativa (D5/D14 do ADR `inspecao-proposta-conciliacao`).
    */
   avisoEmInspecao: string | null
+  /**
+   * Contador monotônico de **pedidos de foco** na linha-âncora da inspeção ativa (resíduo do item
+   * 39.1 do TODO). O auto-scroll da grid é um efeito que reage a mudança de estado; pedir foco na
+   * mesma linha que já está em inspeção não mudaria `avisoEmInspecao` e o efeito não re-rodaria.
+   * Este contador dá ao pedido uma identidade nova a cada chamada. Nunca é lido como quantidade —
+   * só a mudança importa.
+   */
+  focoInspecao: number
 }
 
 /** Ações do slice de avisos acionáveis. */
@@ -94,6 +102,13 @@ export interface AcoesAvisosSlice {
   /** Sai do modo inspeção, independentemente de qual aviso estava ativo. */
   sairInspecao: () => void
   /**
+   * Pede foco na linha-âncora da inspeção **já ativa**, sem trocar nem encerrar a inspeção —
+   * incrementa `focoInspecao`. É o que o botão "Ir para a linha" usa para trazer a grid de volta
+   * depois que o usuário rolou à mão: o card é um toggle, então re-clicar nele sairia da inspeção
+   * em vez de rolar. Sem inspeção ativa é no-op (não há âncora para onde rolar).
+   */
+  focarInspecao: () => void
+  /**
    * Reconcilia avisos `'pendente'` cujos alvos (por `Lancamento.id`, via
    * `mutacaoProposta.alvo`) deixaram de existir em `lancamentosAtuais`, transicionando-os
    * para `'obsoleto'` (ver ADR `fundacao-operacoes`, Decisão 7). Basta que UM dos ids-alvo
@@ -132,6 +147,7 @@ export const estadoInicialAvisos: EstadoAvisosSlice = {
   removidos: {},
   adicionados: {},
   avisoEmInspecao: null,
+  focoInspecao: 0,
 }
 
 /**
@@ -382,8 +398,13 @@ export function criarAvisosSlice<TStore extends StoreComAvisos>(
     },
 
     entrarInspecao: (id) => {
+      // Entrar em inspeção já é, por si, um pedido de foco: a grid deve rolar até a âncora.
       set((state) => ({
-        avisosAcionaveis: { ...state.avisosAcionaveis, avisoEmInspecao: id },
+        avisosAcionaveis: {
+          ...state.avisosAcionaveis,
+          avisoEmInspecao: id,
+          focoInspecao: state.avisosAcionaveis.focoInspecao + 1,
+        },
       }) as Partial<TStore>)
     },
 
@@ -391,6 +412,19 @@ export function criarAvisosSlice<TStore extends StoreComAvisos>(
       set((state) => ({
         avisosAcionaveis: { ...state.avisosAcionaveis, avisoEmInspecao: null },
       }) as Partial<TStore>)
+    },
+
+    focarInspecao: () => {
+      set((state) =>
+        state.avisosAcionaveis.avisoEmInspecao === null
+          ? {}
+          : ({
+              avisosAcionaveis: {
+                ...state.avisosAcionaveis,
+                focoInspecao: state.avisosAcionaveis.focoInspecao + 1,
+              },
+            } as Partial<TStore>),
+      )
     },
 
     reconciliarObsoletos: (lancamentosAtuais) => {

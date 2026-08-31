@@ -1,4 +1,4 @@
-// ADR: see spec/vr-despesas.adr.md
+// ADR: see Docs/specs/vr-despesas.adr.md
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useAppStore } from '../appStore'

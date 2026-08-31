@@ -2,14 +2,15 @@
 // ADR: see Docs/specs/grid-ux-filtros.adr.md
 // ADR: see Docs/specs/colinha-naturezas.adr.md
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
-// ADR: see spec/fundacao-operacoes.adr.md
-// ADR: see spec/rendimentos.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/rendimentos.adr.md
 
 import { create } from 'zustand'
 import { enablePatches, produceWithPatches, applyPatches, current, type Patch } from 'immer'
 import type { Lancamento, DicEntry, NaturezaRica } from '../../types'
 import { ratearSplit, type AlvoSplit } from '../../dominio/split'
 import { corrigirNatureza } from '../../dominio/natureza'
+import { interpretarValorMonetario } from '../../dominio/normalizacao'
 import { detectarReplicacao, type SugestaoReplicacao } from '../../dominio/replicacao'
 import {
   criarAvisosSlice,
@@ -324,6 +325,14 @@ export interface AcoesApp extends AcoesAvisosSlice {
    * desfazer granularmente.
    */
   preencherIntervalo: (startRow: number, endRow: number, colId: string, valor: string | number) => void
+
+  /**
+   * Aplica um lote de edições vindas de uma colagem (Ctrl/Cmd+V) como **uma única** mutação —
+   * um Ctrl+Z desfaz a colagem inteira (item 40 do TODO). Os índices são REAIS (a tradução
+   * visual→real acontece em `montarColagem`, na grid). Cada campo passa pelas mesmas
+   * normalizações da edição avulsa. Lote vazio é no-op e não empilha histórico.
+   */
+  aplicarColagem: (edicoes: { indice: number; campo: CampoEditavel; valor: string }[]) => void
 }
 
 /** Tipo completo do store — estado + actions. */
@@ -346,6 +355,34 @@ export type AppStore = EstadoApp & AcoesApp
  * - O mapa guarda os índices originais de `lancamentos` para tradução visual→real.
  * D7, D8, D14 do ADR grid-ux-filtros.
  */
+/**
+ * Escreve um campo editável num lançamento (já dentro de um draft do Immer), aplicando as
+ * normalizações que valem para TODOS os caminhos de entrada da grid — digitação, GhostEditor,
+ * fill handle e colagem.
+ *
+ * Choke point único: antes, cada action repetia o mesmo `if (valor) / else if (natureza)` e as
+ * regras iam divergindo (a interpretação do valor monetário do item 40 nasceu só no
+ * `editarCelula`, deixando o fill handle e a colagem para trás).
+ */
+function escreverCampoNoDraft(
+  l: Lancamento,
+  campo: string,
+  valor: string | number,
+  naturezasValidas: string[],
+): void {
+  if (campo === 'valor') {
+    // Texto vem formatado quando a origem é colagem ou fill (`-R$ 1.083,06`) — ver
+    // `interpretarValorMonetario` (item 40). Valor irreconhecível não altera a célula.
+    const num = typeof valor === 'number' ? valor : (interpretarValorMonetario(valor) ?? NaN)
+    if (Number.isFinite(num)) l.valor = num
+  } else if (campo === 'natureza') {
+    // Item 28 + hotfix UX: caixa alta e correção de sigla com caractere acidental.
+    l.natureza = corrigirNatureza(String(valor), naturezasValidas)
+  } else {
+    ;(l as unknown as Record<string, unknown>)[campo] = valor
+  }
+}
+
 function calcularVisao(
   lancamentos: Lancamento[],
   filtroFontes: string[],
@@ -566,17 +603,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
       mutarComHistorico((draft) => {
         const l = draft.lancamentos[indice]
         if (!l) return
-        if (campo === 'valor') {
-          const num = typeof valor === 'number' ? valor : Number(valor)
-          if (Number.isFinite(num)) l.valor = num
-        } else if (campo === 'natureza') {
-          // Item 28: Natureza sempre em caixa alta. Hotfix UX: reconhece a sigla
-          // mesmo com caractere acidental (espaço, hífen) e apaga o supérfluo —
-          // valem as 2 primeiras letras válidas (corrigirNatureza).
-          l.natureza = corrigirNatureza(valor as string, get().naturezasValidas)
-        } else {
-          l[campo] = valor as string
-        }
+        escreverCampoNoDraft(l, campo, valor, get().naturezasValidas)
       })
       // Item 36: ao classificar (Natureza/Descrição), sugere replicar para as
       // linhas de transcrição idêntica ainda sem Natureza. `indice` é o índice
@@ -816,16 +843,30 @@ export const useAppStore = create<AppStore>()((set, get) => {
         mutarComHistorico((draft) => {
           const l = draft.lancamentos[indiceReal]
           if (!l) return
-          if (colId === 'valor') {
-            const num = typeof valor === 'number' ? valor : Number(valor)
-            if (Number.isFinite(num)) l.valor = num
-          } else if (colId === 'natureza') {
-            // Item 28 + hotfix UX: caixa alta e correção de sigla com caractere
-            // acidental (ver corrigirNatureza) — vale também no preenchimento em massa.
-            l.natureza = corrigirNatureza(String(valor), get().naturezasValidas)
-          } else {
-            ;(l as unknown as Record<string, unknown>)[colId] = valor
-          }
+          escreverCampoNoDraft(l, colId, valor, get().naturezasValidas)
+        })
+      }
+    },
+
+    aplicarColagem: (edicoes) => {
+      if (edicoes.length === 0) return
+      // UMA entrada de histórico para o lote inteiro (item 40): aplicando célula a célula via
+      // `editarCelula`, desfazer uma colagem de 2×3 exigia seis Ctrl+Z.
+      mutarComHistorico((draft) => {
+        for (const { indice, campo, valor } of edicoes) {
+          const l = draft.lancamentos[indice]
+          if (!l) continue
+          escreverCampoNoDraft(l, campo, valor, get().naturezasValidas)
+        }
+      })
+      // Item 36: a sugestão de replicação segue a última célula de classificação do lote —
+      // mesmo critério de `editarCelula`, que a colagem antes herdava por acidente do loop.
+      const ultimaClassificacao = [...edicoes]
+        .reverse()
+        .find((e) => e.campo === 'natureza' || e.campo === 'descricao')
+      if (ultimaClassificacao) {
+        set({
+          sugestaoReplicacao: detectarReplicacao(get().lancamentos, ultimaClassificacao.indice),
         })
       }
     },

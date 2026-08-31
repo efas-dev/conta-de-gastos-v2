@@ -1,7 +1,8 @@
-// ADR: see spec/fundacao-operacoes.adr.md
-// ADR: see spec/conciliacao-robusta.adr.md
-// ADR: see spec/rendimentos.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/conciliacao-robusta.adr.md
+// ADR: see Docs/specs/rendimentos.adr.md
 // ADR: see Docs/specs/patches-ui-ux.adr.md
+// ADR: see Docs/specs/fatura-itau-xlsx.adr.md
 
 import { useRef, useState } from 'react'
 import { useAppStore } from '../store/appStore'
@@ -14,7 +15,8 @@ import {
 import { lerDicionario, ehDicionario, lerIniciais, lerSaldoAnterior } from '../../excel/reader/leitor'
 import { detectarMesSugerido, classificarFontePorPrefixo } from '../../dominio/mes'
 import { detectar } from '../../parsers/index'
-import type { Lancamento } from '../../types'
+import { parsersBinarios } from '../../parsers/binario'
+import type { Lancamento, ResultadoParse } from '../../types'
 import { FonteRotulo } from './FonteRotulo'
 import { Cabecalho } from './Cabecalho'
 import { PainelLateral, type AbaPainelLateral } from './PainelLateral'
@@ -30,6 +32,11 @@ interface TelaImportacaoProps {
   usuarioEditouMes: boolean
   /** Atualiza `mesEscolhido` e marca `usuarioEditouMes=true` — mesmo handler usado por `TelaRevisao`. */
   onMudarMes: (novoMes: string) => void
+  /**
+   * Aplica o mês vindo da DETECÇÃO automática, sem marcar `usuarioEditouMes` — senão a própria
+   * sugestão bloquearia as seguintes no upload incremental (item 44 do TODO).
+   */
+  onSugerirMes: (novoMes: string) => void
   /** Bytes do Modelo.xlsx carregados no "Produzir" — precisam sobreviver à transição para `TelaRevisao`. */
   setModeloBytes: (bytes: Uint8Array | null) => void
   /** Aba ativa do `PainelLateral` — compartilhada com `TelaRevisao` (persiste entre as duas telas). */
@@ -52,6 +59,7 @@ export function TelaImportacao({
   mesEscolhido,
   usuarioEditouMes,
   onMudarMes,
+  onSugerirMes,
   setModeloBytes,
   painel,
   setPainel,
@@ -167,6 +175,12 @@ export function TelaImportacao({
     // --- Processa arquivos .xlsx ---
     // Controla se já havia dicionário carregado antes deste upload
     let dicCarregado = dicEntries.length > 0
+    // Faturas .xlsx reconhecidas pelo registry binário nesta leitura (Task T9, Decisão 6 do
+    // ADR `fatura-itau-xlsx`): entram como arquivo de primeira classe na mesma lista dos
+    // extratos, com os lançamentos já antecipados (`parsear` chamado aqui, reaproveitando os
+    // bytes já lidos para `aceita`) para exibição de `FonteRotulo`/detecção de mês sugerido —
+    // mesma UX que os extratos CSV/TXT já têm.
+    const faturasReconhecidas: { arquivo: File; lancamentos: Lancamento[] }[] = []
     for (const arquivo of arquivosXlsx) {
       try {
         const buf = await arquivo.arrayBuffer()
@@ -193,11 +207,27 @@ export function TelaImportacao({
             setSaldoAnterior(saldoDoDic)
           }
         } else {
-          const mensagem = `${arquivo.name}: arquivo .xlsx não reconhecido como dicionário, ignorado`
-          addAviso(mensagem)
-          adicionarAvisosAcionaveis([
-            criarAvisoInformativo(crypto.randomUUID(), 'xlsx-nao-reconhecido', mensagem),
-          ])
+          const parserBinario = parsersBinarios.find((parser) => parser.aceita(bytes))
+          if (parserBinario) {
+            // Reconhecido pelo registry binário (ex.: fatura Itaú .xlsx, Decisão 3/4 do ADR
+            // desta spec). `ParserBinario.parsear` declara só `(bytes)`, mas `fatura_itau_cc.
+            // parsear` aceita um segundo parâmetro opcional (`mesReferencia`) como fallback de
+            // data para parcelas antigas sem vencimento no arquivo (Decisão 1 do ADR) — a UI é
+            // quem conhece o mês escolhido na tela, então o cast abaixo repassa esse argumento
+            // sem alterar o contrato `ParserBinario` (fora das Áreas tocadas desta task).
+            const parsearComMes = parserBinario.parsear as (
+              bytes: Uint8Array,
+              mesReferencia?: string,
+            ) => ResultadoParse
+            const { lancamentos: lansFatura } = parsearComMes(bytes, mesEscolhido)
+            faturasReconhecidas.push({ arquivo, lancamentos: lansFatura })
+          } else {
+            const mensagem = `${arquivo.name}: arquivo .xlsx não reconhecido como dicionário, ignorado`
+            addAviso(mensagem)
+            adicionarAvisosAcionaveis([
+              criarAvisoInformativo(crypto.randomUUID(), 'xlsx-nao-reconhecido', mensagem),
+            ])
+          }
         }
       } catch {
         // best-effort: erro silenciado — não quebra o fluxo
@@ -209,20 +239,25 @@ export function TelaImportacao({
       }
     }
 
-    // --- Processa arquivos CSV/TXT ---
+    // --- Processa arquivos CSV/TXT + faturas .xlsx reconhecidas (Task T9) ---
     // Upload incremental (item 22): cada seleção ACUMULA na lista existente,
     // com dedup por nome (re-selecionar o mesmo arquivo substitui — último
-    // vence). Seleção só de .xlsx não mexe na lista nem nos antecipados.
-    if (arquivosCsv.length === 0) return
+    // vence). Seleção só de .xlsx não reconhecido (dicionário ou nada) não
+    // mexe na lista nem nos antecipados.
+    const arquivosNovos: File[] = [...arquivosCsv, ...faturasReconhecidas.map((f) => f.arquivo)]
+    if (arquivosNovos.length === 0) return
 
-    const nomesNovos = new Set(arquivosCsv.map((f) => f.name))
+    const nomesNovos = new Set(arquivosNovos.map((f) => f.name))
     const listaAcumulada = [
       ...csvArquivos.filter((f) => !nomesNovos.has(f.name)),
-      ...arquivosCsv,
+      ...arquivosNovos,
     ]
     setCsvArquivos(listaAcumulada)
 
     const porArquivo: Record<string, Lancamento[]> = {}
+    for (const { arquivo, lancamentos: lansFatura } of faturasReconhecidas) {
+      porArquivo[arquivo.name] = lansFatura
+    }
     for (const arquivo of arquivosCsv) {
       try {
         const conteudo = await lerTextoArquivo(arquivo)
@@ -248,7 +283,7 @@ export function TelaImportacao({
     const todosLancamentos: Lancamento[] = Object.values(antecipadosAcumulados).flat()
     const mesSugerido = detectarMesSugerido(todosLancamentos)
     if (mesSugerido !== null && !usuarioEditouMes) {
-      onMudarMes(mesSugerido)
+      onSugerirMes(mesSugerido)
     }
   }
 
@@ -343,7 +378,7 @@ export function TelaImportacao({
                 style={{ marginTop: 14 }}
                 onClick={() => togglePainel('avisos')}
               >
-                Avisos
+                Sugestões
                 {contagemAvisosPendentes > 0 && (
                   <span className="badge">{contagemAvisosPendentes}</span>
                 )}

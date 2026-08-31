@@ -29,6 +29,7 @@ const mockEntrarInspecao = vi.fn((id: string) => {
 const mockSairInspecao = vi.fn(() => {
   avisoEmInspecaoMock = null
 })
+const mockFocarInspecao = vi.fn()
 
 let avisosMock: Aviso[] = []
 let avisoEmInspecaoMock: string | null = null
@@ -44,6 +45,7 @@ vi.mock('../../store/appStore', () => ({
       dispensar: mockDispensar,
       entrarInspecao: mockEntrarInspecao,
       sairInspecao: mockSairInspecao,
+      focarInspecao: mockFocarInspecao,
     }),
 }))
 
@@ -85,6 +87,7 @@ beforeEach(() => {
   mockSairInspecao.mockReset().mockImplementation(() => {
     avisoEmInspecaoMock = null
   })
+  mockFocarInspecao.mockReset()
   spyGerarLancamentosVR.mockClear()
   spyGerarLancamentoRendimento.mockClear()
 })
@@ -97,6 +100,16 @@ describe('CentralDeAvisos — lista vazia (TL-13, Task B3)', () => {
     const painelVazio = container.querySelector('.painel-vazio')
     expect(painelVazio).toBeInTheDocument()
     expect(painelVazio?.children).toHaveLength(2)
+  })
+
+  it('o texto do estado vazio fala em "sugestão", não em "aviso"', () => {
+    avisosMock = []
+    const { container } = render(<CentralDeAvisos />)
+
+    const texto = container.querySelector('.painel-vazio')?.textContent ?? ''
+    expect(texto).toContain('Nenhuma sugestão pendente')
+    expect(texto).toMatch(/Novas sugestões aparecem aqui/)
+    expect(texto.toLowerCase()).not.toContain('aviso')
   })
 })
 
@@ -127,6 +140,26 @@ describe('CentralDeAvisos — rótulos e ações por estado de proposta (TL-07, 
     expect(botaoAplicar.className).toBe('btn pri mini')
     expect(screen.getByRole('button', { name: /dispensar/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /reverter/i })).toBeNull()
+  })
+
+  it('a barra de ações fica alinhada à direita, com "Dispensar" antes de "Aplicar"', () => {
+    avisosMock = [proposta({ estado: 'pendente' })]
+    const { container } = render(<CentralDeAvisos />)
+
+    const barra = container.querySelector('.card-aviso .acoes-aviso') as HTMLElement
+    expect(barra).toBeInTheDocument()
+    expect(barra).toHaveStyle({ justifyContent: 'flex-end' })
+
+    const rotulos = Array.from(barra.querySelectorAll('button')).map((b) => b.textContent)
+    expect(rotulos).toEqual(['Dispensar', 'Aplicar'])
+  })
+
+  it('a barra de ações do informativo também fica alinhada à direita', () => {
+    avisosMock = [informativo()]
+    const { container } = render(<CentralDeAvisos />)
+
+    const barra = container.querySelector('.card-aviso .acoes-aviso') as HTMLElement
+    expect(barra).toHaveStyle({ justifyContent: 'flex-end' })
   })
 
   it('clicar em "Aplicar" chama aplicar(id) com o id do aviso', () => {
@@ -223,6 +256,42 @@ describe('CentralDeAvisos — modo inspeção (TL-10, TL-11)', () => {
     fireEvent.click(screen.getByText('Fatura conciliável com pagamento do extrato.'))
 
     expect(mockSairInspecao).toHaveBeenCalled()
+    expect(mockEntrarInspecao).not.toHaveBeenCalled()
+  })
+
+  /**
+   * "Ir para a linha" (resíduo do item 39.1 do TODO). O card é um TOGGLE: clicar nele de novo
+   * SAI da inspeção, então não havia como pedir o scroll outra vez depois de rolar a grid à mão
+   * sem antes perder o realce. O botão dedicado pede foco sem mexer no estado de inspeção.
+   *
+   * TL-39c-1: card em inspeção mostra o botão
+   * TL-39c-2: card fora de inspeção não mostra
+   * TL-39c-3: clicar chama focarInspecao e NÃO sai da inspeção (stopPropagation)
+   */
+  it('TL-39c-1: card em inspeção mostra o botão "Ir para a linha"', () => {
+    avisosMock = [proposta({ id: 'prop-1' })]
+    avisoEmInspecaoMock = 'prop-1'
+    render(<CentralDeAvisos />)
+
+    expect(screen.getByRole('button', { name: /ir para a linha/i })).toBeInTheDocument()
+  })
+
+  it('TL-39c-2: card fora de inspeção não mostra o botão "Ir para a linha"', () => {
+    avisosMock = [proposta({ id: 'prop-1' })]
+    render(<CentralDeAvisos />)
+
+    expect(screen.queryByRole('button', { name: /ir para a linha/i })).not.toBeInTheDocument()
+  })
+
+  it('TL-39c-3: clicar em "Ir para a linha" chama focarInspecao sem sair da inspeção', () => {
+    avisosMock = [proposta({ id: 'prop-1' })]
+    avisoEmInspecaoMock = 'prop-1'
+    render(<CentralDeAvisos />)
+
+    fireEvent.click(screen.getByRole('button', { name: /ir para a linha/i }))
+
+    expect(mockFocarInspecao).toHaveBeenCalledTimes(1)
+    expect(mockSairInspecao).not.toHaveBeenCalled()
     expect(mockEntrarInspecao).not.toHaveBeenCalled()
   })
 

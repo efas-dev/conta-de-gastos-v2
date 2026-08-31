@@ -1,4 +1,4 @@
-// ADR: see spec/vr-despesas.adr.md
+// ADR: see Docs/specs/vr-despesas.adr.md
 // ADR: see Docs/specs/patches-ui-ux.adr.md
 // ADR: see Docs/specs/refino-ui-revisao-v2.adr.md
 

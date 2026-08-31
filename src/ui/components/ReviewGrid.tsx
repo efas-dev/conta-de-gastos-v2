@@ -140,12 +140,45 @@ export function proximaCelulaAposTab(
   return col < ULTIMA_COLUNA ? [col + 1, row] : [col, row]
 }
 
+/** Prefixo (`R$`/`-R$`) e número pt-BR — os dois blocos que o `drawCell` da coluna Valor pinta. */
+export function partesValorContabil(valor: number): { prefixo: string; numero: string } {
+  return {
+    prefixo: valor < 0 ? '-R$' : 'R$',
+    numero: Math.abs(valor).toLocaleString('pt-BR', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }),
+  }
+}
+
+/** O texto completo da coluna Valor como o usuário o lê: `-R$ 10.595,06`. */
+export function formatarValorContabil(valor: number): string {
+  const { prefixo, numero } = partesValorContabil(valor)
+  return `${prefixo} ${numero}`
+}
+
+/**
+ * Escolhe o layout da coluna Valor conforme o espaço disponível (item 14.c + dívida
+ * `bug-visualizacao-valor-grande-coluna-valor`).
+ *
+ * `'contabil'` é o formato desejado — prefixo ancorado à esquerda, número à direita, o padrão de
+ * planilha financeira. Ele só se sustenta enquanto sobra folga entre os dois blocos; numa coluna
+ * estreita eles se sobrepõem e o começo do número desaparece sob o prefixo (o valor lido vira
+ * outro, que é o pior defeito possível numa grid de dinheiro). Nesse caso, `'compacto'`: uma
+ * string só, alinhada à direita, que o clipe do `drawCell` corta pela esquerda de forma visível.
+ */
+export function escolherLayoutValor(
+  larguraPrefixo: number,
+  larguraNumero: number,
+  larguraDisponivel: number,
+): 'contabil' | 'compacto' {
+  return larguraPrefixo + larguraNumero + FOLGA_CONTABIL_PX <= larguraDisponivel
+    ? 'contabil'
+    : 'compacto'
+}
+
 export function medirLarguraValorContabil(valor: number, maxPx: number): number {
-  const prefixo = valor < 0 ? '-R$' : 'R$'
-  const numero = Math.abs(valor).toLocaleString('pt-BR', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })
+  const { prefixo, numero } = partesValorContabil(valor)
   const estimado =
     Math.ceil((prefixo.length + numero.length) * PX_POR_CHAR * FATOR_BOLD_VALOR) +
     FOLGA_CONTABIL_PX +
@@ -261,6 +294,16 @@ export const TEMA_INSPECAO_FICA = criarTemaLinha('--insp-fica-bg')
  * de superfície clara com viés de acento) — decisão local registrada no
  * log de iteração da Task T2.
  */
+/**
+ * Altura da linha e do cabeçalho da grid, em px (item 45 do TODO).
+ *
+ * Alvo: a densidade de uma planilha (Google Sheets usa ~21-30px), não a de um formulário. As
+ * duas altura vêm juntas porque o tema de fonte/padding em `criarTemaGrid` foi calibrado para
+ * elas — mexer numa sem a outra descasa o respiro vertical do texto.
+ */
+const ALTURA_LINHA = 30
+const ALTURA_CABECALHO = 30
+
 function criarTemaGrid() {
   return {
     accentColor: lerVarCSS('--verde'),
@@ -279,10 +322,12 @@ function criarTemaGrid() {
     horizontalBorderColor: lerVarCSS('--borda-linha'),
     drilldownBorder: lerVarCSS('--borda-3'),
     fontFamily: "'Manrope', system-ui, sans-serif",
-    baseFontStyle: '600 14px',
-    headerFontStyle: '700 12px',
-    editorFontSize: '14px',
-    cellHorizontalPadding: 14,
+    /* Densidade estilo Google Sheets (item 45): fonte e respiro menores acompanham a linha mais
+       baixa de `ALTURA_LINHA`, para caber mais lançamentos na tela sem perder legibilidade. */
+    baseFontStyle: '500 13px',
+    headerFontStyle: '700 11px',
+    editorFontSize: '13px',
+    cellHorizontalPadding: 9,
     headerBottomBorderColor: lerVarCSS('--borda'),
   }
 }
@@ -375,6 +420,83 @@ export function derivarContextoInspecao(
 }
 
 /**
+ * Folga vertical mínima (px) para o tooltip caber acima da célula. Abaixo disso ele vai para
+ * baixo, senão ficaria cortado no topo da janela.
+ */
+const ALTURA_TOOLTIP_FOLGA = 90
+
+/** Tooltip de célula truncada: o texto integral e a âncora (a própria célula sob o cursor). */
+export interface TooltipCelula {
+  texto: string
+  /** Coordenadas de viewport da célula — Glide soma o `getBoundingClientRect()` do canvas. */
+  x: number
+  y: number
+  alturaCelula: number
+}
+
+/**
+ * Texto efetivamente desenhado numa célula — o que o tooltip precisa mostrar por inteiro.
+ *
+ * A coluna Valor é a única cujo texto renderizado difere do campo cru: o `drawCell` pinta o
+ * formato contábil (`-R$ 10.595,06`), não o `-10595.06` de `String(l.valor)`.
+ */
+export function textoRenderizadoDaCelula(col: number, l: Lancamento): string {
+  if (col === COL_VALOR) return formatarValorContabil(l.valor)
+  const colId = COL_IDS[col]
+  return colId === undefined ? '' : String(l[colId as keyof Lancamento] ?? '')
+}
+
+/**
+ * Largura estimada, em px, do texto desenhado numa célula — sem o teto de `LARGURA_MAXIMA_PX`.
+ *
+ * Usa a MESMA heurística da auto-largura (`calcularLargurasColunas`) de propósito: assim
+ * "a auto-largura coube" e "não há tooltip" são a mesma afirmação. Com o teto aplicado, uma
+ * coluna estourada mediria exatamente a própria largura e o predicado nunca dispararia.
+ */
+export function estimarLarguraDaCelula(col: number, l: Lancamento): number {
+  return col === COL_VALOR
+    ? medirLarguraValorContabil(l.valor, Infinity)
+    : medirLarguraHeuristica(textoRenderizadoDaCelula(col, l), Infinity)
+}
+
+/**
+ * Decide se o item sob o cursor rende tooltip e onde ancorá-lo (item 14 do TODO).
+ *
+ * Vale para **qualquer** coluna cujo conteúdo não caiba na largura atual — não só a Transcrição,
+ * que era o escopo da primeira versão. Motivo: a auto-largura tem teto (`LARGURA_MAXIMA_PX`) e o
+ * usuário pode encolher qualquer coluna à mão, então Natureza, Descrição e Valor truncam também;
+ * a densidade menor da grid (item 45) só tornou isso mais frequente.
+ *
+ * O predicado de truncamento compara a largura estimada do texto com a largura REAL da célula,
+ * que o Glide já entrega em `bounds.width` — nada de reler o estado de larguras. Sem ele o
+ * tooltip aparecia em toda célula sob o cursor, inclusive nas que cabem folgadas.
+ *
+ * Retorna `null` no cabeçalho (`row < 0`), em linha inexistente, em coluna fora do range (o
+ * marcador de linha), sem `bounds` (Glide não devolve âncora fora da área de células), com
+ * conteúdo em branco, ou quando o texto cabe.
+ *
+ * Função pura — a posição na tela vem só de `bounds`, sem tocar no DOM.
+ */
+export function derivarTooltipCelula(
+  location: readonly [number, number],
+  bounds: { x: number; y: number; width: number; height: number } | undefined,
+  lancamentos: Lancamento[],
+): TooltipCelula | null {
+  const [col, row] = location
+  if (row < 0 || bounds === undefined) return null
+  if (col < 0 || col >= COL_IDS.length) return null
+
+  const l = lancamentos[row]
+  if (!l) return null
+
+  const texto = textoRenderizadoDaCelula(col, l)
+  if (texto.trim() === '') return null
+  if (estimarLarguraDaCelula(col, l) <= bounds.width) return null
+
+  return { texto, x: bounds.x, y: bounds.y, alturaCelula: bounds.height }
+}
+
+/**
  * Índices reais em `lancamentos` de todas as linhas envolvidas na inspeção ativa — união de
  * `alvo` (sai) e `permanece` (fica). Vazio quando não há inspeção com efeito de grid ativa
  * (origem fora de `ORIGENS_COM_EFEITO_GRID`).
@@ -427,15 +549,29 @@ export function calcularTemaLinhaComInspecao(
  * ou quando o índice-âncora não está (ainda) presente no mapa — o chamador é responsável por
  * revelar a linha antes de rolar (`aplicarRevelacaoInspecao`). Estendido a `'valor-pendente'`/
  * `'pagamento-recebido'` na Task T8 (revisão de D11 — essas origens agora têm linha real).
+ *
+ * `alvo[0]` obedece às duas convenções de `ORIGENS_ALVO_POR_ID`: para `transferencia-interna` e
+ * `investimento` ele é `Lancamento.id` e precisa da tradução id→índice que `indicesEnvolvidos`
+ * já fazia para o realce. Sem ela, o id casava por acidente com a POSIÇÃO de outra linha (os
+ * ids são seriais a partir de 1) e o scroll ia para a linha errada.
  */
 export function calcularLinhaAncoraVisual(
   mapaIndiceVisualReal: number[],
   aviso: Aviso | undefined,
+  lancamentos: Lancamento[] = [],
 ): number | undefined {
   if (!aviso || !ORIGENS_COM_EFEITO_GRID.has(aviso.origem) || aviso.alvo.length === 0) {
     return undefined
   }
-  const indiceRealAncora = Number(aviso.alvo[0])
+  let indiceRealAncora: number | undefined
+  if (ORIGENS_ALVO_POR_ID.has(aviso.origem)) {
+    const posicaoPorId = new Map(lancamentos.map((l, i) => [String(l.id), i]))
+    indiceRealAncora = posicaoPorId.get(aviso.alvo[0])
+  } else {
+    indiceRealAncora = Number(aviso.alvo[0])
+  }
+  if (indiceRealAncora === undefined) return undefined
+
   const posicaoVisual = mapaIndiceVisualReal.indexOf(indiceRealAncora)
   return posicaoVisual >= 0 ? posicaoVisual : undefined
 }
@@ -529,12 +665,14 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   const mapaIndiceVisualReal = useAppStore((s) => s.mapaIndiceVisualReal)
   const editarCelula = useAppStore((s) => s.editarCelula)
   const preencherIntervalo = useAppStore((s) => s.preencherIntervalo)
+  const aplicarColagem = useAppStore((s) => s.aplicarColagem)
   const dicEntries = useAppStore((s) => s.dicEntries)
   const ordenacaoColuna = useAppStore((s) => s.ordenacaoColuna)
   const ordenacaoDirecao = useAppStore((s) => s.ordenacaoDirecao)
   const ciclarOrdenacao = useAppStore((s) => s.ciclarOrdenacao)
   const avisos = useAppStore((s) => s.avisosAcionaveis.avisos)
   const avisoEmInspecaoId = useAppStore((s) => s.avisosAcionaveis.avisoEmInspecao)
+  const focoInspecao = useAppStore((s) => s.avisosAcionaveis.focoInspecao)
 
   // Tema base do Glide — montado uma vez, após o mount (T2: lê variáveis CSS de :root).
   const temaGrid = useMemo(() => criarTemaGrid(), [])
@@ -571,12 +709,16 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   )
 
   // Auto-scroll até a linha-âncora ("sai") ao entrar em inspeção de conciliação (D3).
+  //
+  // `focoInspecao` entra nas dependências para cobrir o resíduo do item 39.1: depois de rolar a
+  // grid à mão, pedir a mesma linha de novo não mudaria `avisoEmInspecao` e o efeito não voltaria
+  // a rodar. O contador dá identidade nova a cada pedido (botão "Ir para a linha").
   const dataEditorRef = useRef<DataEditorRef | null>(null)
   useEffect(() => {
-    const linhaAncora = calcularLinhaAncoraVisual(mapaExibidoReal, avisoEmInspecao)
+    const linhaAncora = calcularLinhaAncoraVisual(mapaExibidoReal, avisoEmInspecao, lancamentos)
     if (linhaAncora === undefined) return
     dataEditorRef.current?.scrollTo(0, linhaAncora, 'vertical')
-  }, [mapaExibidoReal, avisoEmInspecao])
+  }, [mapaExibidoReal, avisoEmInspecao, lancamentos, focoInspecao])
 
   // -----------------------------------------------------------------
   // Estado local de larguras de coluna — D16/D17/D18 do ADR grid-ux-filtros
@@ -944,22 +1086,39 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
       }
       const { ctx, rect, theme } = args
       const negativo = l.valor < 0
-      const prefixo = negativo ? '-R$' : 'R$'
-      const numero = Math.abs(l.valor).toLocaleString('pt-BR', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })
+      const { prefixo, numero } = partesValorContabil(l.valor)
       const pad = theme.cellHorizontalPadding
       const y = rect.y + rect.height / 2
 
       ctx.save()
+      // Clipe ao retângulo da célula: sem ele o texto vaza para a coluna vizinha quando a
+      // coluna Valor é estreita demais (dívida `bug-visualizacao-valor-grande-coluna-valor`).
+      ctx.beginPath()
+      ctx.rect(rect.x, rect.y, rect.width, rect.height)
+      ctx.clip()
       ctx.font = `700 14px ${theme.fontFamily}`
       ctx.fillStyle = negativo ? '#b4654a' : '#4e6a53'
       ctx.textBaseline = 'middle'
-      ctx.textAlign = 'left'
-      ctx.fillText(prefixo, rect.x + pad, y)
-      ctx.textAlign = 'right'
-      ctx.fillText(numero, rect.x + rect.width - pad, y)
+
+      const disponivel = rect.width - pad * 2
+      const layout = escolherLayoutValor(
+        ctx.measureText(prefixo).width,
+        ctx.measureText(numero).width,
+        disponivel,
+      )
+      if (layout === 'contabil') {
+        ctx.textAlign = 'left'
+        ctx.fillText(prefixo, rect.x + pad, y)
+        ctx.textAlign = 'right'
+        ctx.fillText(numero, rect.x + rect.width - pad, y)
+      } else {
+        // Não cabe: prefixo e número colados numa string só, alinhada à direita. O clipe corta o
+        // excesso pela ESQUERDA — o usuário vê que falta começo e o tooltip (item 14) entrega o
+        // valor inteiro. O formato contábil aqui esconderia dígitos DENTRO do número, que é pior:
+        // o número truncado continua parecendo um número válido.
+        ctx.textAlign = 'right'
+        ctx.fillText(`${prefixo} ${numero}`, rect.x + rect.width - pad, y)
+      }
       ctx.restore()
     },
     [lancamentosExibidos],
@@ -1016,15 +1175,20 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
         COL_IDS,
         COLUNAS_SOMENTE_LEITURA,
       )
-      for (const { indiceReal, colId, valor } of edicoes) {
-        editarCelula(indiceReal, colId as CampoEditavel, valor)
-      }
+      // Lote único: um Ctrl+Z desfaz a colagem inteira (item 40).
+      aplicarColagem(
+        edicoes.map(({ indiceReal, colId, valor }) => ({
+          indice: indiceReal,
+          campo: colId as CampoEditavel,
+          valor,
+        })),
+      )
       // Colou: encerra o realce de "copiado" (como no Sheets).
       setHighlightRegions(undefined)
       if (edicoes.length > 0) agendarRecalculoLarguras(lancamentosVisiveis)
       return false
     },
-    [gridSelection, mapaExibidoReal, editarCelula, agendarRecalculoLarguras, lancamentosVisiveis],
+    [gridSelection, mapaExibidoReal, aplicarColagem, agendarRecalculoLarguras, lancamentosVisiveis],
   )
 
   // -----------------------------------------------------------------
@@ -1102,6 +1266,18 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
     [lancamentosExibidos],
   )
 
+  // Tooltip de célula truncada: o texto integral da célula sob o cursor, em qualquer coluna cujo
+  // conteúdo não caiba na largura atual (item 14). Estado local e puramente visual — some junto
+  // com o hover, não entra no store.
+  const [tooltip, setTooltip] = useState<TooltipCelula | null>(null)
+
+  const onItemHovered = useCallback(
+    (args: { location: readonly [number, number]; bounds?: { x: number; y: number; width: number; height: number } }) => {
+      setTooltip(derivarTooltipCelula(args.location, args.bounds, lancamentosExibidos))
+    },
+    [lancamentosExibidos],
+  )
+
   // -----------------------------------------------------------------
   // Render
   // -----------------------------------------------------------------
@@ -1119,14 +1295,17 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
           drawCell={drawCell}
           gridSelection={gridSelection}
           onGridSelectionChange={onGridSelectionChange}
-          rowMarkers="number"
+          /* `clickable-number`: o clique no número seleciona a linha inteira, como no Sheets
+             (item 38). Com `"number"` o Glide trata o marcador como decorativo e ignora o
+             clique. */
+          rowMarkers="clickable-number"
           smoothScrollX
           smoothScrollY
           width="100%"
           height="100%"
           theme={temaGrid}
-          headerHeight={38}
-          rowHeight={40}
+          headerHeight={ALTURA_CABECALHO}
+          rowHeight={ALTURA_LINHA}
           /* Copiar (Ctrl/Cmd+C) usa getCellsForSelection; colar (Ctrl/Cmd+V) via onPaste
              customizado, que preenche TODAS as células selecionadas (estilo Sheets). */
           getCellsForSelection={true}
@@ -1143,6 +1322,8 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
           provideEditor={provideEditor}
           onCellActivated={onCellActivated}
           onHeaderClicked={onHeaderClicked}
+          /* Tooltip de célula truncada — qualquer coluna cujo texto não caiba (item 14). */
+          onItemHovered={onItemHovered}
           rangeSelect="multi-rect"
           columnSelect="multi"
           rowSelect="multi"
@@ -1153,11 +1334,36 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
             selectColumn: true,
             copy: true,
             paste: true,
+            /* Ctrl/Cmd+F abre a busca nativa do Glide (item 43). Vem desligado por default; o
+               Glide dá preventDefault no atalho, então a busca do navegador — que só enxerga as
+               linhas renderizadas pelo virtualizador — não rouba a tecla. */
+            search: true,
             /* F2 abre a edição da célula, além do default (Espaço/Enter/Shift+Enter). */
             activateCell: ' |Enter|shift+Enter|F2',
           }}
         />
       </div>
+
+      {/* Tooltip de célula truncada: `position: fixed` porque os `bounds` do Glide já vêm em
+          coordenadas de viewport (ele soma o `getBoundingClientRect()` do canvas). Ancora acima
+          da célula; quando não cabe (linha no topo da tela), desce para baixo dela.
+          `pointerEvents: none` para não roubar o hover da própria célula. */}
+      {tooltip !== null && (
+        <div
+          role="tooltip"
+          className="tooltip-transcricao"
+          style={{
+            left: tooltip.x,
+            top: tooltip.y,
+            transform:
+              tooltip.y > ALTURA_TOOLTIP_FOLGA
+                ? 'translateY(calc(-100% - 6px))'
+                : `translateY(${tooltip.alturaCelula + 6}px)`,
+          }}
+        >
+          {tooltip.texto}
+        </div>
+      )}
 
       {somaSelecao !== null && (
         <div className="rodape-soma">

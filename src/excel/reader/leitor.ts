@@ -1,7 +1,7 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
 // ADR: see Docs/specs/dicionario-ponta-a-ponta.adr.md
 // ADR: see Docs/specs/colinha-naturezas.adr.md
-// ADR: see spec/rendimentos.adr.md
+// ADR: see Docs/specs/rendimentos.adr.md
 
 import { unzipSync } from 'fflate'
 import type { DicEntry, NaturezaRica } from '../../types'

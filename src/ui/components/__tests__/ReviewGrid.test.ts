@@ -28,6 +28,9 @@ import {
   ehColunaLeituraApenas,
   proximaCelulaAposTab,
   derivarContextoInspecao,
+  derivarTooltipCelula,
+  escolherLayoutValor,
+  formatarValorContabil,
   calcularTemaLinhaComInspecao,
   calcularLinhaAncoraVisual,
   aplicarRevelacaoInspecao,
@@ -492,6 +495,49 @@ describe('calcularLinhaAncoraVisual', () => {
     const aviso = avisoConciliacaoFake({ origem: 'outra-origem', alvo: ['2'] })
     expect(calcularLinhaAncoraVisual([0, 1, 2], aviso)).toBeUndefined()
   })
+
+  it('TL-39a-1: origem por id traduz o alvo antes de procurar a posição visual', () => {
+    // `transferencia-interna` grava `Lancamento.id` em `alvo` (ver ORIGENS_ALVO_POR_ID). Sem a
+    // tradução, `Number('7')` casaria com a POSIÇÃO 7 e o scroll iria para a linha errada.
+    const lancamentos = [
+      lancamentoFake({ id: 5, transcricao: 'Linha A' }), // índice real 0
+      lancamentoFake({ id: 7, transcricao: 'Transferência' }), // índice real 1
+      lancamentoFake({ id: 9, transcricao: 'Linha C' }), // índice real 2
+    ]
+    const aviso = avisoConciliacaoFake({ origem: 'transferencia-interna', alvo: ['7'] })
+
+    expect(calcularLinhaAncoraVisual([0, 1, 2], aviso, lancamentos)).toBe(1)
+  })
+
+  it('TL-39a-2: origem por id continua achando a linha sob ordenação ativa', () => {
+    const lancamentos = [
+      lancamentoFake({ id: 5, transcricao: 'Linha A' }),
+      lancamentoFake({ id: 7, transcricao: 'Aplicação' }),
+      lancamentoFake({ id: 9, transcricao: 'Linha C' }),
+    ]
+    const aviso = avisoConciliacaoFake({ origem: 'investimento', alvo: ['7'] })
+
+    // Ordenação ativa: posição visual 0 -> índice real 2, posição 2 -> índice real 1.
+    expect(calcularLinhaAncoraVisual([2, 0, 1], aviso, lancamentos)).toBe(2)
+  })
+
+  it('TL-39a-3: origem por id sem lançamento correspondente devolve undefined', () => {
+    const lancamentos = [lancamentoFake({ id: 5, transcricao: 'Linha A' })]
+    const aviso = avisoConciliacaoFake({ origem: 'investimento', alvo: ['404'] })
+
+    expect(calcularLinhaAncoraVisual([0], aviso, lancamentos)).toBeUndefined()
+  })
+
+  it('TL-39a-4: origem posicional ignora os lançamentos e segue usando o índice', () => {
+    const lancamentos = [
+      lancamentoFake({ id: 5, transcricao: 'Linha A' }),
+      lancamentoFake({ id: 7, transcricao: 'Linha B' }),
+      lancamentoFake({ id: 9, transcricao: 'Pagamento' }),
+    ]
+    const aviso = avisoConciliacaoFake({ alvo: ['2'] })
+
+    expect(calcularLinhaAncoraVisual([0, 1, 2], aviso, lancamentos)).toBe(2)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -751,5 +797,120 @@ describe('temas de linha leem variáveis CSS de :root (Task T2)', () => {
   it('TL-23 (regressão, identidade): temas de inspeção continuam referências estáveis usadas por calcularTemaLinhaComInspecao', () => {
     const contexto = derivarContextoInspecao(avisoConciliacaoFake())!
     expect(calcularTemaLinhaComInspecao(2, contexto)).toBe(TEMA_INSPECAO_SAI)
+  })
+})
+
+/**
+ * Tooltip de célula truncada (item 14 do TODO) — a célula corta o texto no canvas e o usuário
+ * precisa ler o conteúdo inteiro. `derivarTooltipCelula` é a parte pura: decide SE há tooltip e
+ * ONDE ancorá-lo, a partir do item sob o cursor.
+ *
+ * O predicado de truncamento compara a largura ESTIMADA do texto desenhado com a largura REAL da
+ * célula (`bounds.width`, que o Glide já entrega). Como a estimativa é a mesma da auto-largura,
+ * "a auto-largura coube" ⟺ "não há tooltip": ele só aparece quando o texto estourou o teto de
+ * `LARGURA_MAXIMA_PX` ou quando o usuário encolheu a coluna à mão.
+ *
+ * TL-14-1: Transcrição estourando a largura → tooltip com o texto integral, ancorado na célula
+ * TL-14-2: Descrição estourando → tooltip (antes só a Transcrição tinha)
+ * TL-14-3: Natureza estourando → tooltip
+ * TL-14-4: Valor estourando → tooltip com o formato contábil DESENHADO, não o número cru
+ * TL-14-5: texto que cabe na largura da coluna → null (o predicado é o item)
+ * TL-14-6: cabeçalho (row < 0) → null
+ * TL-14-7: célula vazia / só espaços → null
+ * TL-14-8: linha inexistente → null
+ * TL-14-9: bounds ausente → null
+ * TL-14-10: coluna fora do range (marcador de linha) → null
+ */
+describe('derivarTooltipCelula', () => {
+  const TRANSCRICAO_LONGA = 'PIX ENVIADO CP :12345678 FULANO DE TAL LTDA 07/07'
+  const estreita = { x: 120, y: 300, width: 80, height: 30 }
+  const larga = { x: 120, y: 300, width: 500, height: 30 }
+  const lancamentos = [
+    lancamentoFake({
+      transcricao: TRANSCRICAO_LONGA,
+      natureza: 'ALIMENTAÇÃO FORA DE CASA',
+      descricao: 'Almoço de trabalho com o time inteiro',
+      valor: -10595.06,
+    }),
+    lancamentoFake({ transcricao: '   ', natureza: '', descricao: '' }),
+  ]
+
+  it('TL-14-1: Transcrição que estoura a largura devolve o texto integral ancorado na célula', () => {
+    const t = derivarTooltipCelula([2, 0], estreita, lancamentos)
+    expect(t).not.toBeNull()
+    expect(t!.texto).toBe(TRANSCRICAO_LONGA)
+    expect(t!.x).toBe(120)
+    expect(t!.y).toBe(300)
+    expect(t!.alturaCelula).toBe(30)
+  })
+
+  it('TL-14-2: Descrição que estoura a largura também gera tooltip', () => {
+    const t = derivarTooltipCelula([5, 0], estreita, lancamentos)
+    expect(t?.texto).toBe('Almoço de trabalho com o time inteiro')
+  })
+
+  it('TL-14-3: Natureza que estoura a largura também gera tooltip', () => {
+    const t = derivarTooltipCelula([4, 0], estreita, lancamentos)
+    expect(t?.texto).toBe('ALIMENTAÇÃO FORA DE CASA')
+  })
+
+  it('TL-14-4: Valor mostra o formato contábil desenhado, não o número cru', () => {
+    const t = derivarTooltipCelula([6, 0], estreita, lancamentos)
+    expect(t?.texto).toBe('-R$ 10.595,06')
+  })
+
+  it('TL-14-5: texto que cabe na largura da coluna não gera tooltip', () => {
+    // Numa coluna larga, nenhuma das células desta linha estoura.
+    for (const col of [0, 1, 3, 4, 5, 6]) {
+      expect(derivarTooltipCelula([col, 0], larga, lancamentos)).toBeNull()
+    }
+  })
+
+  it('TL-14-6: cabeçalho (row negativo) não gera tooltip', () => {
+    expect(derivarTooltipCelula([2, -1], estreita, lancamentos)).toBeNull()
+  })
+
+  it('TL-14-7: célula vazia ou só com espaços não gera tooltip', () => {
+    expect(derivarTooltipCelula([2, 1], estreita, lancamentos)).toBeNull()
+    expect(derivarTooltipCelula([4, 1], estreita, lancamentos)).toBeNull()
+  })
+
+  it('TL-14-8: linha fora da lista não gera tooltip', () => {
+    expect(derivarTooltipCelula([2, 99], estreita, lancamentos)).toBeNull()
+  })
+
+  it('TL-14-9: sem bounds não há onde ancorar → null', () => {
+    expect(derivarTooltipCelula([2, 0], undefined, lancamentos)).toBeNull()
+  })
+
+  it('TL-14-10: coluna fora do range (marcador de linha) não gera tooltip', () => {
+    expect(derivarTooltipCelula([-1, 0], estreita, lancamentos)).toBeNull()
+    expect(derivarTooltipCelula([99, 0], estreita, lancamentos)).toBeNull()
+  })
+})
+
+/**
+ * Formato contábil da coluna Valor (item 14.c + dívida
+ * `bug-visualizacao-valor-grande-coluna-valor`). O `drawCell` desenha o prefixo `R$`/`-R$`
+ * ancorado à esquerda e o número alinhado à direita; quando a coluna é estreita demais, os dois
+ * blocos colidem e o começo do número some sob o prefixo. A decisão de layout é pura e testável;
+ * a pintura em si depende de Canvas e fica fora do alcance do jsdom.
+ *
+ * TL-14-11: os dois blocos cabem com folga → layout contábil (prefixo à esquerda)
+ * TL-14-12: não cabem → layout compacto (string única alinhada à direita)
+ * TL-14-13: formatarValorContabil produz o texto pt-BR com o sinal no prefixo
+ */
+describe('layout do valor contábil', () => {
+  it('TL-14-11: com espaço sobrando, mantém o formato contábil', () => {
+    expect(escolherLayoutValor(30, 70, 200)).toBe('contabil')
+  })
+
+  it('TL-14-12: sem espaço para os dois blocos e a folga, cai no compacto', () => {
+    expect(escolherLayoutValor(30, 70, 100)).toBe('compacto')
+  })
+
+  it('TL-14-13: formatarValorContabil formata em pt-BR com o sinal no prefixo', () => {
+    expect(formatarValorContabil(-10595.06)).toBe('-R$ 10.595,06')
+    expect(formatarValorContabil(1234.5)).toBe('R$ 1.234,50')
   })
 })

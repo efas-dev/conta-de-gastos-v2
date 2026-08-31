@@ -1,4 +1,4 @@
-// ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
 
 /**
  * Prova E2E — Task T16 do ADR `fundacao-operacoes`: o export gerado a partir do

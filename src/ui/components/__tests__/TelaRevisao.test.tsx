@@ -1,4 +1,4 @@
-// ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
@@ -255,7 +255,7 @@ describe('TelaRevisao', () => {
 
     // O PainelLateral está mockado sem botões: qualquer botão Avisos/Naturezas
     // encontrado seria o toggle antigo da toolbar, que não deve mais existir.
-    expect(screen.queryByRole('button', { name: /^avisos/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /^sugestões/i })).toBeNull()
     expect(screen.queryByRole('button', { name: /^naturezas/i })).toBeNull()
   })
 

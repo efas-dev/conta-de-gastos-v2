@@ -1,4 +1,4 @@
-// ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
 
 /**
  * Prova E2E — Task T17 do ADR `fundacao-operacoes`: a jornada inteira ponta a
@@ -170,7 +170,7 @@ describe('E2E — Task T17: jornada completa ponta a ponta', () => {
   })
 
   function abrirCentralDeAvisos(): void {
-    fireEvent.click(screen.getByRole('button', { name: /^avisos/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^sugestões/i }))
   }
 
   function cardPorTexto(regex: RegExp): HTMLElement {

@@ -1,4 +1,4 @@
-// ADR: see spec/vr-despesas.adr.md
+// ADR: see Docs/specs/vr-despesas.adr.md
 
 import { describe, it, expect } from 'vitest'
 import { detectarVR, gerarLancamentosVR } from '../vr'

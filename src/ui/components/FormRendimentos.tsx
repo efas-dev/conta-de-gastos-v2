@@ -1,4 +1,4 @@
-// ADR: see spec/rendimentos.adr.md
+// ADR: see Docs/specs/rendimentos.adr.md
 // ADR: see Docs/specs/patches-ui-ux.adr.md
 // ADR: see Docs/specs/refino-ui-revisao-v2.adr.md
 

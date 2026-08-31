@@ -1,7 +1,7 @@
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
-// ADR: see spec/fundacao-operacoes.adr.md
-// ADR: see spec/conciliacao-robusta.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/conciliacao-robusta.adr.md
 
 import type { Aviso, Lancamento } from '../types'
 
@@ -72,20 +72,23 @@ const ROTULO_ORIGEM_ESPECIAL: Record<'valor-pendente' | 'pagamento-recebido', st
 }
 
 /**
- * Explicação exibida no resumo do aviso. As duas linhas são uma particularidade do CSV do
- * Nubank, que abre a fatura repetindo o saldo que ficou em aberto no ciclo anterior e, em
- * seguida, o crédito da quitação desse saldo. Quando o usuário não atrasa a fatura, as duas
- * se anulam (mesmo valor, sinais opostos) — daí "em geral": com atraso entram multa e juros
- * e os módulos deixam de coincidir, mas nenhuma das duas linhas é gasto do mês corrente.
- * O texto nomeia a contraparte para que o usuário entenda o par ao tratar cada aviso.
+ * Explicação exibida no resumo do aviso. As duas linhas são uma particularidade da fatura de
+ * cartão de crédito (observada tanto no CSV do Nubank quanto no .xlsx do Itaú — ADR
+ * `fatura-itau-xlsx`, Decisão 5): a fatura abre repetindo o saldo que ficou em aberto no ciclo
+ * anterior e, em seguida, traz o crédito da quitação desse saldo. Quando o usuário não atrasa a
+ * fatura, as duas se anulam (mesmo valor, sinais opostos) — daí "em geral": com atraso entram
+ * multa e juros e os valores deixam de coincidir, mas nenhuma das duas linhas é gasto do mês
+ * corrente. O texto nomeia a contraparte para que o usuário entenda o par ao tratar cada aviso,
+ * sem citar o emissor da fatura — o mesmo texto serve a qualquer fonte que marque
+ * `origemEspecial`.
  */
 const COMPLEMENTO_RESUMO_ORIGEM_ESPECIAL: Record<'valor-pendente' | 'pagamento-recebido', string> = {
   'valor-pendente':
-    'É o que ficou em aberto na fatura passada, que o Nubank repete no começo desta. ' +
+    'É o que ficou em aberto na fatura passada, que a própria fatura repete no começo desta. ' +
     'Não é uma compra deste mês: em geral se anula com o "Pagamento recebido" de mesmo valor. ' +
     'Aprovar tira a linha da planilha.',
   'pagamento-recebido':
-    'É a quitação da fatura anterior, que o Nubank lança dentro desta fatura. ' +
+    'É a quitação da fatura anterior, que a própria fatura lança dentro desta. ' +
     'Não é gasto nem receita deste mês: em geral se anula com o "Valor pendente do mês anterior". ' +
     'Aprovar tira a linha da planilha.',
 }
@@ -169,11 +172,33 @@ export function detectarPagamentoRecebido(lancamentos: Lancamento[]): Aviso[] {
 }
 
 /**
+ * Um lançamento da fatura entra no somatório a conciliar?
+ *
+ * Não entram as linhas marcadas com `origemEspecial` — "Valor pendente do mês anterior" e
+ * "Pagamento recebido". Elas vivem na fatura mas não são gasto do mês: cada uma já tem a sua
+ * própria proposta de remoção (`detectarValorPendente`/`detectarPagamentoRecebido`, D16/D17 do
+ * ADR `inspecao-proposta-conciliacao`), e somá-las aqui desloca o total da fatura do valor
+ * efetivamente pago no extrato — o casamento por total falha e a conciliação cai no fallback de
+ * subconjunto, virando ruído (item 42 do TODO).
+ *
+ * O filtro é por PREDICADO, nunca por reindexação do array: os índices de `lancamentosFatura`
+ * são o espaço de `Aviso.permanece`, que o registry remapeia para o array total via
+ * `indicesFaturaNoTotal` (`src/dominio/registry.ts`). Reindexar aqui faria a proposta realçar e
+ * remover a linha errada da grid.
+ */
+function entraNoSomatorioDaFatura(lancamento: Lancamento): boolean {
+  return lancamento.origemEspecial === undefined
+}
+
+/**
  * Encontra os índices (posição em `lancamentosFatura`) de algum subconjunto cuja soma em
  * centavos seja exatamente igual a `alvoCentavos`, ou `null` se não existir. Mesma programação
  * dinâmica de subset-sum de antes (soma alcançável em ordem), agora guardando a composição de
  * índices que atinge cada soma alcançável — a decisão de "existe casamento" continua idêntica
  * (deriva de "achou composição, sim ou não"), zero mudança na lógica de casamento.
+ *
+ * Linhas de `origemEspecial` são puladas (mesmo motivo de `entraNoSomatorioDaFatura`), sem
+ * alterar a numeração dos índices devolvidos.
  */
 function subsetComposicaoIndices(
   lancamentosFatura: Lancamento[],
@@ -183,6 +208,7 @@ function subsetComposicaoIndices(
 
   const alcancaveis = new Map<number, number[]>([[0, []]])
   for (let indice = 0; indice < lancamentosFatura.length; indice++) {
+    if (!entraNoSomatorioDaFatura(lancamentosFatura[indice])) continue
     const valor = Math.abs(paraCentavos(lancamentosFatura[indice].valor))
     if (valor <= 0) continue
     const entradas = Array.from(alcancaveis.entries())
@@ -275,8 +301,15 @@ export function detectarConciliacao(
   lancamentosFatura: Lancamento[],
   lancamentosExtrato: Lancamento[],
 ): Aviso[] {
+  // Índices (no espaço de `lancamentosFatura`) das linhas que de fato compõem o valor a
+  // conciliar — ver `entraNoSomatorioDaFatura`.
+  const indicesConciliaveis = lancamentosFatura
+    .map((lancamento, indice) => ({ lancamento, indice }))
+    .filter(({ lancamento }) => entraNoSomatorioDaFatura(lancamento))
+    .map(({ indice }) => indice)
+
   const somaFaturaCentavos = Math.abs(
-    lancamentosFatura.reduce((acc, l) => acc + paraCentavos(l.valor), 0),
+    indicesConciliaveis.reduce((acc, i) => acc + paraCentavos(lancamentosFatura[i].valor), 0),
   )
 
   const candidatosTotal = lancamentosExtrato
@@ -289,7 +322,7 @@ export function detectarConciliacao(
 
   if (candidatosTotal.length === 1) {
     const { lancamento, index } = candidatosTotal[0]
-    const permanece = lancamentosFatura.map((_, i) => String(i))
+    const permanece = indicesConciliaveis.map((i) => String(i))
     const resumo = formatarResumoConciliacao(
       somaFaturaCentavos,
       Math.abs(paraCentavos(lancamento.valor)),
@@ -328,7 +361,7 @@ export function detectarConciliacao(
     const resumo = formatarResumoConciliacao(
       somaSubsetCentavos,
       Math.abs(paraCentavos(lancamento.valor)),
-      composicao.length < lancamentosFatura.length,
+      composicao.length < indicesConciliaveis.length,
     )
     return [propostaConciliacao(lancamento, index, permanece, resumo)]
   }

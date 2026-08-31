@@ -1,4 +1,4 @@
-// ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
@@ -114,6 +114,24 @@ vi.mock('../../../parsers/index', () => ({
   detectar: vi.fn(() => ({ parsear: mockParsear })),
 }))
 
+// Task T8 (spec fatura-itau-xlsx): registry binário mockado — os testes de
+// roteamento controlam o veredito de `aceita` de cada parser binário sem
+// depender de nenhum parser binário concreto real (fatura_itau_cc só ganha
+// `aceita` na Task T3, já integrada; `parsersBinarios` em si segue vazio até
+// uma task futura popular com um parser completo — T4).
+const { mockBinarioAceita, mockParsearBinario } = vi.hoisted(() => ({
+  mockBinarioAceita: vi.fn(() => false),
+  mockParsearBinario: vi.fn((_bytes: Uint8Array, _mesRef?: string) => ({ lancamentos: [] as Lancamento[] })),
+}))
+vi.mock('../../../parsers/binario', () => ({
+  parsersBinarios: [
+    {
+      aceita: (bytes: Uint8Array) => mockBinarioAceita(bytes),
+      parsear: (bytes: Uint8Array, mesRef?: string) => mockParsearBinario(bytes, mesRef),
+    },
+  ],
+}))
+
 vi.mock('../FonteRotulo', () => ({
   FonteRotulo: ({ fonte, tipo }: { fonte: string; tipo: string }) =>
     React.createElement('span', { 'data-testid': 'fonte-rotulo', 'data-fonte': fonte, 'data-tipo': tipo }),
@@ -175,6 +193,7 @@ beforeEach(() => {
   }
   vi.clearAllMocks()
   mockParsear.mockReturnValue({ lancamentos: [] })
+  mockParsearBinario.mockReturnValue({ lancamentos: [] })
 })
 
 describe('TelaImportacao', () => {
@@ -259,13 +278,13 @@ describe('TelaImportacao', () => {
     expect(tela).toHaveAttribute('data-arrastando', 'false')
   })
 
-  it('botão "Avisos" não aparece quando avisosAcionaveis.avisos está vazio', () => {
+  it('botão "Sugestões" não aparece quando avisosAcionaveis.avisos está vazio', () => {
     render(<TelaImportacao {...props()} />)
 
-    expect(screen.queryByText('Avisos')).not.toBeInTheDocument()
+    expect(screen.queryByText('Sugestões')).not.toBeInTheDocument()
   })
 
-  it('botão "Avisos" aparece com badge de pendentes e alterna o painel ao clicar', () => {
+  it('botão "Sugestões" aparece com badge de pendentes e alterna o painel ao clicar', () => {
     estado.avisosAcionaveis = {
       avisos: [
         {
@@ -284,7 +303,7 @@ describe('TelaImportacao', () => {
     const setPainel = vi.fn()
     render(<TelaImportacao {...props({ setPainel })} />)
 
-    const botao = screen.getByText('Avisos').closest('button')!
+    const botao = screen.getByText('Sugestões').closest('button')!
     expect(botao.textContent).toContain('1')
 
     fireEvent.click(botao)
@@ -431,5 +450,176 @@ describe('TelaImportacao', () => {
     await waitFor(() => expect(addAviso).toHaveBeenCalled())
     expect(leitor.lerSaldoAnterior).not.toHaveBeenCalled()
     expect(setSaldoAnterior).not.toHaveBeenCalled()
+  })
+
+  // Task T8 (spec fatura-itau-xlsx): roteamento no upload — dicionário → registry
+  // binário → não reconhecido. Três desfechos exigidos pela Definition of done.
+  describe('roteamento de .xlsx (Task T8)', () => {
+    it('dicionário aceita: segue o fluxo de dicionário existente e não consulta o registry binário para emitir o aviso de não reconhecido', async () => {
+      vi.mocked(leitor.ehDicionario).mockResolvedValueOnce(true)
+      const { container } = render(<TelaImportacao {...props()} />)
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [xlsxFile()] } })
+      })
+
+      await waitFor(() => expect(setDic).toHaveBeenCalled())
+      expect(addAviso).not.toHaveBeenCalledWith(expect.stringContaining('não reconhecido'))
+    })
+
+    it('registry binário aceita: não emite o aviso xlsx-nao-reconhecido', async () => {
+      vi.mocked(leitor.ehDicionario).mockResolvedValueOnce(false)
+      mockBinarioAceita.mockReturnValueOnce(true)
+      const { container } = render(<TelaImportacao {...props()} />)
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [xlsxFile('fatura_itau.xlsx')] } })
+      })
+
+      await waitFor(() => expect(mockBinarioAceita).toHaveBeenCalled())
+      expect(adicionarAvisos).not.toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ origem: 'xlsx-nao-reconhecido' })]),
+      )
+    })
+
+    it('registry binário aceita: não aciona o caminho de dicionário (setDic/lerIniciais/lerSaldoAnterior não chamados)', async () => {
+      vi.mocked(leitor.ehDicionario).mockResolvedValueOnce(false)
+      mockBinarioAceita.mockReturnValueOnce(true)
+      const { container } = render(<TelaImportacao {...props()} />)
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [xlsxFile('fatura_itau.xlsx')] } })
+      })
+
+      await waitFor(() => expect(mockBinarioAceita).toHaveBeenCalled())
+      expect(setDic).not.toHaveBeenCalled()
+      expect(leitor.lerIniciais).not.toHaveBeenCalled()
+      expect(leitor.lerSaldoAnterior).not.toHaveBeenCalled()
+    })
+
+    it('nenhum aceita: mantém o aviso xlsx-nao-reconhecido já existente, mesmo consultando o registry binário', async () => {
+      vi.mocked(leitor.ehDicionario).mockResolvedValueOnce(false)
+      mockBinarioAceita.mockReturnValueOnce(false)
+      const { container } = render(<TelaImportacao {...props()} />)
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [xlsxFile('desconhecido.xlsx')] } })
+      })
+
+      await waitFor(() => expect(mockBinarioAceita).toHaveBeenCalled())
+      expect(addAviso).toHaveBeenCalledWith(
+        expect.stringContaining('desconhecido.xlsx: arquivo .xlsx não reconhecido como dicionário, ignorado'),
+      )
+      expect(adicionarAvisos).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ origem: 'xlsx-nao-reconhecido' })]),
+      )
+    })
+  })
+
+  // Task T9 (spec fatura-itau-xlsx): fatura .xlsx como arquivo de primeira classe — mesma lista
+  // visual dos extratos (card + Remover), habilitando "Produzir revisão" sozinha (Decisão 6 do
+  // ADR). Reaproveita o mock de `parsersBinarios` já estabelecido pela Task T8.
+  describe('fatura .xlsx como arquivo de primeira classe (Task T9)', () => {
+    it('fatura reconhecida pelo registry binário aparece na lista com nome do arquivo e botão Remover', async () => {
+      estado.iniciais = 'ES'
+      vi.mocked(leitor.ehDicionario).mockResolvedValue(false)
+      mockBinarioAceita.mockReturnValue(true)
+      const { container } = render(<TelaImportacao {...props()} />)
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [xlsxFile('fatura_itau.xlsx')] } })
+      })
+
+      await waitFor(() => expect(screen.getByText('fatura_itau.xlsx')).toBeInTheDocument())
+      expect(screen.getByText('Remover')).toBeInTheDocument()
+    })
+
+    it('fatura sozinha (sem nenhum CSV/TXT) habilita "Produzir revisão" quando há iniciais', async () => {
+      estado.iniciais = 'ES'
+      vi.mocked(leitor.ehDicionario).mockResolvedValue(false)
+      mockBinarioAceita.mockReturnValue(true)
+      const { container } = render(<TelaImportacao {...props()} />)
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [xlsxFile('fatura_itau.xlsx')] } })
+      })
+
+      await waitFor(() => expect(screen.getByText('fatura_itau.xlsx')).toBeInTheDocument())
+      expect(screen.getByText('Produzir revisão').closest('button')).not.toBeDisabled()
+    })
+
+    it('clicar em "Remover" no card da fatura tira-a da lista', async () => {
+      estado.iniciais = 'ES'
+      vi.mocked(leitor.ehDicionario).mockResolvedValue(false)
+      mockBinarioAceita.mockReturnValue(true)
+      const { container } = render(<TelaImportacao {...props()} />)
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [xlsxFile('fatura_itau.xlsx')] } })
+      })
+      await waitFor(() => expect(screen.getByText('fatura_itau.xlsx')).toBeInTheDocument())
+
+      fireEvent.click(screen.getByText('Remover'))
+
+      expect(screen.queryByText('fatura_itau.xlsx')).not.toBeInTheDocument()
+    })
+
+    it('chama parsear do parser binário aceito com mesEscolhido como segundo argumento (wiring do mês de referência)', async () => {
+      estado.iniciais = 'ES'
+      vi.mocked(leitor.ehDicionario).mockResolvedValue(false)
+      mockBinarioAceita.mockReturnValue(true)
+      const { container } = render(<TelaImportacao {...props({ mesEscolhido: '2026-07' })} />)
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [xlsxFile('fatura_itau.xlsx')] } })
+      })
+
+      await waitFor(() => expect(mockParsearBinario).toHaveBeenCalled())
+      expect(mockParsearBinario).toHaveBeenCalledWith(expect.any(Uint8Array), '2026-07')
+    })
+
+    it('fatura sozinha, sem nenhum CSV/TXT, não aciona o caminho de dicionário nem emite aviso de não reconhecido', async () => {
+      estado.iniciais = 'ES'
+      vi.mocked(leitor.ehDicionario).mockResolvedValue(false)
+      mockBinarioAceita.mockReturnValue(true)
+      const { container } = render(<TelaImportacao {...props()} />)
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      await act(async () => {
+        fireEvent.change(input, { target: { files: [xlsxFile('fatura_itau.xlsx')] } })
+      })
+
+      await waitFor(() => expect(screen.getByText('fatura_itau.xlsx')).toBeInTheDocument())
+      expect(setDic).not.toHaveBeenCalled()
+      expect(adicionarAvisos).not.toHaveBeenCalledWith(
+        expect.arrayContaining([expect.objectContaining({ origem: 'xlsx-nao-reconhecido' })]),
+      )
+    })
+
+    it('extrato CSV + fatura .xlsx no mesmo lote aparecem juntos na lista (regressão da composição existente)', async () => {
+      estado.iniciais = 'ES'
+      vi.mocked(leitor.ehDicionario).mockResolvedValue(false)
+      mockBinarioAceita.mockReturnValue(true)
+      const { container } = render(<TelaImportacao {...props()} />)
+
+      const input = container.querySelector('input[type="file"]') as HTMLInputElement
+      await act(async () => {
+        fireEvent.change(input, {
+          target: { files: [csvFile('extrato.csv'), xlsxFile('fatura_itau.xlsx')] },
+        })
+      })
+
+      await waitFor(() => expect(screen.getByText('fatura_itau.xlsx')).toBeInTheDocument())
+      expect(screen.getByText('extrato.csv')).toBeInTheDocument()
+      expect(screen.getAllByText('Remover')).toHaveLength(2)
+    })
   })
 })

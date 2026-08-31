@@ -1,8 +1,8 @@
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
-// ADR: see spec/vr-despesas.adr.md
-// ADR: see spec/rendimentos.adr.md
+// ADR: see Docs/specs/vr-despesas.adr.md
+// ADR: see Docs/specs/rendimentos.adr.md
 // ADR: see Docs/specs/patches-ui-ux.adr.md
 
 import { useState, type KeyboardEvent } from 'react'
@@ -57,6 +57,7 @@ export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
   const avisoEmInspecao = useAppStore((s) => s.avisosAcionaveis.avisoEmInspecao)
   const entrarInspecao = useAppStore((s) => s.entrarInspecao)
   const sairInspecao = useAppStore((s) => s.sairInspecao)
+  const focarInspecao = useAppStore((s) => s.focarInspecao)
 
   // Estado local do painel — `formVRAberto` (Task 7): abre/fecha o `FormVR` no clique do card do
   // aviso `origem==='vr'`. Deliberadamente NÃO vai para o store (invariante "etapa da jornada é
@@ -78,8 +79,8 @@ export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
   if (avisos.length === 0) {
     return (
       <div className="painel-vazio">
-        <p style={{ margin: 0 }}>Nenhum aviso pendente no momento.</p>
-        <p style={{ margin: 0 }}>Novos avisos aparecem aqui conforme você importa ou revisa lançamentos.</p>
+        <p style={{ margin: 0 }}>Nenhuma sugestão pendente no momento.</p>
+        <p style={{ margin: 0 }}>Novas sugestões aparecem aqui conforme você importa ou revisa lançamentos.</p>
       </div>
     )
   }
@@ -105,6 +106,7 @@ export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
                 emInspecao={avisoEmInspecao === aviso.id}
                 entrarInspecao={entrarInspecao}
                 sairInspecao={sairInspecao}
+                focarInspecao={focarInspecao}
                 formVRAberto={formVRAberto}
                 alternarFormVR={() => setFormVRAberto((atual) => !atual)}
                 formRendimentosAberto={formRendimentosAberto}
@@ -117,7 +119,7 @@ export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
       )}
 
       {informativos.length > 0 && (
-        <section aria-label="Avisos informativos">
+        <section aria-label="Sugestões informativas">
           <div className="painel-secao">Informativos</div>
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
             {informativos.map((aviso) => (
@@ -126,7 +128,7 @@ export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
                   <span className="icone-aviso info" />
                   <div style={{ flex: 1, fontSize: 13, lineHeight: 1.5 }}>{aviso.mensagem}</div>
                 </div>
-                <div style={{ display: 'flex', marginTop: 8 }}>
+                <div className="acoes-aviso" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
                   <button type="button" className="btn sec mini" onClick={() => dispensar(aviso.id)}>
                     OK, entendi
                   </button>
@@ -152,6 +154,8 @@ interface CartaoPropostaProps extends AcoesPropostaProps {
   emInspecao: boolean
   entrarInspecao: (id: string) => void
   sairInspecao: () => void
+  /** Pede foco na linha-âncora sem sair da inspeção — botão "Ir para a linha" (item 39.1). */
+  focarInspecao: () => void
   /**
    * `true` quando o `FormVR` está aberto neste painel — só tem efeito visual/de renderização para
    * o aviso `origem==='vr'` (Task 7, ADR `vr-despesas`). Estado local de `CentralDeAvisos`, não do
@@ -193,6 +197,7 @@ function CartaoProposta({
   emInspecao,
   entrarInspecao,
   sairInspecao,
+  focarInspecao,
   formVRAberto,
   alternarFormVR,
   formRendimentosAberto,
@@ -264,6 +269,19 @@ function CartaoProposta({
             <span aria-label="Papel: fica">Fica: {aviso.permanece.length} lançamento(s)</span>
           )}
           {aviso.resumo && <p aria-label="Resumo da regra" style={{ margin: 0 }}>{aviso.resumo}</p>}
+          {/* O card é um toggle: re-clicá-lo SAI da inspeção. Depois de rolar a grid à mão não
+              havia como voltar à linha sem perder o realce — daí o botão dedicado, que só pede
+              foco (`stopPropagation` impede o toggle do card). Resíduo do item 39.1 do TODO. */}
+          <button
+            type="button"
+            className="btn sec mini"
+            onClick={(e) => {
+              e.stopPropagation()
+              focarInspecao()
+            }}
+          >
+            Ir para a linha
+          </button>
         </div>
       )}
 
@@ -279,7 +297,7 @@ function CartaoProposta({
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 7, marginTop: 10 }}>
+      <div className="acoes-aviso" style={{ display: 'flex', justifyContent: 'flex-end', gap: 7, marginTop: 10 }}>
         <AcoesProposta aviso={aviso} aplicar={aplicar} desfazer={desfazer} dispensar={dispensar} />
       </div>
     </li>
@@ -293,8 +311,20 @@ function AcoesProposta({ aviso, aplicar, desfazer, dispensar }: AcoesPropostaPro
     // daqui — quem aplica a proposta é o botão "Aplicar" do próprio `FormVR`/`FormRendimentos`
     // (ver `CartaoProposta` acima), não este componente. "Dispensar" continua disponível.
     const afirmativoSuprimido = aviso.origem === 'vr' || aviso.origem === 'rendimentos'
+    // Ordem visual: "Dispensar" à esquerda, "Aplicar" à direita — a ação afirmativa fica na ponta
+    // direita da barra, junto ao canto onde o olhar termina a leitura do card.
     return (
       <>
+        <button
+          type="button"
+          className="btn sec mini"
+          onClick={(e) => {
+            e.stopPropagation()
+            dispensar(aviso.id)
+          }}
+        >
+          Dispensar
+        </button>
         {!afirmativoSuprimido && (
           <button
             type="button"
@@ -307,16 +337,6 @@ function AcoesProposta({ aviso, aplicar, desfazer, dispensar }: AcoesPropostaPro
             Aplicar
           </button>
         )}
-        <button
-          type="button"
-          className="btn sec mini"
-          onClick={(e) => {
-            e.stopPropagation()
-            dispensar(aviso.id)
-          }}
-        >
-          Dispensar
-        </button>
       </>
     )
   }

@@ -1,4 +1,4 @@
-// ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
 
 /**
  * Contador incremental do id serial de nascimento (ver ADR `fundacao-operacoes`,

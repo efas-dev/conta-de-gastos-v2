@@ -90,6 +90,51 @@ describe('detectarMesSugerido', () => {
     ]
     expect(detectarMesSugerido(lancamentos)).toBe('2026-06')
   })
+
+  it('TL-44-1: com extrato presente, a fatura não influencia o mês sugerido', () => {
+    // A data da fatura é a da COMPRA: a fatura fechada em junho traz compras de maio,
+    // e sozinha puxaria a sugestão para trás. O extrato é a fonte de verdade.
+    const lancamentos = [
+      lancamento({ fonte: 'fatura_nubank_cc', data: '2026-05-03' }),
+      lancamento({ fonte: 'fatura_nubank_cc', data: '2026-05-28' }),
+      lancamento({ fonte: 'extrato_nubank', data: '2026-06-10' }),
+    ]
+    expect(detectarMesSugerido(lancamentos)).toBe('2026-06')
+  })
+
+  it('TL-44-2: fatura mais recente que o extrato não sobrepõe o extrato', () => {
+    const lancamentos = [
+      lancamento({ fonte: 'extrato_itau', data: '2026-05-20' }),
+      lancamento({ fonte: 'fatura_itau', data: '2026-06-28' }),
+    ]
+    expect(detectarMesSugerido(lancamentos)).toBe('2026-05')
+  })
+
+  it('TL-44-3: sem nenhum extrato, a fatura volta a valer', () => {
+    const lancamentos = [
+      lancamento({ fonte: 'fatura_nubank_cc', data: '2026-05-03' }),
+      lancamento({ fonte: 'fatura_nubank_cc', data: '2026-06-01' }),
+    ]
+    expect(detectarMesSugerido(lancamentos)).toBe('2026-06')
+  })
+
+  it('TL-44-4: extrato sem data qualificável não faz cair de volta na fatura', () => {
+    // O extrato manda mesmo quando não qualifica — cair na fatura reintroduziria o viés
+    // da data de compra pela porta dos fundos.
+    const lancamentos = [
+      lancamento({ fonte: 'extrato_bb', data: '2026-07-20' }), // mês corrente — não qualifica
+      lancamento({ fonte: 'fatura_nubank_cc', data: '2026-05-03' }),
+    ]
+    expect(detectarMesSugerido(lancamentos)).toBeNull()
+  })
+
+  it('TL-44-5: fontes fora da convenção de prefixo seguem contando (nenhum extrato declarado)', () => {
+    const lancamentos = [
+      lancamento({ fonte: 'TesteFonte', data: '2026-06-15' }),
+      lancamento({ fonte: 'form_vr', data: '2026-05-31' }),
+    ]
+    expect(detectarMesSugerido(lancamentos)).toBe('2026-06')
+  })
 })
 
 describe('classificarFonte', () => {

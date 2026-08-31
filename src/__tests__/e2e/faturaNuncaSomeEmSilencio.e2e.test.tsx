@@ -1,4 +1,4 @@
-// ADR: see spec/conciliacao-robusta.adr.md
+// ADR: see Docs/specs/conciliacao-robusta.adr.md
 
 /**
  * Prova E2E — Task 10 do ADR `conciliacao-robusta`: a fatura NUNCA some em

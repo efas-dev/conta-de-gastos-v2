@@ -37,10 +37,15 @@ export interface RetanguloSelecao {
  * @returns              Edições a aplicar; `[]` quando não há nada colável.
  *
  * Regras:
- * - Se a seleção cobre mais de uma célula, o **destino é a seleção inteira** e o
- *   clipboard é replicado (tiled) por `% h`/`% w` — um único valor preenche tudo.
+ * - Se a seleção cobre mais de uma célula, o destino parte do canto dela e o clipboard é
+ *   replicado (tiled) por `% h`/`% w` — um único valor preenche tudo.
+ * - O destino **cresce até caber o bloco** em cada eixo (`Math.max` com o tamanho do clipboard).
+ *   Sem isso, colar Natureza+Descrição numa seleção de duas linhas da coluna Natureza descartava
+ *   a Descrição — o "não cola as duas de uma vez" do item 40. O Sheets se comporta assim.
  * - Sem seleção multi-célula, cola o bloco a partir do `alvo` (comportamento padrão).
  * - Colunas somente-leitura são ignoradas.
+ * - Célula ausente no clipboard (linha mais curta, típica de TSV terminado em quebra de linha)
+ *   não vira edição: a célula de destino fica intacta em vez de receber `undefined`.
  */
 export function montarColagem(
   alvo: readonly [number, number],
@@ -57,8 +62,8 @@ export function montarColagem(
   const multi = selecao !== undefined && (selecao.width > 1 || selecao.height > 1)
   const colInicial = multi ? selecao!.x : alvo[0]
   const linhaInicial = multi ? selecao!.y : alvo[1]
-  const largura = multi ? selecao!.width : w
-  const altura = multi ? selecao!.height : h
+  const largura = multi ? Math.max(selecao!.width, w) : w
+  const altura = multi ? Math.max(selecao!.height, h) : h
 
   const edicoes: EdicaoColagem[] = []
   for (let dr = 0; dr < altura; dr++) {
@@ -66,9 +71,11 @@ export function montarColagem(
       const col = colInicial + dc
       const colId = colunas[col]
       if (colId === undefined || somenteLeitura.has(col)) continue
+      const valor = valores[dr % h]?.[dc % w]
+      if (valor === undefined) continue
       const linhaVisual = linhaInicial + dr
       const indiceReal = mapaVisualReal[linhaVisual] ?? linhaVisual
-      edicoes.push({ indiceReal, colId, valor: valores[dr % h][dc % w] })
+      edicoes.push({ indiceReal, colId, valor })
     }
   }
   return edicoes

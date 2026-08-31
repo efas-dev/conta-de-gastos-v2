@@ -1,4 +1,4 @@
-// ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
 // ADR: see Docs/specs/patches-ui-ux.adr.md
 // ADR: see Docs/specs/refino-ui-revisao-v2.adr.md

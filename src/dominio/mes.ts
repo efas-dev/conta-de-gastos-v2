@@ -1,7 +1,7 @@
 // ADR: see Docs/specs/mes-referencia-ui.adr.md
-// ADR: see spec/conciliacao-robusta.adr.md
-// ADR: see spec/vr-despesas.adr.md
-// ADR: see spec/rendimentos.adr.md
+// ADR: see Docs/specs/conciliacao-robusta.adr.md
+// ADR: see Docs/specs/vr-despesas.adr.md
+// ADR: see Docs/specs/rendimentos.adr.md
 
 import type { Aviso, Lancamento } from '../types'
 
@@ -27,9 +27,20 @@ export function defaultMes(): string {
  * Detecta o mês sugerido a partir dos lançamentos fornecidos.
  * Retorna o mês mais recente com data estritamente anterior ao mês corrente,
  * no formato YYYY-MM, ou null quando nenhum lançamento qualifica (F6).
+ *
+ * O **extrato é a fonte de verdade** (decisão do usuário, 2026-08-31): havendo qualquer
+ * lançamento de fonte `extrato_*`, só eles decidem o mês. Na fatura a data é a da COMPRA, não a
+ * do ciclo — uma fatura fechada em junho carrega compras de maio e puxaria a sugestão um mês
+ * para trás (item 44 do TODO). Sem nenhum extrato carregado, todos os lançamentos voltam a
+ * contar: melhor um palpite enviesado do que nenhum.
  */
 export function detectarMesSugerido(lancamentos: Lancamento[]): string | null {
   if (lancamentos.length === 0) return null
+
+  // Prefixo direto em vez de `classificarFontePorPrefixo`: aqui uma fonte fora da convenção não
+  // deve derrubar a sugestão inteira com um throw — ela apenas não é extrato.
+  const doExtrato = lancamentos.filter((l) => l.fonte?.startsWith('extrato_'))
+  const consideraveis = doExtrato.length > 0 ? doExtrato : lancamentos
 
   const agora = new Date()
   const anoCorrente = agora.getFullYear()
@@ -40,7 +51,7 @@ export function detectarMesSugerido(lancamentos: Lancamento[]): string | null {
 
   let maisRecente: string | null = null
 
-  for (const lanc of lancamentos) {
+  for (const lanc of consideraveis) {
     const data = lanc.data
     // Valida formato YYYY-MM-DD (mínimo 7 caracteres para extrair YYYY-MM)
     if (!data || data.length < 7) continue

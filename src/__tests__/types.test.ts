@@ -1,6 +1,6 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
 // ADR: see Docs/specs/avisos-acionaveis.adr.md
-// ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
 import { describe, it, expect } from 'vitest'
 import type { Lancamento, DicEntry, ResultadoParse, Aviso, Mutacao } from '../types'
 

@@ -260,6 +260,89 @@ describe('editarCelula', () => {
   })
 })
 
+/**
+ * Item 40 do TODO — colar na coluna Valor. O clipboard traz o texto RENDERIZADO (`-R$ 1.083,06`,
+ * seja da própria grid, seja do Excel/Sheets); `Number()` devolvia `NaN` e a guarda de finitude
+ * descartava a edição **em silêncio** — a célula simplesmente não mudava e nada explicava por quê.
+ */
+describe('editarCelula — valor em formato pt-BR (item 40)', () => {
+  beforeEach(() => {
+    resetarStore()
+    useAppStore.getState().setLancamentos([lancamento()])
+  })
+
+  it('TL-40-4: aceita o texto contábil desenhado pela própria grid', () => {
+    useAppStore.getState().editarCelula(0, 'valor', '-R$ 1.083,06')
+    expect(useAppStore.getState().lancamentos[0].valor).toBe(-1083.06)
+  })
+
+  it('TL-40-5: aceita moeda pt-BR positiva vinda de fora (Excel/Sheets)', () => {
+    useAppStore.getState().editarCelula(0, 'valor', 'R$ 1.234,50')
+    expect(useAppStore.getState().lancamentos[0].valor).toBe(1234.5)
+  })
+
+  it('TL-40-6: aceita negativo entre parênteses (convenção contábil do Excel)', () => {
+    useAppStore.getState().editarCelula(0, 'valor', '(1.234,50)')
+    expect(useAppStore.getState().lancamentos[0].valor).toBe(-1234.5)
+  })
+
+  it('TL-40-7 (regressão): número sem separador de milhar segue como antes', () => {
+    useAppStore.getState().editarCelula(0, 'valor', '-300')
+    expect(useAppStore.getState().lancamentos[0].valor).toBe(-300)
+  })
+
+  it('TL-40-8 (regressão): texto sem nenhum dígito continua sendo rejeitado', () => {
+    const original = useAppStore.getState().lancamentos[0].valor
+    useAppStore.getState().editarCelula(0, 'valor', 'R$ ')
+    expect(useAppStore.getState().lancamentos[0].valor).toBe(original)
+  })
+})
+
+/**
+ * Item 40 do TODO — "a colagem deve ser 1 mutação única". Aplicando as edições uma a uma via
+ * `editarCelula`, colar um bloco de 2×3 empilhava 6 entradas no histórico e desfazer exigia 6
+ * Ctrl+Z. `aplicarColagem` fecha o lote inteiro num único passo de undo.
+ */
+describe('aplicarColagem (item 40)', () => {
+  beforeEach(() => {
+    resetarStore()
+    useAppStore.getState().setLancamentos([lancamento(), lancamento()])
+  })
+
+  it('TL-40-9: aplica todas as edições do lote', () => {
+    useAppStore.getState().aplicarColagem([
+      { indice: 0, campo: 'natureza', valor: 'AL' },
+      { indice: 0, campo: 'descricao', valor: 'Almoço' },
+      { indice: 1, campo: 'natureza', valor: 'MO' },
+    ])
+    const [l0, l1] = useAppStore.getState().lancamentos
+    expect(l0.natureza).toBe('AL')
+    expect(l0.descricao).toBe('Almoço')
+    expect(l1.natureza).toBe('MO')
+  })
+
+  it('TL-40-10: um único undo reverte o lote inteiro', () => {
+    const antes = useAppStore.getState().lancamentos.map((l) => ({ ...l }))
+    useAppStore.getState().aplicarColagem([
+      { indice: 0, campo: 'natureza', valor: 'AL' },
+      { indice: 0, campo: 'descricao', valor: 'Almoço' },
+      { indice: 1, campo: 'natureza', valor: 'MO' },
+    ])
+    useAppStore.getState().undo()
+    expect(useAppStore.getState().lancamentos).toEqual(antes)
+  })
+
+  it('TL-40-11: lote vazio não mexe no histórico', () => {
+    useAppStore.getState().aplicarColagem([])
+    expect(useAppStore.getState().historico).toHaveLength(0)
+  })
+
+  it('TL-40-12: a normalização de cada campo continua valendo (natureza em caixa alta)', () => {
+    useAppStore.getState().aplicarColagem([{ indice: 0, campo: 'natureza', valor: 'al' }])
+    expect(useAppStore.getState().lancamentos[0].natureza).toBe('AL')
+  })
+})
+
 // ---------------------------------------------------------------------------
 // 13. excluirLinha
 // ---------------------------------------------------------------------------
@@ -1077,9 +1160,28 @@ describe('sugestão de replicação (item 36)', () => {
   it('TLREP-INT-3: dispensarReplicacao limpa a sugestão sem tocar nas linhas', () => {
     semearTres()
     useAppStore.getState().editarCelula(0, 'natureza', 'SA')
+    useAppStore.getState().editarCelula(0, 'descricao', 'Farmácia')
     expect(useAppStore.getState().sugestaoReplicacao).not.toBeNull()
     useAppStore.getState().dispensarReplicacao()
     expect(useAppStore.getState().sugestaoReplicacao).toBeNull()
     expect(useAppStore.getState().lancamentos[1].natureza).toBe('')
+  })
+
+  it('TLREP-INT-4: preencher só a Natureza não gera sugestão — ela surge ao completar a Descrição', () => {
+    semearTres()
+    useAppStore.getState().editarCelula(0, 'natureza', 'SA')
+    expect(useAppStore.getState().sugestaoReplicacao).toBeNull()
+
+    useAppStore.getState().editarCelula(0, 'descricao', 'Farmácia')
+    expect(useAppStore.getState().sugestaoReplicacao).not.toBeNull()
+  })
+
+  it('TLREP-INT-5: preencher só a Descrição não gera sugestão — ela surge ao completar a Natureza', () => {
+    semearTres()
+    useAppStore.getState().editarCelula(0, 'descricao', 'Farmácia')
+    expect(useAppStore.getState().sugestaoReplicacao).toBeNull()
+
+    useAppStore.getState().editarCelula(0, 'natureza', 'SA')
+    expect(useAppStore.getState().sugestaoReplicacao).not.toBeNull()
   })
 })

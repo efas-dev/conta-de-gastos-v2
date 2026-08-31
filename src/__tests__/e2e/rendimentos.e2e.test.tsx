@@ -1,4 +1,4 @@
-// ADR: see spec/rendimentos.adr.md
+// ADR: see Docs/specs/rendimentos.adr.md
 
 /**
  * Prova E2E — Task 13 do ADR/spec `rendimentos` (F8): a jornada completa do lançamento de
@@ -277,7 +277,7 @@ describe('E2E — Task 13: fluxo completo rendimentos (F6/F8) + diferença negat
   }
 
   function abrirCentralDeAvisos(): void {
-    fireEvent.click(screen.getByRole('button', { name: /^avisos/i }))
+    fireEvent.click(screen.getByRole('button', { name: /^sugestões/i }))
   }
 
   function cardPorTexto(regex: RegExp): HTMLElement {

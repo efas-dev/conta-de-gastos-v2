@@ -1,4 +1,4 @@
-// ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
 
 import { describe, expect, it } from 'vitest'
 import { criarAvisosSlice, type StoreComAvisos } from '../avisosSlice'
@@ -111,6 +111,7 @@ describe('avisosSlice — limparAvisos (T09, ADR Decisão 8)', () => {
       removidos: {},
       adicionados: {},
       avisoEmInspecao: null,
+      focoInspecao: 0,
     })
 
     acoes.limparAvisos()
@@ -119,6 +120,7 @@ describe('avisosSlice — limparAvisos (T09, ADR Decisão 8)', () => {
       removidos: {},
       adicionados: {},
       avisoEmInspecao: null,
+      focoInspecao: 0,
     })
   })
 })

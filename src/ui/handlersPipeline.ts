@@ -1,4 +1,5 @@
-// ADR: see spec/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/fatura-itau-xlsx.adr.md
 import {
   produzirLancamentos,
   gerarAPartirDosRevisados,
@@ -98,6 +99,11 @@ export async function handleProduzir(deps: DepsHandleProduzir): Promise<void> {
     setModeloBytes,
   } = deps
 
+  // Task T9 (spec `fatura-itau-xlsx`, Decisão 6 do ADR): antes desta task, `csvArquivos` só
+  // recebia extratos CSV/TXT — uma fatura `.xlsx` reconhecida nunca entrava aqui (ficava fora
+  // da lista em `TelaImportacao.tsx`), então uma seleção só de fatura sempre batia este retorno
+  // antecipado. Agora `TelaImportacao.tsx` também acumula a fatura reconhecida na mesma lista,
+  // e esta checagem — inalterada — já basta: fatura sozinha deixa a lista com 1 item, não 0.
   if (csvArquivos.length === 0) return
 
   let modelo: Uint8Array
@@ -121,17 +127,40 @@ export async function handleProduzir(deps: DepsHandleProduzir): Promise<void> {
   // carregado pelo upload unificado) e as naturezas são os mesmos para todos.
   const todosLancamentos: Lancamento[] = []
   for (const arquivo of csvArquivos) {
-    const csvConteudo = await lerTextoArquivo(arquivo)
+    // Task T9 (spec `fatura-itau-xlsx`): arquivo `.xlsx` reconhecido (fatura de primeira
+    // classe, já roteada por `TelaImportacao.tsx`) é lido como bytes, não texto —
+    // `produzirLancamentos` decide o pipeline (binário × texto) pelo tipo do valor recebido
+    // (`Uint8Array` × `string`), sem exigir nenhum parâmetro extra de "tipo de arquivo".
+    const ehXlsx = arquivo.name.toLowerCase().endsWith('.xlsx')
+    const entrada: string | Uint8Array = ehXlsx
+      ? new Uint8Array(await arquivo.arrayBuffer())
+      : await lerTextoArquivo(arquivo)
     const { lancamentos: lans, avisos: avs } = produzirLancamentos(
-      csvConteudo,
+      entrada,
       dicEntries,
       iniciais,
       [],
       adicionarAvisosAcionaveis,
+      mesEscolhido,
     )
     todosLancamentos.push(...lans)
     for (const av of avs) {
       addAviso(`${arquivo.name}: ${av}`)
+    }
+
+    // Task T7 (spec `fatura-itau-xlsx`, Decisão 9 do ADR): um arquivo `.xlsx` só chega a
+    // `csvArquivos` (e portanto a este loop) depois de já ter sido reconhecido por algum
+    // `parsersBinarios[i].aceita` (T8/T9) — o que nenhum parser binário reconhece nunca sai do
+    // estado local de `TelaImportacao.tsx` e mantém apenas o aviso `xlsx-nao-reconhecido`
+    // existente. Logo, `ehXlsx && lans.length === 0` aqui significa exatamente "reconhecido, mas
+    // a tabela não produziu nenhum lançamento" — sinal distinto de "não reconhecido", sem exigir
+    // nenhum campo novo em `ResultadoParse` (KISS).
+    if (ehXlsx && lans.length === 0) {
+      const mensagem = `${arquivo.name}: fatura reconhecida, mas nenhum lançamento foi extraído`
+      addAviso(mensagem)
+      adicionarAvisosAcionaveis([
+        criarAvisoInformativo(crypto.randomUUID(), 'fatura-reconhecida-sem-lancamentos', mensagem),
+      ])
     }
   }
 

@@ -187,6 +187,73 @@ describe('não-duplicação entre detecções de origemEspecial e detectarConcil
   })
 })
 
+describe('conciliação ignora linhas de origemEspecial no somatório da fatura (item 42)', () => {
+  it('TL-42-1: o total da fatura desconta a linha de pagamento recebido e casa com o extrato', () => {
+    // Cenário real do usuário: a linha "Pagamento recebido" deixou de ser descartada no parse
+    // (D16/D17 de `inspecao-proposta-conciliacao`) e entrou no somatório, empurrando o total
+    // para longe do pagamento de fatura do extrato.
+    const fatura = [
+      lancamento({ transcricao: 'Item A', valor: -100 }),
+      lancamento({ transcricao: 'Pagamento recebido', valor: 300, origemEspecial: 'pagamento-recebido' }),
+      lancamento({ transcricao: 'Item B', valor: -50 }),
+    ]
+    const extrato = [lancamento({ transcricao: 'Pagamento de fatura', valor: -150 })]
+
+    const avisos = detectarConciliacao(fatura, extrato)
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].tipo).toBe('proposta')
+    expect(avisos[0].alvo).toEqual(['0'])
+    expect(avisos[0].resumo).toContain('150,00')
+  })
+
+  it('TL-42-2: permanece lista os índices REAIS da fatura, sem a linha de origemEspecial', () => {
+    // Os índices de `permanece` são posições em `lancamentosFatura` e o registry os remapeia
+    // para o array total (`indicesFaturaNoTotal`). Excluir a linha do somatório NÃO pode
+    // reindexar as demais, senão a proposta realça/remove a linha errada.
+    const fatura = [
+      lancamento({ transcricao: 'Item A', valor: -100 }),
+      lancamento({ transcricao: 'Pagamento recebido', valor: 300, origemEspecial: 'pagamento-recebido' }),
+      lancamento({ transcricao: 'Item B', valor: -50 }),
+    ]
+    const extrato = [lancamento({ transcricao: 'Pagamento de fatura', valor: -150 })]
+
+    const avisos = detectarConciliacao(fatura, extrato)
+
+    expect(avisos[0].permanece).toEqual(['0', '2'])
+  })
+
+  it('TL-42-3: a linha de valor pendente também fica fora do somatório', () => {
+    const fatura = [
+      lancamento({ transcricao: 'Valor pendente do mês anterior', valor: -80, origemEspecial: 'valor-pendente' }),
+      lancamento({ transcricao: 'Item A', valor: -100 }),
+    ]
+    const extrato = [lancamento({ transcricao: 'Pagamento de fatura', valor: -100 })]
+
+    const avisos = detectarConciliacao(fatura, extrato)
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].tipo).toBe('proposta')
+    expect(avisos[0].permanece).toEqual(['1'])
+  })
+
+  it('TL-42-4: o fallback de subconjunto não compõe soma com linha de origemEspecial', () => {
+    const fatura = [
+      lancamento({ transcricao: 'Item A', valor: -100 }),
+      lancamento({ transcricao: 'Valor pendente do mês anterior', valor: -300, origemEspecial: 'valor-pendente' }),
+      lancamento({ transcricao: 'Item B', valor: -50 }),
+    ]
+    // 300 só é alcançável usando a linha excluída — não deve gerar proposta.
+    const extrato = [lancamento({ transcricao: 'Pagamento de fatura', valor: -300 })]
+
+    const avisos = detectarConciliacao(fatura, extrato)
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].tipo).toBe('informativo')
+    expect(avisos[0].id).toBe('conciliacao-sem-casamento')
+  })
+})
+
 describe('detectarConciliacao', () => {
   it('casamento total dentro da tolerância de R$ 0,05 gera proposta única (TL-5)', () => {
     const fatura = [
@@ -412,5 +479,85 @@ describe('detectarConciliacao', () => {
     const extratoForaDaBorda = [lancamento({ transcricao: 'Passou da borda', valor: -220.01, id: 6 })]
     const avisosForaDaBorda = detectarConciliacao(fatura, extratoForaDaBorda)
     expect(avisosForaDaBorda[0].candidatos).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task T6 (ADR fatura-itau-xlsx, Decisão 5): o texto compartilhado de
+// COMPLEMENTO_RESUMO_ORIGEM_ESPECIAL citava "Nubank" literalmente — com a
+// fatura Itaú entrando no app pela mesma marcação de origemEspecial, o texto
+// precisa servir às duas fontes sem mentir o nome do banco.
+// ---------------------------------------------------------------------------
+
+describe('texto neutro da proposta de remoção (T6 — sem citar banco)', () => {
+  it('detectarPagamentoRecebido: resumo não cita "Nubank" para lançamento de fonte fatura_itau_cc', () => {
+    const lancamentos = [
+      lancamento({
+        fonte: 'fatura_itau_cc',
+        transcricao: 'Pagamento Debito Automatico',
+        valor: 1723.92,
+        origemEspecial: 'pagamento-recebido',
+      }),
+    ]
+    const avisos = detectarPagamentoRecebido(lancamentos)
+    expect(avisos[0].resumo).not.toMatch(/nubank/i)
+  })
+
+  it('detectarPagamentoRecebido: resumo não cita "Nubank" para lançamento de fonte fatura_nubank_cc (regressão)', () => {
+    const lancamentos = [
+      lancamento({
+        fonte: 'fatura_nubank_cc',
+        transcricao: 'Pagamento recebido',
+        valor: 300,
+        origemEspecial: 'pagamento-recebido',
+      }),
+    ]
+    const avisos = detectarPagamentoRecebido(lancamentos)
+    expect(avisos[0].resumo).not.toMatch(/nubank/i)
+  })
+
+  it('detectarValorPendente: resumo não cita "Nubank" (regressão do texto compartilhado)', () => {
+    const lancamentos = [
+      lancamento({
+        fonte: 'fatura_nubank_cc',
+        transcricao: 'Valor pendente do mês anterior',
+        valor: -120.5,
+        origemEspecial: 'valor-pendente',
+      }),
+    ]
+    const avisos = detectarValorPendente(lancamentos)
+    expect(avisos[0].resumo).not.toMatch(/nubank/i)
+  })
+
+  it('detectarPagamentoRecebido: resumo preserva o contrato semântico (quitação, não é gasto/receita, se anula, aprovar remove)', () => {
+    const lancamentos = [
+      lancamento({
+        fonte: 'fatura_itau_cc',
+        transcricao: 'Pagamento Debito Automatico',
+        valor: 1723.92,
+        origemEspecial: 'pagamento-recebido',
+      }),
+    ]
+    const resumo = detectarPagamentoRecebido(lancamentos)[0].resumo ?? ''
+    expect(resumo).toContain('quitação da fatura anterior')
+    expect(resumo).toContain('Não é gasto nem receita deste mês')
+    expect(resumo).toContain('anula')
+    expect(resumo).toContain('Aprovar tira a linha da planilha')
+  })
+
+  it('detectarValorPendente: resumo preserva o contrato semântico (pendência do ciclo anterior, não é compra, se anula, aprovar remove)', () => {
+    const lancamentos = [
+      lancamento({
+        fonte: 'fatura_nubank_cc',
+        transcricao: 'Valor pendente do mês anterior',
+        valor: -120.5,
+        origemEspecial: 'valor-pendente',
+      }),
+    ]
+    const resumo = detectarValorPendente(lancamentos)[0].resumo ?? ''
+    expect(resumo).toContain('ficou em aberto na fatura passada')
+    expect(resumo).toContain('Não é uma compra deste mês')
+    expect(resumo).toContain('anula')
+    expect(resumo).toContain('Aprovar tira a linha da planilha')
   })
 })

@@ -1,4 +1,4 @@
-// ADR: see spec/rendimentos.adr.md
+// ADR: see Docs/specs/rendimentos.adr.md
 
 /**
  * Teste de integração — Task 4, item 3 (spec `rendimentos`).

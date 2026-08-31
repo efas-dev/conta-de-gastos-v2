@@ -145,6 +145,40 @@ describe('App — upload incremental (item 22)', () => {
     expect(datas).toEqual(['2026-06-05', '2026-07-05'])
   })
 
+  it('TL-44-6: a sugestão do 1º upload não trava o mês — o 2º upload ainda reajusta (item 44)', async () => {
+    // A autodetecção passava pelo MESMO handler da edição manual, que marca "usuário editou".
+    // Do segundo arquivo em diante a condição `!usuarioEditouMes` era falsa e o mês congelava
+    // no que o primeiro arquivo sugeriu.
+    vi.mocked(detectarMesSugerido).mockReturnValueOnce('2026-06').mockReturnValueOnce('2026-07')
+
+    render(<App />)
+
+    await soltar([criarFile('junho.csv', CSV_JUNHO)])
+    await soltar([criarFile('julho.csv', CSV_JULHO)])
+
+    await waitFor(() => {
+      const selectMes = screen.getByTestId('select-mes') as HTMLSelectElement
+      expect(selectMes.value).toBe('07')
+    })
+  })
+
+  it('TL-44-7: escolha manual do usuário continua imune à autodetecção (D7)', async () => {
+    vi.mocked(detectarMesSugerido).mockReturnValue('2026-06')
+
+    render(<App />)
+
+    const selectMes = screen.getByTestId('select-mes') as HTMLSelectElement
+    await act(async () => {
+      fireEvent.change(selectMes, { target: { value: '03' } })
+    })
+
+    await soltar([criarFile('junho.csv', CSV_JUNHO)])
+
+    await waitFor(() => {
+      expect((screen.getByTestId('select-mes') as HTMLSelectElement).value).toBe('03')
+    })
+  })
+
   it('TL22-5: Remover individual tira só o arquivo clicado, o outro permanece', async () => {
     render(<App />)
 
