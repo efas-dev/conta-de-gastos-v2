@@ -32,6 +32,11 @@ interface TelaImportacaoProps {
   usuarioEditouMes: boolean
   /** Atualiza `mesEscolhido` e marca `usuarioEditouMes=true` — mesmo handler usado por `TelaRevisao`. */
   onMudarMes: (novoMes: string) => void
+  /**
+   * Aplica o mês vindo da DETECÇÃO automática, sem marcar `usuarioEditouMes` — senão a própria
+   * sugestão bloquearia as seguintes no upload incremental (item 44 do TODO).
+   */
+  onSugerirMes: (novoMes: string) => void
   /** Bytes do Modelo.xlsx carregados no "Produzir" — precisam sobreviver à transição para `TelaRevisao`. */
   setModeloBytes: (bytes: Uint8Array | null) => void
   /** Aba ativa do `PainelLateral` — compartilhada com `TelaRevisao` (persiste entre as duas telas). */
@@ -54,6 +59,7 @@ export function TelaImportacao({
   mesEscolhido,
   usuarioEditouMes,
   onMudarMes,
+  onSugerirMes,
   setModeloBytes,
   painel,
   setPainel,
@@ -277,7 +283,7 @@ export function TelaImportacao({
     const todosLancamentos: Lancamento[] = Object.values(antecipadosAcumulados).flat()
     const mesSugerido = detectarMesSugerido(todosLancamentos)
     if (mesSugerido !== null && !usuarioEditouMes) {
-      onMudarMes(mesSugerido)
+      onSugerirMes(mesSugerido)
     }
   }
 

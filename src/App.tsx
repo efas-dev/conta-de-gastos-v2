@@ -74,6 +74,16 @@ export function App() {
     setUsuarioEditouMes(true)
   }
 
+  /**
+   * Aplica um mês vindo da DETECÇÃO automática. Deliberadamente não marca `usuarioEditouMes`:
+   * a flag existe para a escolha manual do usuário (D7 do ADR `mes-referencia-ui`), e usá-la
+   * aqui congelava o mês a partir do segundo upload incremental — a própria sugestão passava a
+   * bloquear as sugestões seguintes (item 44 do TODO).
+   */
+  function handleSugerirMes(novoMes: string) {
+    setMesEscolhido(novoMes)
+  }
+
   return (
     <main
       style={{
@@ -94,6 +104,7 @@ export function App() {
           mesEscolhido={mesEscolhido}
           usuarioEditouMes={usuarioEditouMes}
           onMudarMes={handleMudarMes}
+          onSugerirMes={handleSugerirMes}
           setModeloBytes={setModeloBytes}
           painel={painel}
           setPainel={setPainel}
