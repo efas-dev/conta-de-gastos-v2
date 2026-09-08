@@ -965,6 +965,146 @@ describe('detectores — reembolso (Task 4, spec motor-de-pares)', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Task 5 (spec motor-de-pares) — integração: precedência do registry com
+// DETECTORES E FUNÇÕES REAIS (não fakes), diferente da Task 4 acima, que provou
+// a regra de dedup em isolamento com detectores fake e arrays locais de um só
+// detector. Aqui os 4 pontos do Definition of done (a-d) são exercitados
+// montando lançamentos que disparam as interações verdadeiras entre
+// `detectarInvestimentoAvisos`, `detectarTransferenciaInternaAvisos` e
+// `detectarReembolsoAvisos` via o array `detectores` de produção e
+// `orquestrarDeteccao` — nenhum detector fake nesta seção.
+//
+// Nota deliberada: nenhum destes fixtures usa o cenário de empate exato de
+// distância (`GrupoAmbiguo`) descrito no payload como defeito conhecido e
+// ainda não corrigido (interação T2×T3 onde uma perna de transferência some
+// silenciosamente em caso de ambiguidade) — os 4 pontos (a-d) não dependem de
+// ambiguidade, e nenhuma asserção abaixo cristaliza `[]` como comportamento
+// correto para esse caso.
+// ---------------------------------------------------------------------------
+
+describe('orquestrarDeteccao — Task 5: precedência do registry com detectores reais', () => {
+  it('TL5-1: claim concorrente entre detectores REAIS de ordens diferentes — só o de ordem anterior sobrevive (ponto a)', () => {
+    // "APLICACAO" (palavra-chave de `detectarInvestimento`) e "ITAU BLACK" (padrão genérico de
+    // `detectarTransferenciaInterna`) no MESMO lançamento — cenário real em que as duas políticas,
+    // cada uma por um caminho de detecção totalmente distinto, reivindicariam o mesmo id.
+    const alvoDisputado = lancamento({
+      id: 42,
+      transcricao: 'APLICACAO ITAU BLACK conta corrente',
+      valor: -700,
+    })
+
+    // Confirma a premissa com as funções REAIS de produção, chamadas isoladamente: cada uma,
+    // por si só, reivindicaria o id 42.
+    const avisoInvestimentoIsolado = detectarInvestimentoAvisos([alvoDisputado])
+    const avisoTransferenciaIsolado = detectarTransferenciaInternaAvisos([alvoDisputado])
+    expect(avisoInvestimentoIsolado[0]?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [42] })
+    expect(avisoTransferenciaIsolado[0]?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [42] })
+
+    // Registry real (array `detectores` de produção, ordem D16): investimento vem ANTES de
+    // transferencia-interna — só o aviso de investimento sobrevive à deduplicação.
+    const avisos = orquestrarDeteccao([alvoDisputado], detectores)
+    const avisoInvestimento = avisos.find((a) => a.origem === 'investimento')
+
+    expect(avisoInvestimento?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [42] })
+    expect(avisos.some((a) => a.origem === 'transferencia-interna')).toBe(false)
+  })
+
+  it('TL5-2: reembolso e transferencia-interna com alvos disjuntos coexistem sem interferência (ponto b)', () => {
+    // Par de transferência própria (padrão "Open Banking") e par de reembolso (sem nenhum sinal
+    // de transferência), com valores absolutos DISTINTOS (300 vs 80) — nenhuma chance dos dois
+    // grupos se cruzarem dentro do motor de casamento, que só casa pernas de mesmo valor absoluto.
+    const transferenciaPositiva = lancamento({
+      id: 20,
+      transcricao: 'Open Banking transferencia conta X',
+      valor: 300,
+      data: '2026-02-01',
+    })
+    const transferenciaNegativa = lancamento({
+      id: 21,
+      transcricao: 'Open Banking transferencia conta Y',
+      valor: -300,
+      data: '2026-02-03',
+    })
+    const reembolsoPositivo = lancamento({
+      id: 30,
+      transcricao: 'Recebido de Fulano - reembolso almoço',
+      valor: 80,
+      data: '2026-02-01',
+    })
+    const reembolsoNegativo = lancamento({
+      id: 31,
+      transcricao: 'Pago para Fulano - almoço compartilhado',
+      valor: -80,
+      data: '2026-02-02',
+    })
+    const todosLancamentos = [
+      transferenciaPositiva,
+      transferenciaNegativa,
+      reembolsoPositivo,
+      reembolsoNegativo,
+    ]
+
+    const avisos = orquestrarDeteccao(todosLancamentos, detectores)
+
+    const avisoTransferencia = avisos.find((a) => a.origem === 'transferencia-interna')
+    const avisoReembolso = avisos.find((a) => a.origem === 'reembolso' && a.tipo === 'proposta')
+
+    expect(avisoTransferencia?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [20, 21] })
+    expect(avisoReembolso?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [30, 31] })
+  })
+
+  it('TL5-3: ordem final do array detectores bate com a precedência declarada em D16 (ponto c)', () => {
+    expect(detectores.map((d) => d.origem)).toEqual([
+      'valor-pendente',
+      'pagamento-recebido',
+      'conciliacao',
+      'investimento',
+      'transferencia-interna',
+      'reembolso',
+      'vr',
+      'rendimentos',
+    ])
+  })
+
+  it('TL5-4: investimento reivindica um resgate ANTES de reembolso poder reivindicá-lo — prova direta do motivo de D16 (ponto d)', () => {
+    // Transcrição contém a palavra explícita "RESGATE" (classificada por `detectarInvestimento`),
+    // mas propositalmente NÃO bate em nenhum padrão de `PADROES_EXCLUSAO_REEMBOLSO`
+    // ('BB Rende Fácil'/'RDB'/'CDB', `src/dominio/pares.ts`) — isola a proteção que vem
+    // EXCLUSIVAMENTE da ordem do array `detectores` (D16), sem a rede de segurança redundante da
+    // exclusão por padrão de transcrição. É o cenário que o JSDoc de `detectores` em
+    // `registry.ts` descreve como "quando o motor de pares... não bastar sozinho".
+    const resgate = lancamento({
+      id: 50,
+      transcricao: 'Resgate de aplicação financeira automática',
+      valor: 500,
+      data: '2026-06-05',
+    })
+    const despesaReal = lancamento({
+      id: 51,
+      transcricao: 'Compra qualquer no mês',
+      valor: -500,
+      data: '2026-06-06',
+    })
+    const todosLancamentos = [resgate, despesaReal]
+
+    // Confirma a premissa: reembolso, SOZINHO (sem a precedência de ordem do registry),
+    // reivindicaria o par [50, 51] — a exclusão por padrão de transcrição não protege este caso.
+    const avisoReembolsoIsolado = detectarReembolsoAvisos(todosLancamentos, {})
+    expect(avisoReembolsoIsolado[0]?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [50, 51] })
+
+    // Registry real: investimento (ordem 4) reivindica o id 50 antes de reembolso (ordem 6)
+    // chegar a rodar — a proposta inteira de reembolso, incluindo a despesa real (id 51), cai.
+    const avisos = orquestrarDeteccao(todosLancamentos, detectores)
+    const avisoInvestimento = avisos.find((a) => a.origem === 'investimento')
+
+    expect(avisoInvestimento?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [50] })
+    expect(avisos.some((a) => a.origem === 'reembolso' && a.tipo === 'proposta')).toBe(false)
+    // A despesa real (id 51) não é alvo de remoção de nenhum aviso sobrevivente.
+    expect(avisos.flatMap((a) => a.mutacaoProposta?.alvo ?? [])).not.toContain(51)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Task 9 (spec rendimentos) — detector 'rendimentos' via orquestrarDeteccao
 //
 // Mesma disciplina de TL-54 (Task 4, spec vr-despesas, acima): a agregação de
