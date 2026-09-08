@@ -1,7 +1,7 @@
 // ADR: see Docs/specs/motor-de-pares.adr.md
 
 import { describe, expect, it } from 'vitest'
-import { encontrarPares } from '../pares'
+import { detectarReembolsoAvisos, encontrarPares } from '../pares'
 import type { Lancamento } from '../../types'
 
 /** Constrói um `Lancamento` de teste com os campos mínimos, sobrescrevendo o que for dado. */
@@ -157,7 +157,14 @@ describe('encontrarPares', () => {
     expect(negativo).toEqual(copiaNegativo)
   })
 
-  it('não importa Aviso nem registry — motor puro sem saber o que o par significa', async () => {
+  it('a função encontrarPares em si não referencia Aviso nem registry — motor puro sem saber o que o par significa', async () => {
+    // Nota (Task 2, ADR `motor-de-pares` Decisão 10 — nota de coerência): `pares.ts` passou a
+    // hospedar também a política `detectarReembolsoAvisos`, que PRECISA importar `Aviso` de
+    // `../types` para construir os avisos que produz. Isso é esperado e conscientemente aceito
+    // pelo usuário no gate de Revisão da spec — não é regressão da pureza do motor. O que esta
+    // asserção continua garantindo é que a função `encontrarPares` em si (isolada do resto do
+    // arquivo) segue sem referenciar `Aviso`; `registry` nunca é importado por nenhuma das duas
+    // responsabilidades deste arquivo.
     const fs = await import('node:fs')
     const path = await import('node:path')
     const url = await import('node:url')
@@ -165,7 +172,162 @@ describe('encontrarPares', () => {
     const conteudo = fs.readFileSync(caminho, 'utf-8')
     const linhasDeImport = conteudo.split('\n').filter((linha) => linha.trim().startsWith('import'))
 
-    expect(linhasDeImport.some((linha) => linha.includes('Aviso'))).toBe(false)
     expect(linhasDeImport.some((linha) => linha.includes('registry'))).toBe(false)
+
+    // Isola só o CORPO da função (da primeira `{` da assinatura até a `}` que fecha o balanço de
+    // chaves) — não o arquivo inteiro nem o JSDoc de declarações vizinhas, que legitimamente
+    // mencionam `Aviso` (ex.: a política `detectarReembolsoAvisos`, logo abaixo no arquivo).
+    const inicioAssinatura = conteudo.indexOf('export function encontrarPares')
+    expect(inicioAssinatura).toBeGreaterThan(-1)
+    const inicioCorpo = conteudo.indexOf('{', inicioAssinatura)
+    let profundidade = 0
+    let fimCorpo = inicioCorpo
+    for (let i = inicioCorpo; i < conteudo.length; i++) {
+      if (conteudo[i] === '{') profundidade++
+      if (conteudo[i] === '}') {
+        profundidade--
+        if (profundidade === 0) {
+          fimCorpo = i + 1
+          break
+        }
+      }
+    }
+    const corpoEncontrarPares = conteudo.slice(inicioCorpo, fimCorpo)
+
+    expect(corpoEncontrarPares.includes('Aviso')).toBe(false)
+  })
+})
+
+describe('detectarReembolsoAvisos', () => {
+  it('par de reembolso (nenhuma perna transferência própria) gera Aviso origem reembolso com os dois ids', () => {
+    const positivo = lancamento({ id: 1, data: '2026-08-10', valor: 250, transcricao: 'Devolução João' })
+    const negativo = lancamento({ id: 2, data: '2026-08-11', valor: -250, transcricao: 'Pix para João' })
+
+    const avisos = detectarReembolsoAvisos([positivo, negativo], {})
+
+    expect(avisos).toEqual([
+      {
+        id: 'reembolso-1-2',
+        tipo: 'proposta',
+        origem: 'reembolso',
+        mensagem: expect.any(String),
+        alvo: ['1', '2'],
+        permanece: [],
+        resumo: undefined,
+        estado: 'pendente',
+        mutacaoProposta: { verbo: 'remover', alvo: [1, 2] },
+      },
+    ])
+  })
+
+  it('não gera aviso quando a perna POSITIVA bate no sinal de transferência própria (D2, basta 1 perna)', () => {
+    const positivo = lancamento({ id: 1, data: '2026-08-10', valor: 250, transcricao: 'Pix para mim mesmo' })
+    const negativo = lancamento({ id: 2, data: '2026-08-11', valor: -250, transcricao: 'Saque qualquer' })
+
+    const avisos = detectarReembolsoAvisos([positivo, negativo], {}, { ehTransferencia: (l) => l.id === 1 })
+
+    expect(avisos).toEqual([])
+  })
+
+  it('não gera aviso quando a perna NEGATIVA bate no sinal de transferência própria (D2, variante do outro lado)', () => {
+    const positivo = lancamento({ id: 1, data: '2026-08-10', valor: 250, transcricao: 'Recebimento qualquer' })
+    const negativo = lancamento({ id: 2, data: '2026-08-11', valor: -250, transcricao: 'Open Banking' })
+
+    const avisos = detectarReembolsoAvisos([positivo, negativo], {}, { ehTransferencia: (l) => l.id === 2 })
+
+    expect(avisos).toEqual([])
+  })
+
+  it('GrupoAmbiguo sem sinal de transferência em nenhum candidato gera Aviso informativo com os candidatos', () => {
+    const ancora = lancamento({ id: 1, data: '2026-08-10', valor: 300, transcricao: 'Recebimento X' })
+    const candidatoA = lancamento({ id: 2, data: '2026-08-08', valor: -300, transcricao: 'Pagamento A' })
+    const candidatoB = lancamento({ id: 3, data: '2026-08-12', valor: -300, transcricao: 'Pagamento B' })
+
+    const avisos = detectarReembolsoAvisos([ancora, candidatoA, candidatoB], {}, { ehTransferencia: () => false })
+
+    expect(avisos).toEqual([
+      {
+        id: 'reembolso-ambiguo-1',
+        tipo: 'informativo',
+        origem: 'reembolso',
+        mensagem: expect.any(String),
+        alvo: [],
+        permanece: [],
+        estado: 'pendente',
+        candidatos: [
+          { alvo: '2', resumo: expect.any(String) },
+          { alvo: '3', resumo: expect.any(String) },
+        ],
+      },
+    ])
+  })
+
+  it('GrupoAmbiguo com sinal de transferência na âncora não gera informativo de reembolso (não-interferência)', () => {
+    const ancora = lancamento({ id: 1, data: '2026-08-10', valor: 300, transcricao: 'Open Banking' })
+    const candidatoA = lancamento({ id: 2, data: '2026-08-08', valor: -300 })
+    const candidatoB = lancamento({ id: 3, data: '2026-08-12', valor: -300 })
+
+    const avisos = detectarReembolsoAvisos(
+      [ancora, candidatoA, candidatoB],
+      {},
+      { ehTransferencia: (l) => l.id === 1 },
+    )
+
+    expect(avisos).toEqual([])
+  })
+
+  it('GrupoAmbiguo com sinal de transferência em um candidato (não na âncora) também não gera informativo', () => {
+    const ancora = lancamento({ id: 1, data: '2026-08-10', valor: 300 })
+    const candidatoA = lancamento({ id: 2, data: '2026-08-08', valor: -300, transcricao: 'Open Banking' })
+    const candidatoB = lancamento({ id: 3, data: '2026-08-12', valor: -300 })
+
+    const avisos = detectarReembolsoAvisos(
+      [ancora, candidatoA, candidatoB],
+      {},
+      { ehTransferencia: (l) => l.id === 2 },
+    )
+
+    expect(avisos).toEqual([])
+  })
+
+  it('exclui par cuja perna bate em padrão de auto-sweep (BB Rende Fácil), mesmo com valor exato e dentro da janela (D5)', () => {
+    const autoSweep = lancamento({ id: 1, data: '2026-08-10', valor: 500, transcricao: 'BB Rende Fácil' })
+    const despesaReal = lancamento({ id: 2, data: '2026-08-11', valor: -500, transcricao: 'Raia Drogasil' })
+
+    const avisos = detectarReembolsoAvisos([autoSweep, despesaReal], {})
+
+    expect(avisos).toEqual([])
+  })
+
+  it('gera um Aviso por par quando há múltiplos pares de reembolso independentes', () => {
+    const p1 = lancamento({ id: 1, data: '2026-08-10', valor: 100 })
+    const n1 = lancamento({ id: 2, data: '2026-08-10', valor: -100 })
+    const p2 = lancamento({ id: 3, data: '2026-08-15', valor: 200 })
+    const n2 = lancamento({ id: 4, data: '2026-08-16', valor: -200 })
+
+    const avisos = detectarReembolsoAvisos([p1, n1, p2, n2], {})
+
+    expect(avisos.map((a) => a.id)).toEqual(['reembolso-1-2', 'reembolso-3-4'])
+    expect(avisos.map((a) => a.mutacaoProposta)).toEqual([
+      { verbo: 'remover', alvo: [1, 2] },
+      { verbo: 'remover', alvo: [3, 4] },
+    ])
+  })
+
+  it('retorna array vazio quando não há par nem grupo ambíguo', () => {
+    const isolado = lancamento({ id: 1, data: '2026-08-10', valor: 100 })
+
+    const avisos = detectarReembolsoAvisos([isolado], {})
+
+    expect(avisos).toEqual([])
+  })
+
+  it('usa detectarTransferenciaInterna real como default quando opcoes.ehTransferencia não é passado', () => {
+    const positivo = lancamento({ id: 1, data: '2026-08-10', valor: 400, transcricao: 'Recebimento qualquer' })
+    const negativo = lancamento({ id: 2, data: '2026-08-11', valor: -400, transcricao: 'ITAU BLACK' })
+
+    const avisos = detectarReembolsoAvisos([positivo, negativo], {})
+
+    expect(avisos).toEqual([])
   })
 })
