@@ -1,7 +1,9 @@
 // ADR: see Docs/specs/dominio-transferencia-investimento-iniciais.adr.md
 // ADR: see Docs/specs/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/motor-de-pares.adr.md
 
 import type { Aviso, Lancamento } from '../types'
+import { encontrarPares } from './pares'
 
 /**
  * Padrões genéricos de palavras-chave que indicam transferência interna.
@@ -23,6 +25,20 @@ import type { Aviso, Lancamento } from '../types'
 const PADROES_INTERNOS: RegExp[] = [
   /Open Banking/i,
   /ITAU BLACK/i,
+]
+
+/**
+ * Padrões de auto-sweep/aplicação financeira excluídos do motor de pares (ADR
+ * `motor-de-pares`, Decisões 5 e 17) — passados como parâmetro para `encontrarPares`, nunca
+ * conhecidos por ele. Os mesmos três padrões literais (`BB Rende Fácil`, `RDB`, `CDB`) também
+ * são usados pela política `reembolso` (`src/dominio/pares.ts`, Task 2); não há módulo
+ * compartilhado para essa constante — cada política declara sua própria cópia (D17: "quem
+ * conhece os padrões concretos são os consumidores", não um módulo comum entre eles).
+ */
+const PADROES_EXCLUSAO_AUTOSWEEP: RegExp[] = [
+  /BB Rende Fácil/i,
+  /RDB/i,
+  /CDB/i,
 ]
 
 /**
@@ -58,47 +74,89 @@ export function detectarTransferenciaInterna(
 }
 
 /**
- * Detecta, entre `lancamentos`, as linhas de transferência interna (via
- * `detectarTransferenciaInterna`) e gera uma proposta de remoção acionável para cada uma —
- * mesma paridade de detecção do call-site legado (`detectarTransferenciaInterna` não muda), mas
- * agora emitindo `Aviso` com `mutacaoProposta` (verbo `'remover'`, ver ADR `fundacao-operacoes`,
- * Decisão 4), aplicável/desfazível via o caminho genérico do `avisosSlice` (T03).
+ * Detecta, entre `lancamentos`, as transferências internas — agora consultando o motor de
+ * casamento de pares (`encontrarPares`, `../pares`, ADR `motor-de-pares` Task 3) antes de
+ * decidir a forma da proposta:
+ *
+ * - Quando um `ParEncontrado` tem QUALQUER uma das duas pernas batendo em
+ *   `detectarTransferenciaInterna`, emite UM ÚNICO `Aviso` com os DOIS ids em
+ *   `mutacaoProposta.alvo` (Decisão 1 e 2 do ADR — basta 1 das 2 pernas, formato de par).
+ * - Quando a perna bate no padrão mas não há par nem grupo ambíguo (contrapartida não
+ *   encontrada), MANTÉM o comportamento antigo de proposta isolada, mas a `mensagem` passa a
+ *   declarar explicitamente a ausência de contrapartida (Decisão 6).
+ * - Grupos ambíguos (`GrupoAmbiguo`, empate de distância) que envolvem uma perna de
+ *   transferência NÃO geram nenhum aviso aqui — a responsabilidade de emitir o informativo de
+ *   ambiguidade é inteiramente do lado do motor/política `reembolso` (`pares.ts`, Task 2), para
+ *   que o usuário veja um único aviso informativo por grupo, nunca dois avisos concorrentes.
  *
  * `mutacaoProposta.alvo` usa `Lancamento.id` (não índice posicional) — cada `Aviso` mira
- * exatamente o lançamento que o originou, independentemente de reordenação/fatiamento posterior.
- * `alvo`/`permanece` legados (`string[]`) também são populados (id como string) para
- * compatibilidade com os consumidores existentes de `Aviso.alvo` que só leem sua contagem.
- *
- * Cobre apenas o caso já detectado por `detectarTransferenciaInterna` hoje (padrões genéricos
- * fixos + Pix nominal por `nomeUsuario`, ambos avaliados por-lançamento). O par entre contas de
- * bancos distintos (item 27 do TODO — matching cruzado entre dois lançamentos de fontes
- * diferentes) NÃO é adicionado por este wrapper e segue fora de escopo.
+ * exatamente o(s) lançamento(s) que o originou(aram), independentemente de
+ * reordenação/fatiamento posterior. `alvo`/`permanece` legados (`string[]`) também são
+ * populados (id como string) para compatibilidade com os consumidores existentes de
+ * `Aviso.alvo` que só leem sua contagem.
  *
  * Não muta `lancamentos` nem os objetos `Lancamento` recebidos — função pura, mesma disciplina
- * de `detectarTransferenciaInterna` e de `detectarInvestimentoAvisos` (T07).
+ * de `detectarTransferenciaInterna`, `encontrarPares` e `detectarInvestimentoAvisos` (T07).
  *
  * @param lancamentos - Lista de lançamentos a inspecionar.
  * @param nomeUsuario - Nome do usuário (opcional), repassado a `detectarTransferenciaInterna`.
- * @returns Um `Aviso` proposta por linha de transferência interna encontrada; array vazio se
- *   nenhuma existir.
+ * @returns Um `Aviso` por par de transferência encontrado (2 ids) e um `Aviso` por perna de
+ *   transferência sem contrapartida (1 id); array vazio se nenhuma existir.
  */
 export function detectarTransferenciaInternaAvisos(
   lancamentos: Lancamento[],
   nomeUsuario?: string,
 ): Aviso[] {
   const avisos: Aviso[] = []
+  const { pares, ambiguos } = encontrarPares(
+    lancamentos,
+    { nomeUsuario },
+    { padroesExcluidos: PADROES_EXCLUSAO_AUTOSWEEP },
+  )
+
+  // Ids já cobertos pelo motor — nem par (aviso próprio abaixo) nem grupo ambíguo (delegado ao
+  // informativo de pares.ts/T2) devem cair no caminho de "perna isolada" mais adiante.
+  const idsCobertosPeloMotor = new Set<number>()
+  for (const par of pares) {
+    idsCobertosPeloMotor.add(par.positivo.id)
+    idsCobertosPeloMotor.add(par.negativo.id)
+  }
+  for (const grupo of ambiguos) {
+    idsCobertosPeloMotor.add(grupo.ancora.id)
+    for (const candidato of grupo.candidatos) idsCobertosPeloMotor.add(candidato.id)
+  }
+
+  for (const par of pares) {
+    const pernaTransferencia = [par.positivo, par.negativo].find((perna) =>
+      detectarTransferenciaInterna(perna, nomeUsuario),
+    )
+    if (!pernaTransferencia) continue
+
+    avisos.push({
+      id: `transferencia-interna-par-${par.positivo.id}-${par.negativo.id}`,
+      tipo: 'proposta',
+      origem: 'transferencia-interna',
+      mensagem: `Par de transferência interna detectado: "${par.positivo.transcricao}" e "${par.negativo.transcricao}". Deseja remover os dois lançamentos?`,
+      alvo: [String(par.positivo.id), String(par.negativo.id)],
+      permanece: [],
+      resumo: `Par de transferência interna: "${par.positivo.transcricao}" ↔ "${par.negativo.transcricao}"`,
+      estado: 'pendente',
+      mutacaoProposta: { verbo: 'remover', alvo: [par.positivo.id, par.negativo.id] },
+    })
+  }
 
   for (const lancamento of lancamentos) {
     if (!detectarTransferenciaInterna(lancamento, nomeUsuario)) continue
+    if (idsCobertosPeloMotor.has(lancamento.id)) continue
 
     avisos.push({
       id: `transferencia-interna-${lancamento.id}`,
       tipo: 'proposta',
       origem: 'transferencia-interna',
-      mensagem: `Transferência interna detectada: "${lancamento.transcricao}". Deseja remover esse lançamento?`,
+      mensagem: `Transferência interna detectada: "${lancamento.transcricao}". Não foi encontrada a contrapartida desta transferência — deseja remover esse lançamento mesmo assim?`,
       alvo: [String(lancamento.id)],
       permanece: [],
-      resumo: `Transferência interna: "${lancamento.transcricao}"`,
+      resumo: `Transferência interna sem par: "${lancamento.transcricao}"`,
       estado: 'pendente',
       mutacaoProposta: { verbo: 'remover', alvo: [lancamento.id] },
     })

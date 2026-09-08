@@ -236,3 +236,150 @@ describe('detectarTransferenciaInternaAvisos', () => {
     expect(get().avisosAcionaveis.avisos[0].estado).toBe('pendente')
   })
 })
+
+/**
+ * `detectarTransferenciaInternaAvisos` — integração com o motor de pares (Task 3, ADR
+ * `motor-de-pares`, Decisões 1, 2, 5, 6, 17). A partir desta task, a função consulta
+ * `encontrarPares` (`../pares`) para casar as duas pernas de uma transferência antes de propor
+ * a remoção — em vez de tratar cada lançamento isoladamente.
+ */
+describe('detectarTransferenciaInternaAvisos — integração com o motor de pares (Task 3)', () => {
+  it('par de transferência com a perna POSITIVA batendo no padrão emite UM aviso com os 2 ids (TL3-1)', () => {
+    const perna1 = lancamentoComId({
+      id: 101,
+      data: '2026-08-01',
+      transcricao: 'Transferência via Open Banking',
+      valor: 500,
+    })
+    const perna2 = lancamentoComId({
+      id: 102,
+      data: '2026-08-03',
+      transcricao: 'Pix enviado para conta própria',
+      valor: -500,
+    })
+    const avisos = detectarTransferenciaInternaAvisos([perna1, perna2])
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].origem).toBe('transferencia-interna')
+    expect(avisos[0].tipo).toBe('proposta')
+    expect(avisos[0].mutacaoProposta).toEqual({ verbo: 'remover', alvo: [101, 102] })
+    expect(avisos[0].permanece).toEqual([])
+  })
+
+  it('simetria de D2 — par com a perna NEGATIVA batendo no padrão também emite UM aviso com os 2 ids (TL3-2)', () => {
+    const perna1 = lancamentoComId({
+      id: 201,
+      data: '2026-08-01',
+      transcricao: 'Recebimento de terceiro',
+      valor: 800,
+    })
+    const perna2 = lancamentoComId({
+      id: 202,
+      data: '2026-08-02',
+      transcricao: 'ITAU BLACK pagamento fatura',
+      valor: -800,
+    })
+    const avisos = detectarTransferenciaInternaAvisos([perna1, perna2])
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].origem).toBe('transferencia-interna')
+    expect(avisos[0].mutacaoProposta).toEqual({ verbo: 'remover', alvo: [201, 202] })
+  })
+
+  it('perna de transferência sem contrapartida mantém proposta isolada, mas declara explicitamente a ausência de par (TL3-3)', () => {
+    const semPar = lancamentoComId({
+      id: 301,
+      transcricao: 'Transferência via Open Banking',
+      valor: -700,
+    })
+    const [aviso] = detectarTransferenciaInternaAvisos([semPar])
+
+    expect(aviso.origem).toBe('transferencia-interna')
+    expect(aviso.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [301] })
+    expect(aviso.mensagem.toLowerCase()).toContain('não foi encontrada a contrapartida')
+  })
+
+  it('grupo ambíguo envolvendo perna de transferência não gera nenhum aviso — delega ao informativo do motor (TL3-4)', () => {
+    const ancoraTransferencia = lancamentoComId({
+      id: 401,
+      data: '2026-08-10',
+      transcricao: 'Transferência via Open Banking',
+      valor: 900,
+    })
+    const candidato1 = lancamentoComId({
+      id: 402,
+      data: '2026-08-08',
+      transcricao: 'Restaurante A',
+      valor: -900,
+    })
+    const candidato2 = lancamentoComId({
+      id: 403,
+      data: '2026-08-12',
+      transcricao: 'Restaurante B',
+      valor: -900,
+    })
+    const avisos = detectarTransferenciaInternaAvisos([ancoraTransferencia, candidato1, candidato2])
+
+    expect(avisos).toEqual([])
+  })
+
+  it('padrão de exclusão de auto-sweep (D5) impede o par: perna de transferência cai no caso "não achou" (TL3-5)', () => {
+    const transferencia = lancamentoComId({
+      id: 501,
+      data: '2026-08-01',
+      transcricao: 'Transferência via Open Banking',
+      valor: -300,
+    })
+    const rdb = lancamentoComId({
+      id: 502,
+      data: '2026-08-02',
+      transcricao: 'Aplicação RDB automática',
+      valor: 300,
+    })
+    const avisos = detectarTransferenciaInternaAvisos([transferencia, rdb])
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].mutacaoProposta).toEqual({ verbo: 'remover', alvo: [501] })
+    expect(avisos[0].mensagem.toLowerCase()).toContain('não foi encontrada a contrapartida')
+  })
+
+  it('múltiplos pares de transferência simultâneos geram avisos independentes, sem interferência (TL3-6)', () => {
+    const par1Positivo = lancamentoComId({
+      id: 601,
+      data: '2026-08-01',
+      transcricao: 'Transferência via Open Banking',
+      valor: 100,
+    })
+    const par1Negativo = lancamentoComId({
+      id: 602,
+      data: '2026-08-02',
+      transcricao: 'Pix conta própria',
+      valor: -100,
+    })
+    const par2Positivo = lancamentoComId({
+      id: 603,
+      data: '2026-08-05',
+      transcricao: 'Recebimento diverso',
+      valor: 250,
+    })
+    const par2Negativo = lancamentoComId({
+      id: 604,
+      data: '2026-08-06',
+      transcricao: 'ITAU BLACK pagamento fatura',
+      valor: -250,
+    })
+    const avisos = detectarTransferenciaInternaAvisos([
+      par1Positivo,
+      par1Negativo,
+      par2Positivo,
+      par2Negativo,
+    ])
+
+    expect(avisos).toHaveLength(2)
+    const alvos = avisos.map((a) => a.mutacaoProposta?.alvo).sort((a, b) => (a?.[0] ?? 0) - (b?.[0] ?? 0))
+    expect(alvos).toEqual([
+      [601, 602],
+      [603, 604],
+    ])
+  })
+})
