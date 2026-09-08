@@ -3,6 +3,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { detectarTransferenciaInterna, detectarTransferenciaInternaAvisos } from '../transferencia'
+import { detectarReembolsoAvisos } from '../pares'
 import { criarAvisosSlice, type StoreComAvisos } from '../../ui/store/avisosSlice'
 import type { Lancamento } from '../../types'
 import {
@@ -299,7 +300,7 @@ describe('detectarTransferenciaInternaAvisos — integração com o motor de par
     expect(aviso.mensagem.toLowerCase()).toContain('não foi encontrada a contrapartida')
   })
 
-  it('grupo ambíguo envolvendo perna de transferência não gera nenhum aviso — delega ao informativo do motor (TL3-4)', () => {
+  it('grupo ambíguo envolvendo perna de transferência vira informativo desta origem, não proposta (TL3-4)', () => {
     const ancoraTransferencia = lancamentoComId({
       id: 401,
       data: '2026-08-10',
@@ -320,7 +321,10 @@ describe('detectarTransferenciaInternaAvisos — integração com o motor de par
     })
     const avisos = detectarTransferenciaInternaAvisos([ancoraTransferencia, candidato1, candidato2])
 
-    expect(avisos).toEqual([])
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].tipo).toBe('informativo')
+    expect(avisos[0].mutacaoProposta).toBeUndefined()
+    expect(avisos[0].candidatos?.map((candidato) => candidato.alvo)).toEqual(['402', '403'])
   })
 
   it('padrão de exclusão de auto-sweep (D5) impede o par: perna de transferência cai no caso "não achou" (TL3-5)', () => {
@@ -381,5 +385,59 @@ describe('detectarTransferenciaInternaAvisos — integração com o motor de par
       [601, 602],
       [603, 604],
     ])
+  })
+})
+
+/**
+ * Grupo ambíguo (empate exato de distância — ADR `motor-de-pares`, Decisões 7 e 9) cuja âncora
+ * ou candidato bate no sinal textual de transferência. `detectarReembolsoAvisos` (`../pares`)
+ * pula deliberadamente esses grupos, porque pelo rótulo da Decisão 2 eles são transferência
+ * própria, não reembolso — logo a política desta origem é a única que pode falar deles. Sem o
+ * informativo coberto aqui, a perna não gera aviso de ninguém e desaparece da revisão, o que
+ * regride o comportamento anterior à spec (toda perna reconhecida virava proposta).
+ */
+describe('detectarTransferenciaInternaAvisos — grupo ambíguo com sinal de transferência', () => {
+  const ancora = lancamentoComId({
+    id: 701,
+    data: '2026-01-10',
+    transcricao: 'Transferência via Open Banking',
+    valor: 100,
+  })
+  const candidatoAnterior = lancamentoComId({
+    id: 702,
+    data: '2026-01-05',
+    transcricao: 'Compra mercado',
+    valor: -100,
+  })
+  const candidatoPosterior = lancamentoComId({
+    id: 703,
+    data: '2026-01-15',
+    transcricao: 'Compra farmácia',
+    valor: -100,
+  })
+  const lancamentos = [ancora, candidatoAnterior, candidatoPosterior]
+
+  it('emite um informativo em vez de deixar a perna ambígua sem aviso algum', () => {
+    const avisos = detectarTransferenciaInternaAvisos(lancamentos)
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].origem).toBe('transferencia-interna')
+    expect(avisos[0].tipo).toBe('informativo')
+  })
+
+  it('não propõe mutação — escolher entre candidatos empatados é do usuário (D7)', () => {
+    const [aviso] = detectarTransferenciaInternaAvisos(lancamentos)
+
+    expect(aviso.mutacaoProposta).toBeUndefined()
+  })
+
+  it('lista os dois candidatos empatados para escolha manual', () => {
+    const [aviso] = detectarTransferenciaInternaAvisos(lancamentos)
+
+    expect(aviso.candidatos?.map((candidato) => candidato.alvo)).toEqual(['702', '703'])
+  })
+
+  it('não duplica com pares.ts, que ignora grupos com sinal de transferência', () => {
+    expect(detectarReembolsoAvisos(lancamentos, {})).toHaveLength(0)
   })
 })

@@ -85,9 +85,11 @@ export function detectarTransferenciaInterna(
  *   encontrada), MANTÉM o comportamento antigo de proposta isolada, mas a `mensagem` passa a
  *   declarar explicitamente a ausência de contrapartida (Decisão 6).
  * - Grupos ambíguos (`GrupoAmbiguo`, empate de distância) que envolvem uma perna de
- *   transferência NÃO geram nenhum aviso aqui — a responsabilidade de emitir o informativo de
- *   ambiguidade é inteiramente do lado do motor/política `reembolso` (`pares.ts`, Task 2), para
- *   que o usuário veja um único aviso informativo por grupo, nunca dois avisos concorrentes.
+ *   transferência viram um `Aviso` informativo desta origem, listando os candidatos empatados
+ *   para escolha manual (Decisão 7). A divisão com `detectarReembolsoAvisos` (`../pares`) segue
+ *   o mesmo rótulo por sinal textual da Decisão 2: grupo COM sinal de transferência é falado
+ *   aqui, grupo SEM sinal é falado lá. Cada grupo gera exatamente um informativo, nunca dois
+ *   concorrentes — `pares.ts` pula os grupos com sinal, e esta função pula os sem sinal.
  *
  * `mutacaoProposta.alvo` usa `Lancamento.id` (não índice posicional) — cada `Aviso` mira
  * exatamente o(s) lançamento(s) que o originou(aram), independentemente de
@@ -142,6 +144,28 @@ export function detectarTransferenciaInternaAvisos(
       resumo: `Par de transferência interna: "${par.positivo.transcricao}" ↔ "${par.negativo.transcricao}"`,
       estado: 'pendente',
       mutacaoProposta: { verbo: 'remover', alvo: [par.positivo.id, par.negativo.id] },
+    })
+  }
+
+  for (const grupo of ambiguos) {
+    const temSinalDeTransferencia =
+      detectarTransferenciaInterna(grupo.ancora, nomeUsuario) ||
+      grupo.candidatos.some((candidato) => detectarTransferenciaInterna(candidato, nomeUsuario))
+    if (!temSinalDeTransferencia) continue
+
+    avisos.push({
+      id: `transferencia-interna-ambiguo-${grupo.ancora.id}`,
+      tipo: 'informativo',
+      origem: 'transferencia-interna',
+      mensagem: `"${grupo.ancora.transcricao}" tem ${grupo.candidatos.length} possíveis contrapartidas de transferência à mesma distância — escolha manualmente qual remover, se for o caso.`,
+      alvo: [],
+      permanece: [],
+      resumo: `Transferência interna ambígua: "${grupo.ancora.transcricao}"`,
+      estado: 'pendente',
+      candidatos: grupo.candidatos.map((candidato) => ({
+        alvo: String(candidato.id),
+        resumo: `"${candidato.transcricao}" (${candidato.data})`,
+      })),
     })
   }
 
