@@ -3,7 +3,7 @@
 // ADR: see Docs/specs/motor-de-pares.adr.md
 
 import type { Aviso, Lancamento } from '../types'
-import { encontrarPares } from './pares'
+import { encontrarPares, descreverPerna } from './pares'
 
 /**
  * Padrões genéricos de palavras-chave que indicam transferência interna.
@@ -138,10 +138,10 @@ export function detectarTransferenciaInternaAvisos(
       id: `transferencia-interna-par-${par.positivo.id}-${par.negativo.id}`,
       tipo: 'proposta',
       origem: 'transferencia-interna',
-      mensagem: `Par de transferência interna detectado: "${par.positivo.transcricao}" e "${par.negativo.transcricao}". Deseja remover os dois lançamentos?`,
+      mensagem: `Par de transferência interna detectado: ${descreverPerna(par.positivo)} e ${descreverPerna(par.negativo)}. Deseja remover os dois lançamentos?`,
       alvo: [String(par.positivo.id), String(par.negativo.id)],
       permanece: [],
-      resumo: `Par de transferência interna: "${par.positivo.transcricao}" ↔ "${par.negativo.transcricao}"`,
+      resumo: `Par de transferência interna: ${descreverPerna(par.positivo)} ↔ ${descreverPerna(par.negativo)}`,
       estado: 'pendente',
       mutacaoProposta: { verbo: 'remover', alvo: [par.positivo.id, par.negativo.id] },
     })
@@ -157,10 +157,10 @@ export function detectarTransferenciaInternaAvisos(
       id: `transferencia-interna-ambiguo-${grupo.ancora.id}`,
       tipo: 'informativo',
       origem: 'transferencia-interna',
-      mensagem: `"${grupo.ancora.transcricao}" tem ${grupo.candidatos.length} possíveis contrapartidas de transferência à mesma distância — escolha manualmente qual remover, se for o caso.`,
+      mensagem: `${descreverPerna(grupo.ancora)} tem ${grupo.candidatos.length} possíveis contrapartidas de transferência à mesma distância — escolha manualmente qual remover, se for o caso.`,
       alvo: [],
       permanece: [],
-      resumo: `Transferência interna ambígua: "${grupo.ancora.transcricao}"`,
+      resumo: `Transferência interna ambígua: ${descreverPerna(grupo.ancora)}`,
       estado: 'pendente',
       candidatos: grupo.candidatos.map((candidato) => ({
         alvo: String(candidato.id),
@@ -177,10 +177,10 @@ export function detectarTransferenciaInternaAvisos(
       id: `transferencia-interna-${lancamento.id}`,
       tipo: 'proposta',
       origem: 'transferencia-interna',
-      mensagem: `Transferência interna detectada: "${lancamento.transcricao}". Não foi encontrada a contrapartida desta transferência — deseja remover esse lançamento mesmo assim?`,
+      mensagem: `Transferência interna detectada: ${descreverPerna(lancamento)}. Não foi encontrada a contrapartida desta transferência — deseja remover esse lançamento mesmo assim?`,
       alvo: [String(lancamento.id)],
       permanece: [],
-      resumo: `Transferência interna sem par: "${lancamento.transcricao}"`,
+      resumo: `Transferência interna sem par: ${descreverPerna(lancamento)}`,
       estado: 'pendente',
       mutacaoProposta: { verbo: 'remover', alvo: [lancamento.id] },
     })

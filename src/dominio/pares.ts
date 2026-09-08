@@ -57,6 +57,32 @@ function paraCentavos(valor: number): number {
   return Math.round(valor * 100)
 }
 
+/** Formata centavos inteiros como reais em pt-BR, sem o prefixo "R$" (mesmo formato de `deteccoes.ts`). */
+function formatarReais(centavos: number): string {
+  return (centavos / 100).toLocaleString('pt-BR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+}
+
+/** Formata uma data ISO (`YYYY-MM-DD`) como `DD/MM/YYYY`, sem passar por `Date` (evita fuso). */
+function formatarDataBr(dataIso: string): string {
+  const [ano, mes, dia] = dataIso.split('-')
+  return `${dia}/${mes}/${ano}`
+}
+
+/**
+ * Identifica uma perna para o usuário: transcrição, valor e data. Transcrição sozinha não
+ * distingue duas propostas — extratos repetem descrições genéricas ("Transferência enviada") ao
+ * longo do mês, e sem valor e data o usuário vê vários cartões de texto idêntico pedindo para
+ * remover linhas diferentes. Compartilhado com a política `transferencia-interna`
+ * (`./transferencia`), para que as duas origens descrevam um par do mesmo jeito.
+ */
+export function descreverPerna(lancamento: Lancamento): string {
+  const valor = formatarReais(Math.abs(paraCentavos(lancamento.valor)))
+  return `"${lancamento.transcricao}" (R$ ${valor} em ${formatarDataBr(lancamento.data)})`
+}
+
 /**
  * Converte uma data ISO (`YYYY-MM-DD`) para o número de dia juliano (inteiro), usando apenas
  * aritmética de inteiros sobre os componentes de `split('-')` — nunca `Date`/fuso horário,
@@ -276,7 +302,7 @@ export function detectarReembolsoAvisos(
       tipo: 'proposta',
       origem: 'reembolso',
       mensagem:
-        `Reembolso detectado: "${par.positivo.transcricao}" ↔ "${par.negativo.transcricao}". ` +
+        `Reembolso detectado: ${descreverPerna(par.positivo)} ↔ ${descreverPerna(par.negativo)}. ` +
         'Deseja remover essas duas linhas?',
       alvo: [String(par.positivo.id), String(par.negativo.id)],
       permanece: [],
@@ -295,7 +321,7 @@ export function detectarReembolsoAvisos(
       tipo: 'informativo',
       origem: 'reembolso',
       mensagem:
-        `"${grupo.ancora.transcricao}" tem ${grupo.candidatos.length} possíveis contrapartidas de ` +
+        `${descreverPerna(grupo.ancora)} tem ${grupo.candidatos.length} possíveis contrapartidas de ` +
         'reembolso à mesma distância — escolha manualmente qual remover, se for o caso.',
       alvo: [],
       permanece: [],
