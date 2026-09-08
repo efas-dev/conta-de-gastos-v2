@@ -361,6 +361,10 @@ function criarTemaGrid() {
  * Enquanto existiu realce permanente por categoria, a cor de categoria mascarava a ausência; ela
  * foi aposentada em 2026-08-09 e o vão ficou visível.
  *
+ * `'reembolso'` entrou junto com o motor de pares (ADR `motor-de-pares`, Task T6): mesma convenção
+ * de `'transferencia-interna'`/`'investimento'` — propõe `remover` as duas linhas do par
+ * (`mutacaoProposta.alvo` com os 2 ids), `permanece` sempre `[]`.
+ *
  * O critério para entrar aqui é ter alvo que aponta para linha existente no grid. `'vr'` e
  * `'rendimentos'` ficam de fora porque *criam* lançamentos em vez de apontar para os existentes,
  * e `'desalinhamento-mes'` é informativo, sem alvo.
@@ -371,6 +375,7 @@ const ORIGENS_COM_EFEITO_GRID = new Set([
   'pagamento-recebido',
   'transferencia-interna',
   'investimento',
+  'reembolso',
 ])
 
 /**
@@ -378,15 +383,16 @@ const ORIGENS_COM_EFEITO_GRID = new Set([
  *
  * O campo `alvo` tem duas convenções no projeto, e a diferença é invisível pelo tipo (`string[]`
  * nos dois casos): `conciliacao`/`valor-pendente`/`pagamento-recebido` gravam a POSIÇÃO da linha
- * (ver `deteccoes.ts` e o remapeamento em `registry.ts`), enquanto `transferencia-interna` e
- * `investimento` gravam o ID do lançamento (ver `investimento.ts`, que documenta a escolha:
- * o aviso mira o lançamento independentemente de reordenação).
+ * (ver `deteccoes.ts` e o remapeamento em `registry.ts`), enquanto `transferencia-interna`,
+ * `investimento` e `reembolso` (motor de pares, `pares.ts`) gravam o ID do lançamento (ver
+ * `investimento.ts`, que documenta a escolha: o aviso mira o lançamento independentemente de
+ * reordenação; `reembolso` segue a mesma convenção, `alvo: [id1, id2]` do par).
  *
  * Comparar id contra índice não casaria nunca — e pior, poderia casar por acidente quando um id
  * coincidisse com a posição de outra linha, destacando a linha errada. Por isso a comparação é
  * decidida pela origem, não por heurística.
  */
-const ORIGENS_ALVO_POR_ID = new Set(['transferencia-interna', 'investimento'])
+const ORIGENS_ALVO_POR_ID = new Set(['transferencia-interna', 'investimento', 'reembolso'])
 
 /**
  * Conjuntos de identidade para os papéis "sai"/"fica" da inspeção.

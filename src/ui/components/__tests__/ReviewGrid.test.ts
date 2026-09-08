@@ -347,6 +347,28 @@ describe('derivarContextoInspecao', () => {
     expect(calcularTemaLinhaComInspecao(2, contexto, 9)).toBeUndefined()
   })
 
+  it('TL6-1 (motor-de-pares T6): contexto de reembolso é definido — origem entrou em ORIGENS_COM_EFEITO_GRID', () => {
+    const aviso = avisoConciliacaoFake({ origem: 'reembolso', alvo: ['12', '34'], permanece: [] })
+    const contexto = derivarContextoInspecao(aviso)
+    expect(contexto).toBeDefined()
+  })
+
+  it('TL6-2 (motor-de-pares T6): reembolso compara por id — origem entrou em ORIGENS_ALVO_POR_ID', () => {
+    const aviso = avisoConciliacaoFake({ origem: 'reembolso', alvo: ['12', '34'], permanece: [] })
+    const contexto = derivarContextoInspecao(aviso)
+    expect(contexto?.porId).toBe(true)
+  })
+
+  it('TL6-3 (motor-de-pares T6): as DUAS pernas de um par de reembolso realçam TEMA_INSPECAO_SAI por id', () => {
+    // `mutacaoProposta.alvo: [id1, id2]` (Decisão 1 do ADR) — as duas linhas do par saem juntas,
+    // `permanece` sempre `[]` (nenhuma perna sobrevive à aplicação).
+    const aviso = avisoConciliacaoFake({ origem: 'reembolso', alvo: ['12', '34'], permanece: [] })
+    const contexto = derivarContextoInspecao(aviso)
+    expect(calcularTemaLinhaComInspecao(0, contexto, 12)).toBe(TEMA_INSPECAO_SAI)
+    expect(calcularTemaLinhaComInspecao(1, contexto, 34)).toBe(TEMA_INSPECAO_SAI)
+    expect(calcularTemaLinhaComInspecao(2, contexto, 56)).toBeUndefined()
+  })
+
   it('TL-FIX-03: conciliação segue comparando por índice posicional', () => {
     const contexto = derivarContextoInspecao(avisoConciliacaoFake())
     expect(contexto?.porId).toBe(false)
@@ -448,6 +470,18 @@ describe('calcularTemaLinhaComInspecao', () => {
 // ---------------------------------------------------------------------------
 
 describe('indicesEnvolvidos', () => {
+  it('TL6-4 (motor-de-pares T6): traduz os 2 ids das pernas de um par de reembolso para índices reais', () => {
+    const lancamentos = [
+      lancamentoFake({ id: 12, transcricao: 'Perna que sai (recebida)' }), // índice real 0
+      lancamentoFake({ id: 99, transcricao: 'Linha não envolvida' }), // índice real 1
+      lancamentoFake({ id: 34, transcricao: 'Perna que sai (devolvida)' }), // índice real 2
+    ]
+    const aviso = avisoConciliacaoFake({ origem: 'reembolso', alvo: ['12', '34'], permanece: [] })
+    // permanece é sempre [] para reembolso (Decisão 1 do ADR) — a união alvo+permanece se reduz a
+    // alvo sozinho, traduzido id→índice.
+    expect(indicesEnvolvidos(aviso, lancamentos)).toEqual([0, 2])
+  })
+
   it('TL-T8-07: retorna só alvo (sem permanece) para valor-pendente/pagamento-recebido', () => {
     expect(indicesEnvolvidos(avisoValorPendenteFake())).toEqual([2])
     expect(indicesEnvolvidos(avisoPagamentoRecebidoFake())).toEqual([2])
@@ -494,6 +528,20 @@ describe('calcularLinhaAncoraVisual', () => {
   it('TL-T8-10 (regressão, guarda): retorna undefined para origem desconhecida', () => {
     const aviso = avisoConciliacaoFake({ origem: 'outra-origem', alvo: ['2'] })
     expect(calcularLinhaAncoraVisual([0, 1, 2], aviso)).toBeUndefined()
+  })
+
+  it('TL6-5 (motor-de-pares T6): âncora de um par de reembolso usa só alvo[0] (sem âncora dupla, ver Non-goals)', () => {
+    const lancamentos = [
+      lancamentoFake({ id: 12, transcricao: 'Perna recebida' }), // índice real 0
+      lancamentoFake({ id: 99, transcricao: 'Linha não envolvida' }), // índice real 1
+      lancamentoFake({ id: 34, transcricao: 'Perna devolvida' }), // índice real 2
+    ]
+    const aviso = avisoConciliacaoFake({ origem: 'reembolso', alvo: ['12', '34'], permanece: [] })
+
+    // Ancora na PRIMEIRA perna (alvo[0] = id 12 → índice real 0), não em ambas — âncora dupla é
+    // Non-goal desta spec; a segunda perna (id 34) segue recebendo o realce (TL6-3), mas não
+    // determina o scroll.
+    expect(calcularLinhaAncoraVisual([0, 1, 2], aviso, lancamentos)).toBe(0)
   })
 
   it('TL-39a-1: origem por id traduz o alvo antes de procurar a posição visual', () => {
