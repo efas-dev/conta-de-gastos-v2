@@ -40,6 +40,7 @@ function params(overrides: Partial<Parameters<typeof deveDevolverFocoAGrid>[0]> 
     containerGrid: grid,
     cliqueDePonteiro: true,
     temCelulaCorrente: true,
+    temModalAberto: false,
     ...overrides,
   }
 }
@@ -77,10 +78,34 @@ describe('deveDevolverFocoAGrid (item 51)', () => {
     expect(deveDevolverFocoAGrid(params({ alvo: rotulo, ativo: campo }))).toBe(false)
   })
 
-  it('TL-51-7: clique dentro de um modal ([role=dialog]) não devolve o foco', () => {
+  it('TL-51-13: clique que ABRE um modal não devolve o foco à grid atrás dele', () => {
+    // Achado da inspeção visual no app: o botão "Exportar .xlsx" mora FORA do modal, que
+    // no instante do clique ainda nem existe. Olhar só o alvo deixava o foco voltar para a
+    // grid e a digitação vazava para a célula por trás do modal aberto.
+    const botao = em(fora, 'button')
+    expect(deveDevolverFocoAGrid(params({ alvo: botao, ativo: botao, temModalAberto: true }))).toBe(false)
+  })
+
+  it('TL-51-14: sem modal aberto, o mesmo clique segue devolvendo o foco', () => {
+    expect(deveDevolverFocoAGrid(params({ temModalAberto: false }))).toBe(true)
+  })
+
+  it('TL-51-7: clique dentro de um modal aberto não devolve o foco', () => {
     const dialogo = em(fora, 'div', { role: 'dialog' })
     const botao = em(dialogo, 'button')
-    expect(deveDevolverFocoAGrid(params({ alvo: botao, ativo: botao }))).toBe(false)
+    expect(deveDevolverFocoAGrid(params({ alvo: botao, ativo: botao, temModalAberto: true }))).toBe(false)
+  })
+
+  it('TL-51-15: clique que FECHA o modal devolve o foco à grid', () => {
+    // Segundo achado da inspeção: o "Fechar" do modal já foi desmontado quando a decisão
+    // roda, mas segue pendurado no diálogo (agora destacado do documento). Olhar o alvo
+    // deixava o foco parado no <body> e a grid seguia surda — o sintoma do item 51.
+    const dialogo = em(fora, 'div', { role: 'dialog' })
+    const botao = em(dialogo, 'button')
+    dialogo.remove()
+    expect(
+      deveDevolverFocoAGrid(params({ alvo: botao, ativo: document.body, temModalAberto: false })),
+    ).toBe(true)
   })
 
   it('TL-51-8: ativação por teclado (detail 0) não devolve o foco — não sequestra o Tab', () => {

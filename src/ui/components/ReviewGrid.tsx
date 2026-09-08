@@ -26,7 +26,7 @@ import { useAppStore, type CampoEditavel } from '../store/appStore'
 import type { Lancamento, Aviso } from '../../types'
 import { GhostEditorCore } from './GhostEditor'
 import { montarColagem } from './colagemGrid'
-import { deveDevolverFocoAGrid } from './focoGrid'
+import { deveDevolverFocoAGrid, haModalAberto } from './focoGrid'
 
 // ---------------------------------------------------------------------------
 // Índices de colunas
@@ -1290,15 +1290,28 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   // novo clique nela. A política de quando devolver mora em `focoGrid.ts` (pura, testada);
   // aqui fica só a fiação. O listener é de `click` (não `mousedown`) porque só depois dele
   // o `document.activeElement` reflete quem realmente ficou com o foco.
+  //
+  // A decisão espera o clique se assentar, porque ele pode ABRIR ou FECHAR um modal e é o
+  // estado final da página que decide. São dois frames: no instante do evento o React ainda
+  // não commitou a mudança, e um frame só ainda pega o DOM antigo — o segundo roda depois
+  // do commit, então `haModalAberto` enxerga o diálogo que nasceu (ou o que morreu).
+  //
+  // O listener é de **captura**: o `ExportModal` chama `stopPropagation()` no clique da caixa
+  // (para o overlay não se fechar sozinho) e, como o React delega na raiz, isso mata o evento
+  // antes do `document`. Na descida nada foi interrompido ainda, então o clique que fecha o
+  // modal também chega aqui — sem isso o foco ficava no `<body>` e a grid seguia surda.
   useEffect(() => {
-    function aoClicar(evento: MouseEvent) {
+    let frame = 0
+
+    function decidir(alvo: Element | null, cliqueDePonteiro: boolean) {
       if (
         !deveDevolverFocoAGrid({
-          alvo: evento.target instanceof Element ? evento.target : null,
+          alvo,
           ativo: document.activeElement,
           containerGrid: containerGridRef.current,
-          cliqueDePonteiro: evento.detail > 0,
+          cliqueDePonteiro,
           temCelulaCorrente: gridSelection.current !== undefined,
+          temModalAberto: haModalAberto(document),
         })
       ) {
         return
@@ -1308,8 +1321,20 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
       dataEditorRef.current?.focus()
     }
 
-    document.addEventListener('click', aoClicar)
-    return () => document.removeEventListener('click', aoClicar)
+    function aoClicar(evento: MouseEvent) {
+      const alvo = evento.target instanceof Element ? evento.target : null
+      const cliqueDePonteiro = evento.detail > 0
+
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => decidir(alvo, cliqueDePonteiro))
+      })
+    }
+
+    document.addEventListener('click', aoClicar, true)
+    return () => {
+      document.removeEventListener('click', aoClicar, true)
+      cancelAnimationFrame(frame)
+    }
   }, [gridSelection])
 
   // -----------------------------------------------------------------
