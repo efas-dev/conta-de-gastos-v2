@@ -26,6 +26,7 @@ import { useAppStore, type CampoEditavel } from '../store/appStore'
 import type { Lancamento, Aviso } from '../../types'
 import { GhostEditorCore } from './GhostEditor'
 import { montarColagem } from './colagemGrid'
+import { deveDevolverFocoAGrid } from './focoGrid'
 
 // ---------------------------------------------------------------------------
 // Índices de colunas
@@ -1279,12 +1280,45 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   )
 
   // -----------------------------------------------------------------
+  // Devolução de foco à grid (item 51)
+  // -----------------------------------------------------------------
+
+  /** Container da grid — usado para saber se um clique caiu dentro ou fora dela. */
+  const containerGridRef = useRef<HTMLDivElement | null>(null)
+
+  // Sem isto, clicar em qualquer botão/card/painel deixa a grid surda ao teclado até um
+  // novo clique nela. A política de quando devolver mora em `focoGrid.ts` (pura, testada);
+  // aqui fica só a fiação. O listener é de `click` (não `mousedown`) porque só depois dele
+  // o `document.activeElement` reflete quem realmente ficou com o foco.
+  useEffect(() => {
+    function aoClicar(evento: MouseEvent) {
+      if (
+        !deveDevolverFocoAGrid({
+          alvo: evento.target instanceof Element ? evento.target : null,
+          ativo: document.activeElement,
+          containerGrid: containerGridRef.current,
+          cliqueDePonteiro: evento.detail > 0,
+          temCelulaCorrente: gridSelection.current !== undefined,
+        })
+      ) {
+        return
+      }
+      // `focus()` do Glide não mexe na seleção: `gridSelection` é estado controlado deste
+      // componente, então a célula corrente segue exatamente onde estava.
+      dataEditorRef.current?.focus()
+    }
+
+    document.addEventListener('click', aoClicar)
+    return () => document.removeEventListener('click', aoClicar)
+  }, [gridSelection])
+
+  // -----------------------------------------------------------------
   // Render
   // -----------------------------------------------------------------
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div ref={containerGridRef} style={{ flex: 1, minHeight: 0 }}>
         <DataEditor
           ref={dataEditorRef}
           columns={colunas}
