@@ -244,6 +244,8 @@ export function reproduzirAvisos(
  * @param lancamentosRevisados Lançamentos após revisão na grid
  * @param dicEntriesAnterior   Dicionário lido no início do pipeline (não mutado)
  * @param mesReferencia        Mês de referência no formato YYYY-MM (ex.: '2025-03')
+ * @param saldoAnterior        Saldo final do mês anterior (B5 do .xlsx importado),
+ *                             gravado em B4 do gerado. `null` deixa B4 em branco.
  * @returns Bytes do .xlsx gerado
  */
 export function gerarAPartirDosRevisados(
@@ -252,9 +254,17 @@ export function gerarAPartirDosRevisados(
   lancamentosRevisados: Lancamento[],
   dicEntriesAnterior: DicEntry[],
   mesReferencia: string,
+  saldoAnterior: number | null = null,
 ): Uint8Array {
   const dicEnriquecido = aprenderDicionario(lancamentosRevisados, dicEntriesAnterior)
-  return gerarXlsx(modeloBytes, iniciais, lancamentosRevisados, dicEnriquecido, mesReferencia)
+  return gerarXlsx(
+    modeloBytes,
+    iniciais,
+    lancamentosRevisados,
+    dicEnriquecido,
+    mesReferencia,
+    saldoAnterior,
+  )
 }
 
 // ---------------------------------------------------------------------------

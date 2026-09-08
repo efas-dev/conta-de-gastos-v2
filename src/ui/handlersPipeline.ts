@@ -204,6 +204,12 @@ export interface DepsHandleGerar {
   iniciais: string
   dicEntries: DicEntry[]
   mesEscolhido: string
+  /**
+   * Saldo final do mês anterior lido do .xlsx importado (`lerSaldoAnterior`/B5).
+   * Vai para B4 do gerado — o saldo INICIAL do mês (item 49 do TODO).
+   * `null` quando o usuário não carregou o .xlsx do mês passado.
+   */
+  saldoAnterior: number | null
   anchorRef: { current: HTMLAnchorElement | null }
   marcarLimpo: () => void
 }
@@ -219,11 +225,27 @@ export interface DepsHandleGerar {
  * comportamento preservado byte-a-byte.
  */
 export function handleGerar(deps: DepsHandleGerar): void {
-  const { modeloBytes, lancamentos, iniciais, dicEntries, mesEscolhido, anchorRef, marcarLimpo } = deps
+  const {
+    modeloBytes,
+    lancamentos,
+    iniciais,
+    dicEntries,
+    mesEscolhido,
+    saldoAnterior,
+    anchorRef,
+    marcarLimpo,
+  } = deps
 
   if (!modeloBytes || lancamentos.length === 0) return
 
-  const xlsxBytes = gerarAPartirDosRevisados(modeloBytes, iniciais, lancamentos, dicEntries, mesEscolhido)
+  const xlsxBytes = gerarAPartirDosRevisados(
+    modeloBytes,
+    iniciais,
+    lancamentos,
+    dicEntries,
+    mesEscolhido,
+    saldoAnterior,
+  )
 
   // `.slice()` materializa Uint8Array<ArrayBuffer> puro a partir do
   // Uint8Array<ArrayBufferLike> do fflate — necessário para BlobPart no TS ≥ 5.7.

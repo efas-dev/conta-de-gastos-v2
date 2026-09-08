@@ -433,6 +433,79 @@ describe('gerarSheetDataDicionario via gerarXlsx — cabeçalho e colunas Vezes/
   })
 })
 
+// ---------------------------------------------------------------------------
+// Item 49 do TODO — saldo inicial em B4
+//
+// B4 é o saldo INICIAL do mês (célula livre, `<c r="B4" s="38"/>` no Modelo).
+// B5 é o saldo FINAL e é FÓRMULA (`B4+SUM(H9:H1004)`) — B4 é o único ponto que o
+// writer pode tocar, e tocar B5 quebraria o Modelo.
+// O valor vem de `lerSaldoAnterior` (B5 do .xlsx do mês anterior).
+// ---------------------------------------------------------------------------
+describe('gerarXlsx — saldo inicial em B4 (item 49)', () => {
+  let modeloBytes: Uint8Array
+
+  beforeAll(() => {
+    modeloBytes = new Uint8Array(readFileSync(FIXTURE_PATH))
+  })
+
+  it('TL-49-1: grava o saldo inicial em B4 como célula numérica com o estilo do Modelo', () => {
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', 1234.56)
+    const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
+
+    expect(sheet1).toContain('<c r="B4" s="38"><v>1234.56</v></c>')
+  })
+
+  it('TL-49-2: saldo negativo é gravado com o sinal preservado', () => {
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', -87.9)
+    const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
+
+    expect(sheet1).toContain('<c r="B4" s="38"><v>-87.9</v></c>')
+  })
+
+  it('TL-49-3: saldo zero é gravado (0 é valor legítimo, não "ausente")', () => {
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', 0)
+    const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
+
+    expect(sheet1).toContain('<c r="B4" s="38"><v>0</v></c>')
+  })
+
+  it('TL-49-4: sem saldo (null/omitido) B4 fica em branco, como no Modelo virgem', () => {
+    for (const saldo of [null, undefined]) {
+      const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', saldo)
+      const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
+
+      expect(sheet1).toContain('<c r="B4" s="38"/>')
+      expect(sheet1).not.toMatch(/<c r="B4"[^>]*>\s*<v>/)
+    }
+  })
+
+  it('TL-49-5: substitui B4 mesmo quando o re-save do Modelo a deixou preenchida', () => {
+    // Um re-save do Modelo com valor em B4 vira `<c r="B4" s="38"><v>10</v></c>`;
+    // o mesmo endurecimento por regex já aplicado a B3 precisa valer aqui.
+    const parts = unzipSync(modeloBytes)
+    const sheet1Original = new TextDecoder().decode(parts['xl/worksheets/sheet1.xml'])
+    parts['xl/worksheets/sheet1.xml'] = new TextEncoder().encode(
+      sheet1Original.replace('<c r="B4" s="38"/>', '<c r="B4" s="38"><v>10</v></c>'),
+    )
+    const modeloComB4 = zipSync(parts)
+
+    const resultado = gerarXlsx(modeloComB4, 'ES', [], [], '2026-06', 500)
+    const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
+
+    expect(sheet1).toContain('<c r="B4" s="38"><v>500</v></c>')
+    // O valor antigo não pode sobreviver *na célula B4* (outras células da planilha
+    // legitimamente têm <v>10</v> — a asserção precisa ser ancorada em B4).
+    expect(sheet1.match(/<c r="B4"[^>]*(?:\/>|>.*?<\/c>)/)?.[0]).not.toContain('<v>10</v>')
+  })
+
+  it('TL-49-6: a fórmula de B5 (saldo final) permanece intacta', () => {
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', 1234.56)
+    const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
+
+    expect(sheet1).toContain('<f>B4+SUM(H9:H1004)</f>')
+  })
+})
+
 // Guard de drift do Modelo (2026-08-04): o app exporta injetando em
 // public/Modelo.xlsx, mas os testes rodam contra a fixture. Se os dois divergirem,
 // os testes passam mas o app quebra (foi o que aconteceu no bug das abas agrupadas:

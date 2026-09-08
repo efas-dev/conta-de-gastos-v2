@@ -60,6 +60,8 @@ export function TelaRevisao({
   const naturezasValidas = useAppStore((s) => s.naturezasValidas)
   const naturezasRicas = useAppStore((s) => s.naturezasRicas)
   const sujo = useAppStore((s) => s.sujo)
+  /** Saldo do mês anterior — vai para B4 do .xlsx gerado (item 49 do TODO). */
+  const saldoAnterior = useAppStore((s) => s.saldoAnterior)
 
   const adicionarAvisosAcionaveis = useAppStore((s) => s.adicionarAvisos)
   const undo = useAppStore((s) => s.undo)
@@ -204,7 +206,16 @@ export function TelaRevisao({
    * "Baixar .xlsx" do `ExportModal` (fase confirmar).
    */
   function handleGerar() {
-    handleGerarPipeline({ modeloBytes, lancamentos, iniciais, dicEntries, mesEscolhido, anchorRef, marcarLimpo })
+    handleGerarPipeline({
+      modeloBytes,
+      lancamentos,
+      iniciais,
+      dicEntries,
+      mesEscolhido,
+      saldoAnterior,
+      anchorRef,
+      marcarLimpo,
+    })
   }
 
   /** Confirma a exportação a partir do `ExportModal` (fase confirmar → "Baixar .xlsx"). */
