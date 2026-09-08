@@ -2,7 +2,7 @@
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
 // ADR: see Docs/specs/patches-ui-ux.adr.md
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useAppStore } from '../store/appStore'
 import { proximaSelecaoFiltro } from '../selecaoFiltro'
 import type { Lancamento, NaturezaRica } from '../../types'
@@ -28,14 +28,34 @@ interface PainelNaturezasProps {
 // ---------------------------------------------------------------------------
 
 /**
+ * Forma canônica de umas iniciais para comparação: sem espaços em volta, em caixa alta.
+ * Tolera ausência (`undefined`/`null`) porque a coluna Iniciais é digitada à mão e o campo
+ * da sessão pode ainda não existir — ausente é o mesmo que vazio, nunca um erro.
+ */
+function normalizarIniciais(iniciais: string | undefined | null): string {
+  return (iniciais ?? '').trim().toUpperCase()
+}
+
+/**
  * Soma os valores dos lançamentos agrupados por natureza (sigla).
  * Só siglas com pelo menos um lançamento entram no Map — a ausência de chave
  * é o que permite ao cartão OMITIR o número em vez de exibir 0.
+ *
+ * `iniciaisFiltro` (item 41 do TODO) recorta a soma para uma pessoa só: numa casa
+ * com despesas rateadas, o total geral de uma natureza não diz quanto é do
+ * titular. Vazio/omitido mantém o total geral — o comportamento original.
+ * A comparação é normalizada (`normalizarIniciais`) porque as iniciais são
+ * digitadas à mão na grid e variam em caixa e espaços.
  */
-export function somarPorNatureza(lancamentos: Lancamento[]): Map<string, number> {
+export function somarPorNatureza(
+  lancamentos: Lancamento[],
+  iniciaisFiltro?: string,
+): Map<string, number> {
+  const alvo = iniciaisFiltro ? normalizarIniciais(iniciaisFiltro) : ''
   const somas = new Map<string, number>()
   for (const l of lancamentos) {
     if (!l.natureza) continue
+    if (alvo !== '' && normalizarIniciais(l.iniciais) !== alvo) continue
     somas.set(l.natureza, (somas.get(l.natureza) ?? 0) + l.valor)
   }
   return somas
@@ -78,8 +98,20 @@ export function PainelNaturezas({ naturezas }: PainelNaturezasProps) {
   const lancamentos = useAppStore((s) => s.lancamentos)
   const filtroNaturezas = useAppStore((s) => s.filtroNaturezas)
   const setFiltroNaturezas = useAppStore((s) => s.setFiltroNaturezas)
+  /** Iniciais da sessão (campo "Suas iniciais") — o recorte do item 41. */
+  const iniciaisSessao = useAppStore((s) => s.iniciais)
 
-  const somas = useMemo(() => somarPorNatureza(lancamentos), [lancamentos])
+  // Item 41: recorte da SOMA por iniciais. Nasce desligado (o total geral é a
+  // leitura padrão da colinha) e é preferência de exibição, não navegação nem
+  // dado — por isso mora aqui como estado local, fora do store e do undo/redo.
+  const [soMinhasIniciais, setSoMinhasIniciais] = useState(false)
+
+  // Sem iniciais preenchidas não há recorte possível: o switch nem aparece, e a
+  // soma segue geral mesmo que ele tivesse ficado ligado numa sessão anterior.
+  const podeRecortar = normalizarIniciais(iniciaisSessao) !== ''
+  const recorte = podeRecortar && soMinhasIniciais ? iniciaisSessao : undefined
+
+  const somas = useMemo(() => somarPorNatureza(lancamentos, recorte), [lancamentos, recorte])
   const ordenadas = useMemo(() => ordenarNaturezas(naturezas, somas), [naturezas, somas])
 
   if (naturezas.length === 0) {
@@ -93,6 +125,18 @@ export function PainelNaturezas({ naturezas }: PainelNaturezasProps) {
 
   return (
     <>
+      {podeRecortar && (
+        <label className="nat-recorte">
+          <input
+            type="checkbox"
+            role="switch"
+            aria-checked={soMinhasIniciais}
+            checked={soMinhasIniciais}
+            onChange={(e) => setSoMinhasIniciais(e.target.checked)}
+          />
+          <span>Somar só as minhas iniciais ({normalizarIniciais(iniciaisSessao)})</span>
+        </label>
+      )}
       {ordenadas.map((n) => {
         const soma = somas.get(n.sigla)
         const ativo = filtroNaturezas.includes(n.sigla)
