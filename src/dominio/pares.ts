@@ -1,6 +1,7 @@
 // ADR: see Docs/specs/motor-de-pares.adr.md
 
-import type { Lancamento } from '../types'
+import type { Aviso, Lancamento } from '../types'
+import { detectarTransferenciaInterna } from './transferencia'
 
 /** Um par casado pelo motor: uma perna positiva e uma perna negativa de valor idêntico. */
 export interface ParEncontrado {
@@ -217,4 +218,94 @@ export function encontrarPares(
   }
 
   return { pares, ambiguos }
+}
+
+/**
+ * Padrões de auto-sweep/aplicação financeira (ADR `motor-de-pares`, Decisão 5) — passados como
+ * parâmetro a `encontrarPares` pela política `reembolso`, nunca conhecidos pelo motor puro
+ * (Decisão 17). `BB Rende Fácil`, `RDB` e `CDB` frequentemente casam por valor com uma despesa
+ * real não relacionada nos dados reais; sem esta exclusão, `detectarReembolsoAvisos` proporia
+ * apagar despesas verdadeiras.
+ */
+const PADROES_EXCLUSAO_REEMBOLSO: RegExp[] = [/BB Rende Fácil/i, /RDB/i, /CDB/i]
+
+/**
+ * Detecta, entre `lancamentos`, os pares de reembolso (ADR `motor-de-pares`, Decisão 2): duas
+ * pernas que se anulam (via `encontrarPares`) em que NENHUMA das duas bate no sinal textual de
+ * transferência própria (`detectarTransferenciaInterna`, por padrão — injetável via
+ * `opcoes.ehTransferencia`, mesmo espírito de parametrização da Decisão 17). Quando alguma perna
+ * bate no sinal, o par é transferência própria e cabe a `detectarTransferenciaInternaAvisos`
+ * (`src/dominio/transferencia.ts`, T3), não a esta função — não-interferência entre as duas
+ * origens de aviso.
+ *
+ * `GrupoAmbiguo`s (empate exato de distância — Decisão 7) sem sinal de transferência em nenhum
+ * candidato viram um `Aviso` informativo (sem `mutacaoProposta`) listando os candidatos, no
+ * mesmo formato de `avisoInformativoComCandidatos` (`src/dominio/deteccoes.ts`).
+ *
+ * Injeção do predicado de transferência (`opcoes.ehTransferencia`), em vez de importar
+ * `detectarTransferenciaInterna` apenas de forma fixa, evita acoplar esta função a uma única
+ * fonte do sinal e facilita testes que não precisam da implementação real — decisão registrada
+ * em `Docs/.harness/iteracao-log-spec-20260831-motor-de-pares-task-2.md`.
+ *
+ * @param lancamentos - Lançamentos a inspecionar (fatura e extrato, sem lançamentos manuais —
+ *   ver `encontrarPares`).
+ * @param contexto - Repassado a `encontrarPares` (ver `ContextoMotorPares`).
+ * @param opcoes - `ehTransferencia` (default: `detectarTransferenciaInterna` com
+ *   `contexto.nomeUsuario`).
+ */
+export function detectarReembolsoAvisos(
+  lancamentos: Lancamento[],
+  contexto: ContextoMotorPares,
+  opcoes: { ehTransferencia?: (lancamento: Lancamento) => boolean } = {},
+): Aviso[] {
+  const ehTransferencia =
+    opcoes.ehTransferencia ??
+    ((lancamento: Lancamento) => detectarTransferenciaInterna(lancamento, contexto.nomeUsuario))
+
+  const { pares, ambiguos } = encontrarPares(lancamentos, contexto, {
+    padroesExcluidos: PADROES_EXCLUSAO_REEMBOLSO,
+  })
+
+  const avisos: Aviso[] = []
+
+  for (const par of pares) {
+    if (ehTransferencia(par.positivo) || ehTransferencia(par.negativo)) continue
+
+    avisos.push({
+      id: `reembolso-${par.positivo.id}-${par.negativo.id}`,
+      tipo: 'proposta',
+      origem: 'reembolso',
+      mensagem:
+        `Reembolso detectado: "${par.positivo.transcricao}" ↔ "${par.negativo.transcricao}". ` +
+        'Deseja remover essas duas linhas?',
+      alvo: [String(par.positivo.id), String(par.negativo.id)],
+      permanece: [],
+      estado: 'pendente',
+      mutacaoProposta: { verbo: 'remover', alvo: [par.positivo.id, par.negativo.id] },
+    })
+  }
+
+  for (const grupo of ambiguos) {
+    const temSinalDeTransferencia =
+      ehTransferencia(grupo.ancora) || grupo.candidatos.some((candidato) => ehTransferencia(candidato))
+    if (temSinalDeTransferencia) continue
+
+    avisos.push({
+      id: `reembolso-ambiguo-${grupo.ancora.id}`,
+      tipo: 'informativo',
+      origem: 'reembolso',
+      mensagem:
+        `"${grupo.ancora.transcricao}" tem ${grupo.candidatos.length} possíveis contrapartidas de ` +
+        'reembolso à mesma distância — escolha manualmente qual remover, se for o caso.',
+      alvo: [],
+      permanece: [],
+      estado: 'pendente',
+      candidatos: grupo.candidatos.map((candidato) => ({
+        alvo: String(candidato.id),
+        resumo: `"${candidato.transcricao}" (${candidato.data})`,
+      })),
+    })
+  }
+
+  return avisos
 }
