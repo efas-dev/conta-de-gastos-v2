@@ -6,6 +6,7 @@ import { detectores, orquestrarDeteccao } from '../registry'
 import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from '../deteccoes'
 import { detectarInvestimentoAvisos } from '../investimento'
 import { detectarTransferenciaInternaAvisos } from '../transferencia'
+import { detectarReembolsoAvisos } from '../pares'
 import { classificarFonte } from '../mes'
 import type { Aviso, Lancamento } from '../../types'
 
@@ -101,10 +102,11 @@ describe('registry — lista de detectores', () => {
     expect(Array.isArray(detectores)).toBe(true)
   })
 
-  it('T06/T07/T07-bis/T4(vr-despesas)/T9(rendimentos) migram/acrescentam 7 detectores (valor-pendente, pagamento-recebido, conciliação, investimento, transferência interna, vr, rendimentos)', () => {
-    expect(detectores).toHaveLength(7)
+  it('T06/T07/T07-bis/T4(vr-despesas)/T9(rendimentos)/T4(motor-de-pares) migram/acrescentam 8 detectores (valor-pendente, pagamento-recebido, conciliação, investimento, transferência interna, reembolso, vr, rendimentos)', () => {
+    expect(detectores).toHaveLength(8)
     expect(detectores.map((d) => d.origem)).toContain('investimento')
     expect(detectores.map((d) => d.origem)).toContain('transferencia-interna')
+    expect(detectores.map((d) => d.origem)).toContain('reembolso')
     expect(detectores.map((d) => d.origem)).toContain('vr')
     expect(detectores.map((d) => d.origem)).toContain('rendimentos')
   })
@@ -301,27 +303,207 @@ describe('orquestrarDeteccao — detectores mistos e agregação', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Task 4 (spec motor-de-pares, ADR Decisão 3) — dedup pós-concatenação por
+// precedência de `mutacaoProposta.alvo` na ordem do array `detectores`.
+// ---------------------------------------------------------------------------
+
+/** Aviso fake com mutacaoProposta 'remover' mirando `ids` — reivindica alvo. */
+function avisoComAlvo(origem: string, id: string, ids: number[]): Aviso {
+  return {
+    id,
+    tipo: 'proposta',
+    origem,
+    mensagem: `msg-${id}`,
+    alvo: ids.map(String),
+    permanece: [],
+    estado: 'pendente',
+    mutacaoProposta: { verbo: 'remover', alvo: ids },
+  }
+}
+
+/** Aviso fake informativo (sem mutacaoProposta) — nunca reivindica nada. */
+function avisoInformativo(origem: string, id: string, alvoTextual: string[] = []): Aviso {
+  return {
+    id,
+    tipo: 'informativo',
+    origem,
+    mensagem: `msg-${id}`,
+    alvo: alvoTextual,
+    permanece: [],
+    estado: 'pendente',
+  }
+}
+
+describe('orquestrarDeteccao — dedup por precedência de alvo (Task 4)', () => {
+  it('TL4-1: dois avisos com mutacaoProposta.alvo disjuntos sobrevivem os dois, na ordem de emissão', () => {
+    const fake1: Detector = {
+      origem: 'fake-1',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-1', 'a1', [10])],
+    }
+    const fake2: Detector = {
+      origem: 'fake-2',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-2', 'a2', [20])],
+    }
+    const avisos = orquestrarDeteccao([], [fake1, fake2])
+    expect(avisos.map((a) => a.id)).toEqual(['a1', 'a2'])
+  })
+
+  it('TL4-2: segundo aviso com mutacaoProposta.alvo idêntico ao do primeiro é descartado', () => {
+    const fake1: Detector = {
+      origem: 'fake-1',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-1', 'a1', [10])],
+    }
+    const fake2: Detector = {
+      origem: 'fake-2',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-2', 'a2', [10])],
+    }
+    const avisos = orquestrarDeteccao([], [fake1, fake2])
+    expect(avisos.map((a) => a.id)).toEqual(['a1'])
+  })
+
+  it('TL4-3: interseção parcial (1 de 2 ids em comum) descarta o segundo aviso POR INTEIRO', () => {
+    const fake1: Detector = {
+      origem: 'fake-1',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-1', 'a1', [10])],
+    }
+    const fake2: Detector = {
+      origem: 'fake-2',
+      escopo: 'global',
+      // 20 é livre, mas 10 já foi reivindicado por fake1 — o aviso inteiro cai, não só o id 10.
+      detectar: () => [avisoComAlvo('fake-2', 'a2', [10, 20])],
+    }
+    const avisos = orquestrarDeteccao([], [fake1, fake2])
+    expect(avisos.map((a) => a.id)).toEqual(['a1'])
+    // id 20 não aparece em nenhum alvo sobrevivente — não foi "salvo" parcialmente.
+    expect(avisos.flatMap((a) => a.mutacaoProposta?.alvo ?? [])).toEqual([10])
+  })
+
+  it('TL4-4: informativo (sem mutacaoProposta) emitido antes NÃO bloqueia proposta posterior mirando o mesmo id', () => {
+    const fakeInformativo: Detector = {
+      origem: 'fake-informativo',
+      escopo: 'global',
+      detectar: () => [avisoInformativo('fake-informativo', 'i1', ['10'])],
+    }
+    const fakeProposta: Detector = {
+      origem: 'fake-proposta',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-proposta', 'a1', [10])],
+    }
+    const avisos = orquestrarDeteccao([], [fakeInformativo, fakeProposta])
+    expect(avisos.map((a) => a.id)).toEqual(['i1', 'a1'])
+  })
+
+  it('TL4-5: informativo (sem mutacaoProposta) emitido depois de uma proposta que reivindicou o mesmo id NÃO é descartado', () => {
+    const fakeProposta: Detector = {
+      origem: 'fake-proposta',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-proposta', 'a1', [10])],
+    }
+    const fakeInformativo: Detector = {
+      origem: 'fake-informativo',
+      escopo: 'global',
+      detectar: () => [avisoInformativo('fake-informativo', 'i1', ['10'])],
+    }
+    const avisos = orquestrarDeteccao([], [fakeProposta, fakeInformativo])
+    expect(avisos.map((a) => a.id)).toEqual(['a1', 'i1'])
+  })
+
+  it('TL4-6: precedência é transitiva com 3+ detectores — terceiro cai se colidir com o primeiro OU com o segundo sobrevivente', () => {
+    const fake1: Detector = {
+      origem: 'fake-1',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-1', 'a1', [10])],
+    }
+    const fake2: Detector = {
+      origem: 'fake-2',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-2', 'a2', [20])],
+    }
+    const fake3ColideCom1: Detector = {
+      origem: 'fake-3a',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-3a', 'a3a', [10])],
+    }
+    const fake4ColideCom2: Detector = {
+      origem: 'fake-4',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-4', 'a4', [20])],
+    }
+    const fake5Livre: Detector = {
+      origem: 'fake-5',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-5', 'a5', [30])],
+    }
+    const avisos = orquestrarDeteccao(
+      [],
+      [fake1, fake2, fake3ColideCom1, fake4ColideCom2, fake5Livre],
+    )
+    expect(avisos.map((a) => a.id)).toEqual(['a1', 'a2', 'a5'])
+  })
+
+  it('TL4-7: mutacaoProposta com verbo "adicionar" (sem alvo, união discriminada) nunca reivindica nem é bloqueado por dedup', () => {
+    const novoLancamento: Lancamento = lancamento({ id: 999 })
+    const fakeAdicionar: Detector = {
+      origem: 'fake-adicionar',
+      escopo: 'global',
+      detectar: () => [
+        {
+          id: 'add1',
+          tipo: 'proposta',
+          origem: 'fake-adicionar',
+          mensagem: 'msg-add1',
+          alvo: [],
+          permanece: [],
+          estado: 'pendente',
+          mutacaoProposta: { verbo: 'adicionar', lancamentos: [novoLancamento] },
+        },
+      ],
+    }
+    const fakeRemover: Detector = {
+      origem: 'fake-remover',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-remover', 'a1', [10])],
+    }
+    const avisos = orquestrarDeteccao([], [fakeAdicionar, fakeRemover])
+    expect(avisos.map((a) => a.id)).toEqual(['add1', 'a1'])
+  })
+})
+
+// ---------------------------------------------------------------------------
 // T06 — migração de detectarValorPendente/detectarPagamentoRecebido/detectarConciliacao
 // ---------------------------------------------------------------------------
 
 describe('detectores — T06 (migração dos 3 detectores legados)', () => {
-  it('contém, nesta ordem, valor-pendente, pagamento-recebido, conciliacao, investimento, transferencia-interna, vr, rendimentos (T07/T07-bis, T4 vr-despesas, T9 rendimentos)', () => {
+  it('contém, nesta ordem, valor-pendente, pagamento-recebido, conciliacao, investimento, transferencia-interna, reembolso, vr, rendimentos (T07/T07-bis, T4 vr-despesas, T9 rendimentos, T4 motor-de-pares/D16)', () => {
     expect(detectores.map((d) => d.origem)).toEqual([
       'valor-pendente',
       'pagamento-recebido',
       'conciliacao',
       'investimento',
       'transferencia-interna',
+      'reembolso',
       'vr',
       'rendimentos',
     ])
   })
 
-  it('vr fica posicionado imediatamente após transferencia-interna — penúltimo do array atual (TL-53)', () => {
+  it('reembolso fica posicionado imediatamente após transferencia-interna (ADR motor-de-pares, Decisão 16 — TL4-8)', () => {
     const origens = detectores.map((d) => d.origem)
     const indiceTransferencia = origens.indexOf('transferencia-interna')
+    const indiceReembolso = origens.indexOf('reembolso')
+    expect(indiceReembolso).toBe(indiceTransferencia + 1)
+  })
+
+  it('vr fica posicionado imediatamente após reembolso — antepenúltimo deixa de ser penúltimo com a inserção de reembolso (ADR motor-de-pares, Decisão 16 — TL4-8)', () => {
+    const origens = detectores.map((d) => d.origem)
+    const indiceReembolso = origens.indexOf('reembolso')
     const indiceVR = origens.indexOf('vr')
-    expect(indiceVR).toBe(indiceTransferencia + 1)
+    expect(indiceVR).toBe(indiceReembolso + 1)
     expect(indiceVR).toBe(origens.length - 2)
   })
 
@@ -748,6 +930,37 @@ describe('detectores — vr (Task 4, spec vr-despesas)', () => {
       estado: 'pendente',
     })
     expect(avisosVR[0].mutacaoProposta).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 4 (spec motor-de-pares) — detector 'reembolso' via orquestrarDeteccao
+//
+// Mesma disciplina de TL-54/T9-RD-04 (arrays LOCAIS mínimos, um detector só extraído do
+// registry real) — unit genuíno, não integração. A interação cruzada reembolso × investimento
+// sobre 'Resgate RDB' (ponto d da Task 5) NÃO é provada aqui — é integração, task seguinte.
+// ---------------------------------------------------------------------------
+
+describe('detectores — reembolso (Task 4, spec motor-de-pares)', () => {
+  it('TL4-9a: reembolso tem escopo "global"', () => {
+    const reembolso = detectores.find((d) => d.origem === 'reembolso')
+    expect(reembolso?.escopo).toBe('global')
+  })
+
+  it('TL4-9b: orquestrarDeteccao, com array local mínimo contendo só o detector reembolso, produz o mesmo resultado que a chamada direta a detectarReembolsoAvisos (paridade wrapper/orquestrador)', () => {
+    const detectorReembolso = detectores.find((d) => d.origem === 'reembolso')!
+    const positivo = lancamento({ id: 1, data: '2026-06-01', transcricao: 'Recebido de Fulano', valor: 100 })
+    const negativo = lancamento({ id: 2, data: '2026-06-02', transcricao: 'Pago para Fulano', valor: -100 })
+    const todosLancamentos = [positivo, negativo]
+
+    const avisosDireto = detectarReembolsoAvisos(todosLancamentos, {})
+    const avisosOrquestrados = orquestrarDeteccao(todosLancamentos, [detectorReembolso]).filter(
+      (a) => a.origem === 'reembolso',
+    )
+
+    expect(avisosOrquestrados).toEqual(avisosDireto)
+    expect(avisosDireto).toHaveLength(1)
+    expect(avisosDireto[0]?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [1, 2] })
   })
 })
 

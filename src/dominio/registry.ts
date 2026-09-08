@@ -7,6 +7,7 @@ import type { Aviso, Lancamento } from '../types'
 import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from './deteccoes'
 import { detectarInvestimentoAvisos } from './investimento'
 import { detectarTransferenciaInternaAvisos } from './transferencia'
+import { detectarReembolsoAvisos } from './pares'
 import { detectarVR } from './vr'
 import { detectarRendimentos } from './rendimentos'
 import { classificarFontePorPrefixo } from './mes'
@@ -167,6 +168,30 @@ function detectarConciliacaoRegistry(lancamentos: Lancamento[], contexto: Contex
  * preservando `vr` na penúltima posição. Mesmo padrão de escopo `'global'` e mesmo formato
  * "detector sempre emite 1 aviso fixo, sem `mutacaoProposta`" de `detectarVR` — ver JSDoc de
  * `detectarRendimentos`.
+ *
+ * Task 4 (spec `motor-de-pares`) acrescenta `reembolso` (`detectarReembolsoAvisos`,
+ * `src/dominio/pares.ts`) imediatamente APÓS `transferencia-interna` e ANTES de `vr` (ADR
+ * `motor-de-pares`, Decisão 16 — posição com efeito comportamental direto, não um detalhe de
+ * implementação: a ordem deste array É a precedência de `deduplicarPorPrecedenciaDeAlvo`, ver
+ * abaixo). Escopo `'global'` pelos mesmos motivos de paridade/simplicidade dos detectores
+ * anteriores. Manter `investimento` ANTES de `reembolso` nesta ordem é o que garante que uma
+ * proposta de `investimento` sobre um `Resgate RDB`/aplicação (ex.: `RDB`, `CDB`, `BB Rende
+ * Fácil`) reivindique o alvo primeiro — quando o motor de pares (via
+ * `PADROES_EXCLUSAO_REEMBOLSO`, `src/dominio/pares.ts`) não bastar sozinho para excluir esses
+ * lançamentos do casamento, a precedência de ordem deste array ainda protege o alvo já
+ * reivindicado por `investimento` (Decisão 3, ver `deduplicarPorPrecedenciaDeAlvo`).
+ *
+ * **Risco D12 (ADR `motor-de-pares`, Decisão 12) — documentado, NÃO mitigado nesta task:**
+ * `detectarConciliacaoRegistry` (acima), quando `detectarConciliacao` falha ao casar uma linha de
+ * fatura com uma de extrato, emite um `Aviso` **informativo** (`tipo: 'informativo'`, sem
+ * `mutacaoProposta`) listando candidatos próximos. Um aviso sem `mutacaoProposta` NUNCA
+ * reivindica alvo (ver `deduplicarPorPrecedenciaDeAlvo`) — logo a precedência de ordem
+ * introduzida pela Decisão 3/Task 4 desta spec **não protege** esse caminho: o motor de pares
+ * (`reembolso`/`transferencia-interna`) pode, em tese, propor a remoção de uma linha que a
+ * conciliação já se declarou incapaz de casar, sem que a ordem deste array ofereça proteção
+ * adicional a esse caso específico — a proteção de ordem só existe entre detectores que
+ * REIVINDICAM alvo via `mutacaoProposta`, e `conciliacao` (informativo de falha) nunca reivindica.
+ * Mitigação fica para spec futura (ver Follow-up da Decisão 12 do ADR).
  */
 export const detectores: Detector[] = [
   {
@@ -194,6 +219,11 @@ export const detectores: Detector[] = [
     escopo: 'global',
     detectar: (lancamentos, contexto) =>
       detectarTransferenciaInternaAvisos(lancamentos, contexto.nomeUsuario),
+  },
+  {
+    origem: 'reembolso',
+    escopo: 'global',
+    detectar: (lancamentos, contexto) => detectarReembolsoAvisos(lancamentos, contexto),
   },
   {
     origem: 'vr',
@@ -256,5 +286,43 @@ export function orquestrarDeteccao(
     }
   }
 
-  return avisos
+  return deduplicarPorPrecedenciaDeAlvo(avisos)
+}
+
+/**
+ * Passada de deduplicação por precedência de alvo (ADR `motor-de-pares`, Decisão 3):
+ * percorre `avisos` na ordem de emissão (= ordem do array `detectores`, já concatenada acima) e
+ * descarta qualquer aviso cujo `mutacaoProposta.alvo` intersecte um alvo já reivindicado por um
+ * aviso anterior. O primeiro detector da ordem a reivindicar um id vence; quem vem depois cede.
+ *
+ * Só reivindica alvo o verbo `'remover'` (`Mutacao.alvo: number[]`, referencia lançamentos JÁ
+ * EXISTENTES por id) — o verbo `'adicionar'` (`Mutacao.lancamentos`, sem `id` ainda) não tem
+ * `alvo` na união discriminada e portanto nunca participa desta regra, mesmo que no futuro algum
+ * detector o combine com `'remover'` no mesmo registry.
+ *
+ * Avisos sem `mutacaoProposta` (informativos, ou propostas ainda não migradas ao formato
+ * estruturado) nunca reivindicam alvo e nunca são descartados por esta regra — essencial para os
+ * informativos de ambiguidade do motor de pares (`reembolso`, T2) e para o informativo de falha
+ * de casamento da conciliação (ver risco D12, documentado em `detectarConciliacaoRegistry` acima
+ * e no JSDoc de `reembolso` no array `detectores`).
+ */
+function deduplicarPorPrecedenciaDeAlvo(avisos: Aviso[]): Aviso[] {
+  const alvosReivindicados = new Set<number>()
+  const resultado: Aviso[] = []
+
+  for (const aviso of avisos) {
+    if (!aviso.mutacaoProposta || aviso.mutacaoProposta.verbo !== 'remover') {
+      resultado.push(aviso)
+      continue
+    }
+
+    const alvoDoAviso = aviso.mutacaoProposta.alvo
+    const intersecta = alvoDoAviso.some((id) => alvosReivindicados.has(id))
+    if (intersecta) continue
+
+    for (const id of alvoDoAviso) alvosReivindicados.add(id)
+    resultado.push(aviso)
+  }
+
+  return resultado
 }
