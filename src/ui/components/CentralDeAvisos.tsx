@@ -247,6 +247,10 @@ function CartaoProposta({
       role="button"
       tabIndex={0}
       aria-label={aviso.mensagem}
+      // Só os cards de VR/rendimentos expandem conteúdo (o formulário); os demais alternam o
+      // modo inspeção, que não é uma região expandida aqui dentro — anunciar `aria-expanded`
+      // neles seria mentira. `undefined` omite o atributo.
+      aria-expanded={ehVR || ehRendimentos ? formVRVisivel || formRendimentosVisivel : undefined}
       className={
         'card-aviso' +
         (emInspecao ? ' inspecionando' : '') +

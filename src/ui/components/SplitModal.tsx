@@ -123,15 +123,17 @@ export function SplitModal({ lancamento, indice, onClose }: SplitModalProps) {
           ))}
         </div>
 
-        <button className="btn-texto" onClick={handleAdicionarAlvo} style={{ marginBottom: 22 }}>
+        {/* `type="button"` em todos: sem ele um <button> dentro de um <form> ancestral vale
+            como submit. O ExportModal já declarava; aqui faltava nos quatro. */}
+        <button type="button" className="btn-texto" onClick={handleAdicionarAlvo} style={{ marginBottom: 22 }}>
           + Adicionar alvo
         </button>
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button className="btn sec" onClick={onClose}>
+          <button type="button" className="btn sec" onClick={onClose}>
             Cancelar
           </button>
-          <button className="btn pri" onClick={handleConfirmar}>
+          <button type="button" className="btn pri" onClick={handleConfirmar}>
             Confirmar
           </button>
         </div>
@@ -177,7 +179,12 @@ function Linha({
           : ''}
       </span>
       {onRemove ? (
-        <button aria-label={`Remover alvo ${i + 1}`} onClick={onRemove} className="btn sec mini icone">
+        <button
+          type="button"
+          aria-label={`Remover alvo ${i + 1}`}
+          onClick={onRemove}
+          className="btn sec mini icone"
+        >
           ×
         </button>
       ) : (

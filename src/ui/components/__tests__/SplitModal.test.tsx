@@ -270,3 +270,19 @@ describe('SplitModal — foco de entrada (TL-FOCO-MODAL)', () => {
     expect(modal.contains(document.activeElement)).toBe(true)
   })
 })
+
+describe('SplitModal — botões declaram type="button" (TL-A11Y)', () => {
+  // Sem `type`, um <button> dentro de um <form> ancestral vale como submit. O ExportModal já
+  // declara em todos os seus; aqui faltava nos quatro.
+  it('TL-A11Y-05: todos os botões do modal têm type="button"', () => {
+    const { container } = render(
+      <SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />,
+    )
+
+    const botoes = Array.from(container.querySelectorAll('button'))
+    expect(botoes.length).toBeGreaterThan(0)
+    for (const botao of botoes) {
+      expect(botao).toHaveAttribute('type', 'button')
+    }
+  })
+})

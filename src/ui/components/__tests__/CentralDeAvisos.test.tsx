@@ -778,3 +778,49 @@ describe('CentralDeAvisos — distinção "inspecionando" vs "expandido" (Task B
     expect(card.className).toContain('resolvido')
   })
 })
+
+describe('CentralDeAvisos — aria-expanded no card que expande formulário (TL-A11Y)', () => {
+  function propostaExpansivel(origem: 'vr' | 'rendimentos', mensagem: string): Aviso {
+    return proposta({ id: origem, origem, mensagem, alvo: [], permanece: [] })
+  }
+
+  const MSG_VR = 'Registre as despesas pagas com VR neste mês.'
+  const MSG_REND = 'Informe os saldos para lançar os rendimentos do mês.'
+
+  it('TL-A11Y-01: card do aviso VR nasce com aria-expanded="false"', () => {
+    avisosMock = [propostaExpansivel('vr', MSG_VR)]
+    render(<CentralDeAvisos />)
+
+    expect(screen.getByRole('button', { name: MSG_VR })).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('TL-A11Y-02: clicar no card do aviso VR muda aria-expanded para "true"', () => {
+    avisosMock = [propostaExpansivel('vr', MSG_VR)]
+    render(<CentralDeAvisos />)
+
+    fireEvent.click(screen.getByText(MSG_VR))
+
+    expect(screen.getByRole('button', { name: MSG_VR })).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('TL-A11Y-03: o mesmo vale para o card de rendimentos', () => {
+    avisosMock = [propostaExpansivel('rendimentos', MSG_REND)]
+    render(<CentralDeAvisos />)
+
+    const card = () => screen.getByRole('button', { name: MSG_REND })
+    expect(card()).toHaveAttribute('aria-expanded', 'false')
+
+    fireEvent.click(screen.getByText(MSG_REND))
+
+    expect(card()).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('TL-A11Y-04: card que NÃO expande formulário (inspeção) não anuncia aria-expanded', () => {
+    avisosMock = [proposta()]
+    render(<CentralDeAvisos />)
+
+    expect(screen.getByRole('button', { name: 'Fatura conciliável com pagamento do extrato.' })).not.toHaveAttribute(
+      'aria-expanded',
+    )
+  })
+})
