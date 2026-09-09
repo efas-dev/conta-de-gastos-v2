@@ -1,4 +1,5 @@
 // ADR: see Docs/specs/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/motor-de-pares.adr.md
 
 import { describe, it, expect } from 'vitest'
 import type { Detector, ContextoDeteccao } from '../registry'
@@ -6,6 +7,7 @@ import { detectores, orquestrarDeteccao } from '../registry'
 import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from '../deteccoes'
 import { detectarInvestimentoAvisos } from '../investimento'
 import { detectarTransferenciaInternaAvisos } from '../transferencia'
+import { detectarReembolsoAvisos } from '../pares'
 import { classificarFonte } from '../mes'
 import type { Aviso, Lancamento } from '../../types'
 
@@ -101,10 +103,11 @@ describe('registry — lista de detectores', () => {
     expect(Array.isArray(detectores)).toBe(true)
   })
 
-  it('T06/T07/T07-bis/T4(vr-despesas)/T9(rendimentos) migram/acrescentam 7 detectores (valor-pendente, pagamento-recebido, conciliação, investimento, transferência interna, vr, rendimentos)', () => {
-    expect(detectores).toHaveLength(7)
+  it('T06/T07/T07-bis/T4(vr-despesas)/T9(rendimentos)/T4(motor-de-pares) migram/acrescentam 8 detectores (valor-pendente, pagamento-recebido, conciliação, investimento, transferência interna, reembolso, vr, rendimentos)', () => {
+    expect(detectores).toHaveLength(8)
     expect(detectores.map((d) => d.origem)).toContain('investimento')
     expect(detectores.map((d) => d.origem)).toContain('transferencia-interna')
+    expect(detectores.map((d) => d.origem)).toContain('reembolso')
     expect(detectores.map((d) => d.origem)).toContain('vr')
     expect(detectores.map((d) => d.origem)).toContain('rendimentos')
   })
@@ -301,27 +304,207 @@ describe('orquestrarDeteccao — detectores mistos e agregação', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Task 4 (spec motor-de-pares, ADR Decisão 3) — dedup pós-concatenação por
+// precedência de `mutacaoProposta.alvo` na ordem do array `detectores`.
+// ---------------------------------------------------------------------------
+
+/** Aviso fake com mutacaoProposta 'remover' mirando `ids` — reivindica alvo. */
+function avisoComAlvo(origem: string, id: string, ids: number[]): Aviso {
+  return {
+    id,
+    tipo: 'proposta',
+    origem,
+    mensagem: `msg-${id}`,
+    alvo: ids.map(String),
+    permanece: [],
+    estado: 'pendente',
+    mutacaoProposta: { verbo: 'remover', alvo: ids },
+  }
+}
+
+/** Aviso fake informativo (sem mutacaoProposta) — nunca reivindica nada. */
+function avisoInformativo(origem: string, id: string, alvoTextual: string[] = []): Aviso {
+  return {
+    id,
+    tipo: 'informativo',
+    origem,
+    mensagem: `msg-${id}`,
+    alvo: alvoTextual,
+    permanece: [],
+    estado: 'pendente',
+  }
+}
+
+describe('orquestrarDeteccao — dedup por precedência de alvo (Task 4)', () => {
+  it('TL4-1: dois avisos com mutacaoProposta.alvo disjuntos sobrevivem os dois, na ordem de emissão', () => {
+    const fake1: Detector = {
+      origem: 'fake-1',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-1', 'a1', [10])],
+    }
+    const fake2: Detector = {
+      origem: 'fake-2',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-2', 'a2', [20])],
+    }
+    const avisos = orquestrarDeteccao([], [fake1, fake2])
+    expect(avisos.map((a) => a.id)).toEqual(['a1', 'a2'])
+  })
+
+  it('TL4-2: segundo aviso com mutacaoProposta.alvo idêntico ao do primeiro é descartado', () => {
+    const fake1: Detector = {
+      origem: 'fake-1',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-1', 'a1', [10])],
+    }
+    const fake2: Detector = {
+      origem: 'fake-2',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-2', 'a2', [10])],
+    }
+    const avisos = orquestrarDeteccao([], [fake1, fake2])
+    expect(avisos.map((a) => a.id)).toEqual(['a1'])
+  })
+
+  it('TL4-3: interseção parcial (1 de 2 ids em comum) descarta o segundo aviso POR INTEIRO', () => {
+    const fake1: Detector = {
+      origem: 'fake-1',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-1', 'a1', [10])],
+    }
+    const fake2: Detector = {
+      origem: 'fake-2',
+      escopo: 'global',
+      // 20 é livre, mas 10 já foi reivindicado por fake1 — o aviso inteiro cai, não só o id 10.
+      detectar: () => [avisoComAlvo('fake-2', 'a2', [10, 20])],
+    }
+    const avisos = orquestrarDeteccao([], [fake1, fake2])
+    expect(avisos.map((a) => a.id)).toEqual(['a1'])
+    // id 20 não aparece em nenhum alvo sobrevivente — não foi "salvo" parcialmente.
+    expect(avisos.flatMap((a) => a.mutacaoProposta?.alvo ?? [])).toEqual([10])
+  })
+
+  it('TL4-4: informativo (sem mutacaoProposta) emitido antes NÃO bloqueia proposta posterior mirando o mesmo id', () => {
+    const fakeInformativo: Detector = {
+      origem: 'fake-informativo',
+      escopo: 'global',
+      detectar: () => [avisoInformativo('fake-informativo', 'i1', ['10'])],
+    }
+    const fakeProposta: Detector = {
+      origem: 'fake-proposta',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-proposta', 'a1', [10])],
+    }
+    const avisos = orquestrarDeteccao([], [fakeInformativo, fakeProposta])
+    expect(avisos.map((a) => a.id)).toEqual(['i1', 'a1'])
+  })
+
+  it('TL4-5: informativo (sem mutacaoProposta) emitido depois de uma proposta que reivindicou o mesmo id NÃO é descartado', () => {
+    const fakeProposta: Detector = {
+      origem: 'fake-proposta',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-proposta', 'a1', [10])],
+    }
+    const fakeInformativo: Detector = {
+      origem: 'fake-informativo',
+      escopo: 'global',
+      detectar: () => [avisoInformativo('fake-informativo', 'i1', ['10'])],
+    }
+    const avisos = orquestrarDeteccao([], [fakeProposta, fakeInformativo])
+    expect(avisos.map((a) => a.id)).toEqual(['a1', 'i1'])
+  })
+
+  it('TL4-6: precedência é transitiva com 3+ detectores — terceiro cai se colidir com o primeiro OU com o segundo sobrevivente', () => {
+    const fake1: Detector = {
+      origem: 'fake-1',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-1', 'a1', [10])],
+    }
+    const fake2: Detector = {
+      origem: 'fake-2',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-2', 'a2', [20])],
+    }
+    const fake3ColideCom1: Detector = {
+      origem: 'fake-3a',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-3a', 'a3a', [10])],
+    }
+    const fake4ColideCom2: Detector = {
+      origem: 'fake-4',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-4', 'a4', [20])],
+    }
+    const fake5Livre: Detector = {
+      origem: 'fake-5',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-5', 'a5', [30])],
+    }
+    const avisos = orquestrarDeteccao(
+      [],
+      [fake1, fake2, fake3ColideCom1, fake4ColideCom2, fake5Livre],
+    )
+    expect(avisos.map((a) => a.id)).toEqual(['a1', 'a2', 'a5'])
+  })
+
+  it('TL4-7: mutacaoProposta com verbo "adicionar" (sem alvo, união discriminada) nunca reivindica nem é bloqueado por dedup', () => {
+    const novoLancamento: Lancamento = lancamento({ id: 999 })
+    const fakeAdicionar: Detector = {
+      origem: 'fake-adicionar',
+      escopo: 'global',
+      detectar: () => [
+        {
+          id: 'add1',
+          tipo: 'proposta',
+          origem: 'fake-adicionar',
+          mensagem: 'msg-add1',
+          alvo: [],
+          permanece: [],
+          estado: 'pendente',
+          mutacaoProposta: { verbo: 'adicionar', lancamentos: [novoLancamento] },
+        },
+      ],
+    }
+    const fakeRemover: Detector = {
+      origem: 'fake-remover',
+      escopo: 'global',
+      detectar: () => [avisoComAlvo('fake-remover', 'a1', [10])],
+    }
+    const avisos = orquestrarDeteccao([], [fakeAdicionar, fakeRemover])
+    expect(avisos.map((a) => a.id)).toEqual(['add1', 'a1'])
+  })
+})
+
+// ---------------------------------------------------------------------------
 // T06 — migração de detectarValorPendente/detectarPagamentoRecebido/detectarConciliacao
 // ---------------------------------------------------------------------------
 
 describe('detectores — T06 (migração dos 3 detectores legados)', () => {
-  it('contém, nesta ordem, valor-pendente, pagamento-recebido, conciliacao, investimento, transferencia-interna, vr, rendimentos (T07/T07-bis, T4 vr-despesas, T9 rendimentos)', () => {
+  it('contém, nesta ordem, valor-pendente, pagamento-recebido, conciliacao, investimento, transferencia-interna, reembolso, vr, rendimentos (T07/T07-bis, T4 vr-despesas, T9 rendimentos, T4 motor-de-pares/D16)', () => {
     expect(detectores.map((d) => d.origem)).toEqual([
       'valor-pendente',
       'pagamento-recebido',
       'conciliacao',
       'investimento',
       'transferencia-interna',
+      'reembolso',
       'vr',
       'rendimentos',
     ])
   })
 
-  it('vr fica posicionado imediatamente após transferencia-interna — penúltimo do array atual (TL-53)', () => {
+  it('reembolso fica posicionado imediatamente após transferencia-interna (ADR motor-de-pares, Decisão 16 — TL4-8)', () => {
     const origens = detectores.map((d) => d.origem)
     const indiceTransferencia = origens.indexOf('transferencia-interna')
+    const indiceReembolso = origens.indexOf('reembolso')
+    expect(indiceReembolso).toBe(indiceTransferencia + 1)
+  })
+
+  it('vr fica posicionado imediatamente após reembolso — antepenúltimo deixa de ser penúltimo com a inserção de reembolso (ADR motor-de-pares, Decisão 16 — TL4-8)', () => {
+    const origens = detectores.map((d) => d.origem)
+    const indiceReembolso = origens.indexOf('reembolso')
     const indiceVR = origens.indexOf('vr')
-    expect(indiceVR).toBe(indiceTransferencia + 1)
+    expect(indiceVR).toBe(indiceReembolso + 1)
     expect(indiceVR).toBe(origens.length - 2)
   })
 
@@ -748,6 +931,177 @@ describe('detectores — vr (Task 4, spec vr-despesas)', () => {
       estado: 'pendente',
     })
     expect(avisosVR[0].mutacaoProposta).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 4 (spec motor-de-pares) — detector 'reembolso' via orquestrarDeteccao
+//
+// Mesma disciplina de TL-54/T9-RD-04 (arrays LOCAIS mínimos, um detector só extraído do
+// registry real) — unit genuíno, não integração. A interação cruzada reembolso × investimento
+// sobre 'Resgate RDB' (ponto d da Task 5) NÃO é provada aqui — é integração, task seguinte.
+// ---------------------------------------------------------------------------
+
+describe('detectores — reembolso (Task 4, spec motor-de-pares)', () => {
+  it('TL4-9a: reembolso tem escopo "global"', () => {
+    const reembolso = detectores.find((d) => d.origem === 'reembolso')
+    expect(reembolso?.escopo).toBe('global')
+  })
+
+  it('TL4-9b: orquestrarDeteccao, com array local mínimo contendo só o detector reembolso, produz o mesmo resultado que a chamada direta a detectarReembolsoAvisos (paridade wrapper/orquestrador)', () => {
+    const detectorReembolso = detectores.find((d) => d.origem === 'reembolso')!
+    const positivo = lancamento({ id: 1, data: '2026-06-01', transcricao: 'Recebido de Fulano', valor: 100 })
+    const negativo = lancamento({ id: 2, data: '2026-06-02', transcricao: 'Pago para Fulano', valor: -100 })
+    const todosLancamentos = [positivo, negativo]
+
+    const avisosDireto = detectarReembolsoAvisos(todosLancamentos, {})
+    const avisosOrquestrados = orquestrarDeteccao(todosLancamentos, [detectorReembolso]).filter(
+      (a) => a.origem === 'reembolso',
+    )
+
+    expect(avisosOrquestrados).toEqual(avisosDireto)
+    expect(avisosDireto).toHaveLength(1)
+    expect(avisosDireto[0]?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [1, 2] })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Task 5 (spec motor-de-pares) — integração: precedência do registry com
+// DETECTORES E FUNÇÕES REAIS (não fakes), diferente da Task 4 acima, que provou
+// a regra de dedup em isolamento com detectores fake e arrays locais de um só
+// detector. Aqui os 4 pontos do Definition of done (a-d) são exercitados
+// montando lançamentos que disparam as interações verdadeiras entre
+// `detectarInvestimentoAvisos`, `detectarTransferenciaInternaAvisos` e
+// `detectarReembolsoAvisos` via o array `detectores` de produção e
+// `orquestrarDeteccao` — nenhum detector fake nesta seção.
+//
+// Nota deliberada: nenhum destes fixtures usa o cenário de empate exato de
+// distância (`GrupoAmbiguo`) descrito no payload como defeito conhecido e
+// ainda não corrigido (interação T2×T3 onde uma perna de transferência some
+// silenciosamente em caso de ambiguidade) — os 4 pontos (a-d) não dependem de
+// ambiguidade, e nenhuma asserção abaixo cristaliza `[]` como comportamento
+// correto para esse caso.
+// ---------------------------------------------------------------------------
+
+describe('orquestrarDeteccao — Task 5: precedência do registry com detectores reais', () => {
+  it('TL5-1: claim concorrente entre detectores REAIS de ordens diferentes — só o de ordem anterior sobrevive (ponto a)', () => {
+    // "APLICACAO" (palavra-chave de `detectarInvestimento`) e "ITAU BLACK" (padrão genérico de
+    // `detectarTransferenciaInterna`) no MESMO lançamento — cenário real em que as duas políticas,
+    // cada uma por um caminho de detecção totalmente distinto, reivindicariam o mesmo id.
+    const alvoDisputado = lancamento({
+      id: 42,
+      transcricao: 'APLICACAO ITAU BLACK conta corrente',
+      valor: -700,
+    })
+
+    // Confirma a premissa com as funções REAIS de produção, chamadas isoladamente: cada uma,
+    // por si só, reivindicaria o id 42.
+    const avisoInvestimentoIsolado = detectarInvestimentoAvisos([alvoDisputado])
+    const avisoTransferenciaIsolado = detectarTransferenciaInternaAvisos([alvoDisputado])
+    expect(avisoInvestimentoIsolado[0]?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [42] })
+    expect(avisoTransferenciaIsolado[0]?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [42] })
+
+    // Registry real (array `detectores` de produção, ordem D16): investimento vem ANTES de
+    // transferencia-interna — só o aviso de investimento sobrevive à deduplicação.
+    const avisos = orquestrarDeteccao([alvoDisputado], detectores)
+    const avisoInvestimento = avisos.find((a) => a.origem === 'investimento')
+
+    expect(avisoInvestimento?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [42] })
+    expect(avisos.some((a) => a.origem === 'transferencia-interna')).toBe(false)
+  })
+
+  it('TL5-2: reembolso e transferencia-interna com alvos disjuntos coexistem sem interferência (ponto b)', () => {
+    // Par de transferência própria (padrão "Open Banking") e par de reembolso (sem nenhum sinal
+    // de transferência), com valores absolutos DISTINTOS (300 vs 80) — nenhuma chance dos dois
+    // grupos se cruzarem dentro do motor de casamento, que só casa pernas de mesmo valor absoluto.
+    const transferenciaPositiva = lancamento({
+      id: 20,
+      transcricao: 'Open Banking transferencia conta X',
+      valor: 300,
+      data: '2026-02-01',
+    })
+    const transferenciaNegativa = lancamento({
+      id: 21,
+      transcricao: 'Open Banking transferencia conta Y',
+      valor: -300,
+      data: '2026-02-03',
+    })
+    const reembolsoPositivo = lancamento({
+      id: 30,
+      transcricao: 'Recebido de Fulano - reembolso almoço',
+      valor: 80,
+      data: '2026-02-01',
+    })
+    const reembolsoNegativo = lancamento({
+      id: 31,
+      transcricao: 'Pago para Fulano - almoço compartilhado',
+      valor: -80,
+      data: '2026-02-02',
+    })
+    const todosLancamentos = [
+      transferenciaPositiva,
+      transferenciaNegativa,
+      reembolsoPositivo,
+      reembolsoNegativo,
+    ]
+
+    const avisos = orquestrarDeteccao(todosLancamentos, detectores)
+
+    const avisoTransferencia = avisos.find((a) => a.origem === 'transferencia-interna')
+    const avisoReembolso = avisos.find((a) => a.origem === 'reembolso' && a.tipo === 'proposta')
+
+    expect(avisoTransferencia?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [20, 21] })
+    expect(avisoReembolso?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [30, 31] })
+  })
+
+  it('TL5-3: ordem final do array detectores bate com a precedência declarada em D16 (ponto c)', () => {
+    expect(detectores.map((d) => d.origem)).toEqual([
+      'valor-pendente',
+      'pagamento-recebido',
+      'conciliacao',
+      'investimento',
+      'transferencia-interna',
+      'reembolso',
+      'vr',
+      'rendimentos',
+    ])
+  })
+
+  it('TL5-4: investimento reivindica um resgate ANTES de reembolso poder reivindicá-lo — prova direta do motivo de D16 (ponto d)', () => {
+    // Transcrição contém a palavra explícita "RESGATE" (classificada por `detectarInvestimento`),
+    // mas propositalmente NÃO bate em nenhum padrão de `PADROES_EXCLUSAO_REEMBOLSO`
+    // ('BB Rende Fácil'/'RDB'/'CDB', `src/dominio/pares.ts`) — isola a proteção que vem
+    // EXCLUSIVAMENTE da ordem do array `detectores` (D16), sem a rede de segurança redundante da
+    // exclusão por padrão de transcrição. É o cenário que o JSDoc de `detectores` em
+    // `registry.ts` descreve como "quando o motor de pares... não bastar sozinho".
+    const resgate = lancamento({
+      id: 50,
+      transcricao: 'Resgate de aplicação financeira automática',
+      valor: 500,
+      data: '2026-06-05',
+    })
+    const despesaReal = lancamento({
+      id: 51,
+      transcricao: 'Compra qualquer no mês',
+      valor: -500,
+      data: '2026-06-06',
+    })
+    const todosLancamentos = [resgate, despesaReal]
+
+    // Confirma a premissa: reembolso, SOZINHO (sem a precedência de ordem do registry),
+    // reivindicaria o par [50, 51] — a exclusão por padrão de transcrição não protege este caso.
+    const avisoReembolsoIsolado = detectarReembolsoAvisos(todosLancamentos, {})
+    expect(avisoReembolsoIsolado[0]?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [50, 51] })
+
+    // Registry real: investimento (ordem 4) reivindica o id 50 antes de reembolso (ordem 6)
+    // chegar a rodar — a proposta inteira de reembolso, incluindo a despesa real (id 51), cai.
+    const avisos = orquestrarDeteccao(todosLancamentos, detectores)
+    const avisoInvestimento = avisos.find((a) => a.origem === 'investimento')
+
+    expect(avisoInvestimento?.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [50] })
+    expect(avisos.some((a) => a.origem === 'reembolso' && a.tipo === 'proposta')).toBe(false)
+    // A despesa real (id 51) não é alvo de remoção de nenhum aviso sobrevivente.
+    expect(avisos.flatMap((a) => a.mutacaoProposta?.alvo ?? [])).not.toContain(51)
   })
 })
 

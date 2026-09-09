@@ -1,8 +1,10 @@
 // ADR: see Docs/specs/dominio-transferencia-investimento-iniciais.adr.md
 // ADR: see Docs/specs/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/motor-de-pares.adr.md
 
 import { describe, it, expect } from 'vitest'
 import { detectarTransferenciaInterna, detectarTransferenciaInternaAvisos } from '../transferencia'
+import { detectarReembolsoAvisos } from '../pares'
 import { criarAvisosSlice, type StoreComAvisos } from '../../ui/store/avisosSlice'
 import type { Lancamento } from '../../types'
 import {
@@ -234,5 +236,209 @@ describe('detectarTransferenciaInternaAvisos', () => {
     acoes.desfazer(aviso.id)
     expect(get().lancamentos).toEqual([comum, openBanking, outroComum])
     expect(get().avisosAcionaveis.avisos[0].estado).toBe('pendente')
+  })
+})
+
+/**
+ * `detectarTransferenciaInternaAvisos` — integração com o motor de pares (Task 3, ADR
+ * `motor-de-pares`, Decisões 1, 2, 5, 6, 17). A partir desta task, a função consulta
+ * `encontrarPares` (`../pares`) para casar as duas pernas de uma transferência antes de propor
+ * a remoção — em vez de tratar cada lançamento isoladamente.
+ */
+describe('detectarTransferenciaInternaAvisos — integração com o motor de pares (Task 3)', () => {
+  it('par de transferência com a perna POSITIVA batendo no padrão emite UM aviso com os 2 ids (TL3-1)', () => {
+    const perna1 = lancamentoComId({
+      id: 101,
+      data: '2026-08-01',
+      transcricao: 'Transferência via Open Banking',
+      valor: 500,
+    })
+    const perna2 = lancamentoComId({
+      id: 102,
+      data: '2026-08-03',
+      transcricao: 'Pix enviado para conta própria',
+      valor: -500,
+    })
+    const avisos = detectarTransferenciaInternaAvisos([perna1, perna2])
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].origem).toBe('transferencia-interna')
+    expect(avisos[0].tipo).toBe('proposta')
+    expect(avisos[0].mutacaoProposta).toEqual({ verbo: 'remover', alvo: [101, 102] })
+    expect(avisos[0].permanece).toEqual([])
+  })
+
+  it('simetria de D2 — par com a perna NEGATIVA batendo no padrão também emite UM aviso com os 2 ids (TL3-2)', () => {
+    const perna1 = lancamentoComId({
+      id: 201,
+      data: '2026-08-01',
+      transcricao: 'Recebimento de terceiro',
+      valor: 800,
+    })
+    const perna2 = lancamentoComId({
+      id: 202,
+      data: '2026-08-02',
+      transcricao: 'ITAU BLACK pagamento fatura',
+      valor: -800,
+    })
+    const avisos = detectarTransferenciaInternaAvisos([perna1, perna2])
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].origem).toBe('transferencia-interna')
+    expect(avisos[0].mutacaoProposta).toEqual({ verbo: 'remover', alvo: [201, 202] })
+  })
+
+  it('perna de transferência sem contrapartida mantém proposta isolada, mas declara explicitamente a ausência de par (TL3-3)', () => {
+    const semPar = lancamentoComId({
+      id: 301,
+      transcricao: 'Transferência via Open Banking',
+      valor: -700,
+    })
+    const [aviso] = detectarTransferenciaInternaAvisos([semPar])
+
+    expect(aviso.origem).toBe('transferencia-interna')
+    expect(aviso.mutacaoProposta).toEqual({ verbo: 'remover', alvo: [301] })
+    expect(aviso.mensagem.toLowerCase()).toContain('não foi encontrada a contrapartida')
+  })
+
+  it('grupo ambíguo envolvendo perna de transferência vira informativo desta origem, não proposta (TL3-4)', () => {
+    const ancoraTransferencia = lancamentoComId({
+      id: 401,
+      data: '2026-08-10',
+      transcricao: 'Transferência via Open Banking',
+      valor: 900,
+    })
+    const candidato1 = lancamentoComId({
+      id: 402,
+      data: '2026-08-08',
+      transcricao: 'Restaurante A',
+      valor: -900,
+    })
+    const candidato2 = lancamentoComId({
+      id: 403,
+      data: '2026-08-12',
+      transcricao: 'Restaurante B',
+      valor: -900,
+    })
+    const avisos = detectarTransferenciaInternaAvisos([ancoraTransferencia, candidato1, candidato2])
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].tipo).toBe('informativo')
+    expect(avisos[0].mutacaoProposta).toBeUndefined()
+    expect(avisos[0].candidatos?.map((candidato) => candidato.alvo)).toEqual(['402', '403'])
+  })
+
+  it('padrão de exclusão de auto-sweep (D5) impede o par: perna de transferência cai no caso "não achou" (TL3-5)', () => {
+    const transferencia = lancamentoComId({
+      id: 501,
+      data: '2026-08-01',
+      transcricao: 'Transferência via Open Banking',
+      valor: -300,
+    })
+    const rdb = lancamentoComId({
+      id: 502,
+      data: '2026-08-02',
+      transcricao: 'Aplicação RDB automática',
+      valor: 300,
+    })
+    const avisos = detectarTransferenciaInternaAvisos([transferencia, rdb])
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].mutacaoProposta).toEqual({ verbo: 'remover', alvo: [501] })
+    expect(avisos[0].mensagem.toLowerCase()).toContain('não foi encontrada a contrapartida')
+  })
+
+  it('múltiplos pares de transferência simultâneos geram avisos independentes, sem interferência (TL3-6)', () => {
+    const par1Positivo = lancamentoComId({
+      id: 601,
+      data: '2026-08-01',
+      transcricao: 'Transferência via Open Banking',
+      valor: 100,
+    })
+    const par1Negativo = lancamentoComId({
+      id: 602,
+      data: '2026-08-02',
+      transcricao: 'Pix conta própria',
+      valor: -100,
+    })
+    const par2Positivo = lancamentoComId({
+      id: 603,
+      data: '2026-08-05',
+      transcricao: 'Recebimento diverso',
+      valor: 250,
+    })
+    const par2Negativo = lancamentoComId({
+      id: 604,
+      data: '2026-08-06',
+      transcricao: 'ITAU BLACK pagamento fatura',
+      valor: -250,
+    })
+    const avisos = detectarTransferenciaInternaAvisos([
+      par1Positivo,
+      par1Negativo,
+      par2Positivo,
+      par2Negativo,
+    ])
+
+    expect(avisos).toHaveLength(2)
+    const alvos = avisos.map((a) => a.mutacaoProposta?.alvo).sort((a, b) => (a?.[0] ?? 0) - (b?.[0] ?? 0))
+    expect(alvos).toEqual([
+      [601, 602],
+      [603, 604],
+    ])
+  })
+})
+
+/**
+ * Grupo ambíguo (empate exato de distância — ADR `motor-de-pares`, Decisões 7 e 9) cuja âncora
+ * ou candidato bate no sinal textual de transferência. `detectarReembolsoAvisos` (`../pares`)
+ * pula deliberadamente esses grupos, porque pelo rótulo da Decisão 2 eles são transferência
+ * própria, não reembolso — logo a política desta origem é a única que pode falar deles. Sem o
+ * informativo coberto aqui, a perna não gera aviso de ninguém e desaparece da revisão, o que
+ * regride o comportamento anterior à spec (toda perna reconhecida virava proposta).
+ */
+describe('detectarTransferenciaInternaAvisos — grupo ambíguo com sinal de transferência', () => {
+  const ancora = lancamentoComId({
+    id: 701,
+    data: '2026-01-10',
+    transcricao: 'Transferência via Open Banking',
+    valor: 100,
+  })
+  const candidatoAnterior = lancamentoComId({
+    id: 702,
+    data: '2026-01-05',
+    transcricao: 'Compra mercado',
+    valor: -100,
+  })
+  const candidatoPosterior = lancamentoComId({
+    id: 703,
+    data: '2026-01-15',
+    transcricao: 'Compra farmácia',
+    valor: -100,
+  })
+  const lancamentos = [ancora, candidatoAnterior, candidatoPosterior]
+
+  it('emite um informativo em vez de deixar a perna ambígua sem aviso algum', () => {
+    const avisos = detectarTransferenciaInternaAvisos(lancamentos)
+
+    expect(avisos).toHaveLength(1)
+    expect(avisos[0].origem).toBe('transferencia-interna')
+    expect(avisos[0].tipo).toBe('informativo')
+  })
+
+  it('não propõe mutação — escolher entre candidatos empatados é do usuário (D7)', () => {
+    const [aviso] = detectarTransferenciaInternaAvisos(lancamentos)
+
+    expect(aviso.mutacaoProposta).toBeUndefined()
+  })
+
+  it('lista os dois candidatos empatados para escolha manual', () => {
+    const [aviso] = detectarTransferenciaInternaAvisos(lancamentos)
+
+    expect(aviso.candidatos?.map((candidato) => candidato.alvo)).toEqual(['702', '703'])
+  })
+
+  it('não duplica com pares.ts, que ignora grupos com sinal de transferência', () => {
+    expect(detectarReembolsoAvisos(lancamentos, {})).toHaveLength(0)
   })
 })
