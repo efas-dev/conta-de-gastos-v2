@@ -534,6 +534,123 @@ describe('aplicarSplit', () => {
 })
 
 // ---------------------------------------------------------------------------
+// 18-bis. inserirLinha (item 38) — linha em branco criada pela grid
+// ---------------------------------------------------------------------------
+
+describe('inserirLinha (item 38)', () => {
+  beforeEach(() => {
+    resetarStore()
+    useAppStore.getState().setIniciais('ES')
+    useAppStore.getState().setLancamentos([
+      lancamento({ transcricao: 'A', id: 1 }),
+      lancamento({ transcricao: 'B', id: 2 }),
+      lancamento({ transcricao: 'C', id: 3 }),
+    ])
+  })
+
+  it('TL-38-16: insere ABAIXO da linha informada — a lista cresce em 1 e a nova linha fica em indice+1', () => {
+    useAppStore.getState().inserirLinha(1, 'abaixo', '2026-08')
+    const lancamentos = useAppStore.getState().lancamentos
+    expect(lancamentos).toHaveLength(4)
+    expect(lancamentos.map((l) => l.transcricao)).toEqual(['A', 'B', '', 'C'])
+  })
+
+  it('TL-38-17: insere ACIMA quando pedido — a nova linha fica exatamente no índice informado', () => {
+    useAppStore.getState().inserirLinha(1, 'acima', '2026-08')
+    expect(useAppStore.getState().lancamentos.map((l) => l.transcricao)).toEqual(['A', '', 'B', 'C'])
+  })
+
+  it('TL-38-18: inserir ACIMA da primeira linha põe a nova no topo — o único jeito de criar uma linha antes de todas', () => {
+    useAppStore.getState().inserirLinha(0, 'acima', '2026-08')
+    expect(useAppStore.getState().lancamentos[0].transcricao).toBe('')
+    expect(useAppStore.getState().lancamentos[1].transcricao).toBe('A')
+  })
+
+  it('TL-38-19: insere na lista vazia sem depender de índice válido', () => {
+    useAppStore.getState().setLancamentos([])
+    useAppStore.getState().inserirLinha(0, 'abaixo', '2026-08')
+    expect(useAppStore.getState().lancamentos).toHaveLength(1)
+  })
+
+  it('TL-38-20: defaults da linha em branco — fonte "manual", valor 0, transcrição/natureza/descrição vazias', () => {
+    useAppStore.getState().inserirLinha(0, 'abaixo', '2026-08')
+    const nova = useAppStore.getState().lancamentos[1]
+    expect(nova.fonte).toBe('manual')
+    expect(nova.valor).toBe(0)
+    expect(nova.transcricao).toBe('')
+    expect(nova.natureza).toBe('')
+    expect(nova.descricao).toBe('')
+  })
+
+  it('TL-38-21: as iniciais da nova linha são as da sessão, como nos forms de VR/rendimentos', () => {
+    useAppStore.getState().setIniciais('JF')
+    useAppStore.getState().inserirLinha(0, 'abaixo', '2026-08')
+    expect(useAppStore.getState().lancamentos[1].iniciais).toBe('JF')
+  })
+
+  it('TL-38-22: a data é o primeiro dia do mês de referência — ISO válida, dentro do mês que está sendo fechado', () => {
+    useAppStore.getState().inserirLinha(0, 'abaixo', '2026-08')
+    expect(useAppStore.getState().lancamentos[1].data).toBe('2026-08-01')
+  })
+
+  it('TL-38-23: sem mesRef (ou com mesRef malformado) a data cai no default do app, nunca em string vazia', () => {
+    useAppStore.getState().inserirLinha(0, 'abaixo', undefined)
+    useAppStore.getState().inserirLinha(0, 'abaixo', 'lixo')
+    const manuais = useAppStore.getState().lancamentos.filter((l) => l.fonte === 'manual')
+    expect(manuais).toHaveLength(2)
+    for (const l of manuais) {
+      expect(l.data).toMatch(/^\d{4}-\d{2}-01$/)
+    }
+  })
+
+  it('TL-38-24: a nova linha ganha id serial próprio, distinto de todos os já existentes', () => {
+    useAppStore.getState().inserirLinha(0, 'abaixo', '2026-08')
+    const lancamentos = useAppStore.getState().lancamentos
+    const ids = lancamentos.map((l) => l.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(typeof lancamentos[1].id).toBe('number')
+  })
+
+  it('TL-38-25: marca o estado como sujo', () => {
+    useAppStore.setState({ sujo: false })
+    expect(useAppStore.getState().sujo).toBe(false)
+    useAppStore.getState().inserirLinha(0, 'abaixo', '2026-08')
+    expect(useAppStore.getState().sujo).toBe(true)
+  })
+
+  it('TL-38-26: é UMA mutação única no histórico — um Ctrl+Z remove a linha inteira', () => {
+    const antes = useAppStore.getState().historico.length
+    useAppStore.getState().inserirLinha(1, 'abaixo', '2026-08')
+    expect(useAppStore.getState().historico.length).toBe(antes + 1)
+
+    useAppStore.getState().undo()
+    expect(useAppStore.getState().lancamentos).toHaveLength(3)
+    expect(useAppStore.getState().lancamentos.map((l) => l.transcricao)).toEqual(['A', 'B', 'C'])
+  })
+
+  it('TL-38-27: redo reinsere a linha na mesma posição', () => {
+    useAppStore.getState().inserirLinha(1, 'abaixo', '2026-08')
+    useAppStore.getState().undo()
+    useAppStore.getState().redo()
+    expect(useAppStore.getState().lancamentos.map((l) => l.transcricao)).toEqual(['A', 'B', '', 'C'])
+  })
+
+  it('TL-38-28: a visão derivada que a grid desenha acompanha a inserção', () => {
+    useAppStore.getState().inserirLinha(1, 'abaixo', '2026-08')
+    expect(useAppStore.getState().lancamentosVisiveis).toHaveLength(4)
+    expect(useAppStore.getState().mapaIndiceVisualReal).toHaveLength(4)
+  })
+
+  it('TL-38-29: a linha em branco nasce incompleta e ENTRA na contagem de pendentes — comportamento correto, não um bug', () => {
+    const contar = () =>
+      useAppStore.getState().lancamentos.filter((l) => !l.natureza || !l.iniciais).length
+    const antes = contar()
+    useAppStore.getState().inserirLinha(0, 'abaixo', '2026-08')
+    expect(contar()).toBe(antes + 1)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // 19–23. undo
 // ---------------------------------------------------------------------------
 

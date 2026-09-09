@@ -12,6 +12,8 @@ import { ratearSplit, type AlvoSplit } from '../../dominio/split'
 import { corrigirNatureza } from '../../dominio/natureza'
 import { interpretarValorMonetario } from '../../dominio/normalizacao'
 import { detectarReplicacao, type SugestaoReplicacao } from '../../dominio/replicacao'
+import { defaultMes, FONTE_MANUAL } from '../../dominio/mes'
+import { atribuirIds } from '../../parsers/idSerial'
 import {
   criarAvisosSlice,
   estadoInicialAvisos,
@@ -215,6 +217,23 @@ export interface AcoesApp extends AcoesAvisosSlice {
    * Empilha os patches inversos em `historico`.
    */
   moverLinha: (indice: number, direcao: 'cima' | 'baixo') => void
+
+  /**
+   * Insere uma linha em branco `'acima'` ou `'abaixo'` da posição `indice` (item 38 do TODO).
+   *
+   * Uma única entrada no `historico` — um Ctrl+Z apaga a linha inteira, como no
+   * `aplicarSplit`, que é o outro caso de mutação que muda a contagem de linhas.
+   *
+   * A linha nasce com `fonte: 'manual'` (ver `FONTE_MANUAL`, `src/dominio/mes.ts`), id serial
+   * novo, valor `0`, iniciais da sessão e `data` no primeiro dia de `mesRef`. Nasce
+   * deliberadamente **incompleta**: entra na contagem de pendentes e no aviso do modal de
+   * exportação, que é justamente o que lembra o usuário de terminar de preenchê-la.
+   *
+   * @param indice - Índice REAL (não visual) da linha de referência.
+   * @param posicao - `'acima'` ou `'abaixo'` da linha de referência.
+   * @param mesRef - Mês de referência (`YYYY-MM`); ausente ou malformado cai em `defaultMes()`.
+   */
+  inserirLinha: (indice: number, posicao: 'acima' | 'abaixo', mesRef?: string) => void
 
   /**
    * Substitui o lançamento na posição `indice` pelo resultado de
@@ -489,6 +508,31 @@ function extrairEstado(store: AppStore): EstadoApp {
   }
 }
 
+/**
+ * Monta a linha em branco que `inserirLinha` insere na grid (item 38 do TODO), ainda **sem id**
+ * — quem o atribui é `atribuirIds` (`src/parsers/idSerial.ts`), o mesmo ponto central usado
+ * pelos parsers e pelo verbo `adicionar` dos forms de VR/rendimentos.
+ *
+ * `data` é o **primeiro dia do mês de referência**, não uma string vazia nem a data de hoje.
+ * Três motivos: a coluna Data é somente leitura na grid (`CampoEditavel` não a inclui), então
+ * a data de nascimento é a definitiva; `data` é escrita direto na planilha e lida por
+ * `detectarMesSugerido`, que exige `YYYY-MM-DD`; e o app fecha um mês já concluído, então
+ * "hoje" pode cair fora do mês que está sendo fechado, enquanto o dia 1 nunca cai. Sem `mesRef`
+ * utilizável, cai em `defaultMes()` — o mesmo default que a tela de importação oferece.
+ */
+function criarLinhaEmBranco(iniciais: string, mesRef?: string): Omit<Lancamento, 'id'> {
+  const mes = mesRef !== undefined && /^\d{4}-\d{2}$/.test(mesRef) ? mesRef : defaultMes()
+  return {
+    fonte: FONTE_MANUAL,
+    data: `${mes}-01`,
+    transcricao: '',
+    valor: 0,
+    iniciais,
+    natureza: '',
+    descricao: '',
+  }
+}
+
 
 // ---------------------------------------------------------------------------
 // Store
@@ -633,6 +677,18 @@ export const useAppStore = create<AppStore>()((set, get) => {
         const temp = lans[indice]
         lans[indice] = lans[alvo]
         lans[alvo] = temp
+      })
+    },
+
+    inserirLinha: (indice, posicao, mesRef) => {
+      // `atribuirIds` incrementa um contador de módulo: precisa rodar UMA vez, fora do recipe
+      // do Immer (que não é o lugar de efeito colateral) e antes do splice.
+      const [nova] = atribuirIds([criarLinhaEmBranco(get().iniciais, mesRef)])
+      const destino = posicao === 'acima' ? indice : indice + 1
+      mutarComHistorico((draft) => {
+        // `splice` satura o índice nas bordas por conta própria — inserir "abaixo" da última
+        // linha ou "acima" da primeira já cai no lugar certo sem guarda extra.
+        draft.lancamentos.splice(destino, 0, nova)
       })
     },
 
