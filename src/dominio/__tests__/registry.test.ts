@@ -1,4 +1,5 @@
 // ADR: see Docs/specs/fundacao-operacoes.adr.md
+// ADR: see Docs/specs/motor-de-pares.adr.md
 
 import { describe, it, expect } from 'vitest'
 import type { Detector, ContextoDeteccao } from '../registry'

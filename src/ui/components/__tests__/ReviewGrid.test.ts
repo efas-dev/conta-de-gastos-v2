@@ -1,5 +1,6 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
 // ADR: see Docs/specs/grid-ux-filtros.adr.md
+// ADR: see Docs/specs/motor-de-pares.adr.md
 
 /**
  * Testes das funções puras exportadas por ReviewGrid.tsx.

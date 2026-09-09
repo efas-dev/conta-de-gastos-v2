@@ -2,6 +2,7 @@
 // ADR: see Docs/specs/conciliacao-robusta.adr.md
 // ADR: see Docs/specs/vr-despesas.adr.md
 // ADR: see Docs/specs/rendimentos.adr.md
+// ADR: see Docs/specs/motor-de-pares.adr.md
 
 import type { Aviso, Lancamento } from '../types'
 import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from './deteccoes'
