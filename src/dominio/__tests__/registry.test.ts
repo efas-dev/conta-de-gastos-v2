@@ -775,6 +775,52 @@ describe('detectores — Task 2 (spec vr-despesas): conciliação exclui fonte f
 })
 
 // ---------------------------------------------------------------------------
+// Item 38 — a linha inserida manualmente na grid (`fonte: 'manual'`) fica FORA de todos os
+// detectores, exatamente como `form_vr`/`form_rendimentos` já ficam: não é fatura, não é extrato
+// (filtros estritos de `detectarConciliacaoRegistry`), e o motor de pares a exclui por
+// `FONTES_MANUAIS` (`src/dominio/pares.ts`), o que cobre `reembolso` e `transferencia-interna`.
+// ---------------------------------------------------------------------------
+
+describe('detectores — item 38: a fonte "manual" fica fora de todos os detectores', () => {
+  it('TL-38-11: uma linha manual ao lado de fatura/extrato reais não entra na conciliação e não faz o registry estourar', () => {
+    const faturaA = lancamento({ id: 1, fonte: 'fatura_nubank_cc', data: '2026-06-05', transcricao: 'Item A', valor: -100 })
+    const extratoPagamento = lancamento({ id: 2, fonte: 'extrato_itau', data: '2026-06-15', transcricao: 'Pagamento de fatura', valor: -100 })
+    const linhaManual = lancamento({ id: 3, fonte: 'manual', data: '2026-07-01', transcricao: '', valor: 0 })
+    const todosLancamentos = [faturaA, extratoPagamento, linhaManual]
+
+    const avisos = orquestrarDeteccao(todosLancamentos, detectores, undefined, '2026-07')
+    const avisoConciliacao = avisos.find((a) => a.origem === 'conciliacao' && a.tipo === 'proposta')
+
+    expect(avisoConciliacao).toBeDefined()
+    expect(avisoConciliacao?.alvo).toEqual(['1'])
+    expect(avisoConciliacao?.permanece).toEqual(['0'])
+  })
+
+  it('TL-38-12: o registry inteiro roda sobre uma grid que só tem linhas manuais em branco, sem lançar', () => {
+    const manualA = lancamento({ id: 1, fonte: 'manual', data: '2026-07-01', transcricao: '', valor: 0 })
+    const manualB = lancamento({ id: 2, fonte: 'manual', data: '2026-07-01', transcricao: '', valor: 0 })
+
+    expect(() => orquestrarDeteccao([manualA, manualB], detectores, undefined, '2026-07')).not.toThrow()
+    expect(orquestrarDeteccao([manualA, manualB], detectores, undefined, '2026-07').some((a) => a.origem === 'conciliacao')).toBe(false)
+  })
+
+  it('TL-38-13: nenhum aviso com proposta de remoção reivindica o id de uma linha manual', () => {
+    // Valores opostos e datas próximas: o cenário que faria o motor de pares casar as duas pernas
+    // se a fonte `manual` não estivesse em FONTES_MANUAIS.
+    const manualSaida = lancamento({ id: 1, fonte: 'manual', data: '2026-07-05', transcricao: 'Ajuste', valor: -200 })
+    const manualEntrada = lancamento({ id: 2, fonte: 'manual', data: '2026-07-06', transcricao: 'Ajuste', valor: 200 })
+
+    const avisos = orquestrarDeteccao([manualSaida, manualEntrada], detectores, undefined, '2026-07')
+    const idsReivindicados = avisos.flatMap((a) =>
+      a.mutacaoProposta?.verbo === 'remover' ? a.mutacaoProposta.alvo : [],
+    )
+
+    expect(idsReivindicados).not.toContain(1)
+    expect(idsReivindicados).not.toContain(2)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // T07 — migração de investimento (proposta de remoção completa via mutacaoProposta)
 // ---------------------------------------------------------------------------
 

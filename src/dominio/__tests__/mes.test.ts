@@ -241,6 +241,34 @@ describe('classificarFontePorPrefixo', () => {
     expect(resultado).not.toBe('fatura')
     expect(resultado).not.toBe('extrato')
   })
+
+  it('TL-38-1: fonte "manual" → "manual" (item 38 — linha inserida pela grid)', () => {
+    expect(classificarFontePorPrefixo('manual')).toBe('manual')
+  })
+
+  it('TL-38-2: "manual" nunca é fatura/extrato/form_vr/form_rendimentos — os filtros estritos de registry.ts e de detectarDesalinhamentoMes excluem a linha manual naturalmente', () => {
+    const resultado = classificarFontePorPrefixo('manual')
+    expect(resultado).not.toBe('fatura')
+    expect(resultado).not.toBe('extrato')
+    expect(resultado).not.toBe('form_vr')
+    expect(resultado).not.toBe('form_rendimentos')
+  })
+
+  it('TL-38-3: "manual" é reconhecida por igualdade EXATA, não por prefixo — "manual_qualquer" continua lançando (ver TL-27/TL-33)', () => {
+    expect(() => classificarFontePorPrefixo('manual_qualquer')).toThrow(/prefixo.*desconhecido/i)
+    expect(() => classificarFontePorPrefixo('manualzinho')).toThrow(/prefixo.*desconhecido/i)
+  })
+
+  it('TL-38-4: a mensagem de erro do prefixo desconhecido lista "manual" entre as fontes esperadas', () => {
+    expect(() => classificarFontePorPrefixo('xyz_desconhecido')).toThrow(/"manual"/)
+  })
+
+  it('TL-38-5: as quatro classificações anteriores seguem sem regressão após adicionar "manual"', () => {
+    expect(classificarFontePorPrefixo('fatura_nubank_cc')).toBe('fatura')
+    expect(classificarFontePorPrefixo('extrato_bb')).toBe('extrato')
+    expect(classificarFontePorPrefixo('form_vr')).toBe('form_vr')
+    expect(classificarFontePorPrefixo('form_rendimentos')).toBe('form_rendimentos')
+  })
 })
 
 describe('detectarDesalinhamentoMes', () => {
@@ -312,6 +340,20 @@ describe('detectarDesalinhamentoMes', () => {
       lancamento({ fonte: 'form_rendimentos', data: '2026-06-30' }),
     ]
     expect(detectarDesalinhamentoMes('form_rendimentos', lancamentos, '2026-06')).toEqual([])
+  })
+
+  it('TL-38-6: fonte "manual" retorna [] sem comparar contra a heurística — a linha inserida na grid não veio de documento bancário nenhum', () => {
+    const lancamentos = [lancamento({ fonte: 'manual', data: '2026-06-01' })]
+    expect(detectarDesalinhamentoMes('manual', lancamentos, '2026-06')).toEqual([])
+  })
+
+  it('TL-38-7: fonte "manual" retorna [] mesmo quando a heurística por data divergiria (data anterior ao mesRef ⇒ "fatura")', () => {
+    const lancamentos = [lancamento({ fonte: 'manual', data: '2026-01-01' })]
+    expect(detectarDesalinhamentoMes('manual', lancamentos, '2026-08')).toEqual([])
+  })
+
+  it('TL-38-8: fonte "manual" NÃO lança — sem isso o catch{} de TelaRevisao engoliria o Error e mataria o cross-check de todas as fontes em silêncio', () => {
+    expect(() => detectarDesalinhamentoMes('manual', [], '2026-06')).not.toThrow()
   })
 })
 

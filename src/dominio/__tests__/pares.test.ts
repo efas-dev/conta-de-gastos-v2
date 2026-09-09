@@ -118,6 +118,26 @@ describe('encontrarPares', () => {
     expect(resultado.pares).toEqual([])
   })
 
+  it('TL-38-9: exclui sempre fonte "manual" do casamento (item 38 — a linha inserida na grid nasce do app, como form_vr/form_rendimentos)', () => {
+    const manual = lancamento({ id: 1, data: '2026-08-10', valor: 120, fonte: 'manual' })
+    const outro = lancamento({ id: 2, data: '2026-08-11', valor: -120 })
+
+    const resultado = encontrarPares([manual, outro], {}, {})
+
+    expect(resultado.pares).toEqual([])
+    expect(resultado.ambiguos).toEqual([])
+  })
+
+  it('TL-38-10: duas linhas "manual" de valores opostos nunca viram par entre si', () => {
+    const saida = lancamento({ id: 1, data: '2026-08-10', valor: -75, fonte: 'manual' })
+    const entrada = lancamento({ id: 2, data: '2026-08-10', valor: 75, fonte: 'manual' })
+
+    const resultado = encontrarPares([saida, entrada], {}, {})
+
+    expect(resultado.pares).toEqual([])
+    expect(resultado.ambiguos).toEqual([])
+  })
+
   it('lançamento de valor 0 nunca entra em par (D13: nenhuma perna é estritamente positiva nem negativa)', () => {
     const zero = lancamento({ id: 1, data: '2026-08-10', valor: 0 })
     const positivo = lancamento({ id: 2, data: '2026-08-10', valor: 0.0 })

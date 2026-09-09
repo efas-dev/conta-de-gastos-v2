@@ -2,6 +2,7 @@
 
 import type { Aviso, Lancamento } from '../types'
 import { detectarTransferenciaInterna } from './transferencia'
+import { FONTE_MANUAL } from './mes'
 
 /** Um par casado pelo motor: uma perna positiva e uma perna negativa de valor idêntico. */
 export interface ParEncontrado {
@@ -49,8 +50,15 @@ export interface ContextoMotorPares {
 /** Janela máxima de dias entre as duas pernas de um par candidato (ADR, Decisão 4). */
 const JANELA_MAXIMA_DIAS = 7
 
-/** Fontes de lançamentos manuais do próprio app — nunca participam do motor (D14, fixo). */
-const FONTES_MANUAIS = new Set(['form_vr', 'form_rendimentos'])
+/**
+ * Fontes de lançamentos manuais do próprio app — nunca participam do motor (D14, fixo).
+ *
+ * `FONTE_MANUAL` (`'manual'`, a linha inserida à mão pela grid — item 38 do TODO) entra aqui pelo
+ * mesmo motivo dos forms de VR/rendimentos: é um lançamento que o usuário criou, não uma linha de
+ * documento bancário. Casá-la com outra perna e propor remover as duas seria propor apagar
+ * justamente o que o usuário acabou de digitar.
+ */
+const FONTES_MANUAIS = new Set(['form_vr', 'form_rendimentos', FONTE_MANUAL])
 
 /** Converte um valor em reais para centavos inteiros, evitando float drift. */
 function paraCentavos(valor: number): number {
@@ -151,7 +159,7 @@ function adicionarAoGrupoAmbiguo(
  * entre 2+ candidatos vira `GrupoAmbiguo` em vez de par (Decisão 7). Cada lançamento entra em
  * no máximo um par.
  *
- * Exclui sempre lançamentos de fontes manuais (`form_vr`, `form_rendimentos` — Decisão 14,
+ * Exclui sempre lançamentos de fontes manuais (`form_vr`, `form_rendimentos`, `manual` — Decisão 14,
  * fixo dentro do motor) e lançamentos cuja `transcricao` bate em `opcoes.padroesExcluidos`
  * (Decisão 5/17, parâmetro — o motor não conhece `BB Rende Fácil`/`RDB`/`CDB` diretamente).
  * Um valor `0` nunca entra em par: não é nem estritamente positivo nem estritamente negativo

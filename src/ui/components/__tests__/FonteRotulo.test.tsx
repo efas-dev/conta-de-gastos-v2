@@ -154,6 +154,26 @@ describe('FonteRotulo — mapeamentos existentes permanecem inalterados (Task T1
   })
 })
 
+describe('FonteRotulo — rótulo "manual" (item 38)', () => {
+  it('TL-38-14: renderiza o nome da fonte quando tipo="manual", sem erro de tipo/runtime', () => {
+    render(<FonteRotulo fonte="manual" tipo="manual" />)
+    expect(screen.getAllByText('manual').length).toBeGreaterThan(0)
+  })
+
+  it('TL-38-15: badge de manual tem className e aria-label distintos dos demais tipos', () => {
+    const { container } = render(<FonteRotulo fonte="manual" tipo="manual" />)
+    const rotulo = badge(container)
+    expect(rotulo).toHaveClass('tag-tipo', 'manual')
+    const label = rotulo.getAttribute('aria-label')
+    expect(label).toBe('tipo manual')
+    expect(label).not.toBe('tipo fatura')
+    expect(label).not.toBe('tipo extrato')
+    expect(label).not.toBe('tipo form_vr')
+    expect(label).not.toBe('tipo form_rendimentos')
+    expect(label).not.toBe('tipo fatura_itau_cc')
+  })
+})
+
 describe('FonteRotulo — discriminação visual', () => {
   it('TL6-5: fatura e extrato têm aria-label distintos', () => {
     const { container, rerender } = render(<FonteRotulo fonte="Nubank" tipo="fatura" />)

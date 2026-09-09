@@ -98,21 +98,38 @@ export function classificarFonte(
 }
 
 /**
- * Fonte AUTORITATIVA de classificação fatura/extrato/form_vr/form_rendimentos (D1, ADR
- * conciliacao-robusta; D3, ADR vr-despesas; D3, ADR rendimentos). Decide UNICAMENTE pelo prefixo do
- * campo `fonte` declarado pelo parser (ou, no caso de `form_vr`/`form_rendimentos`, pelo form de
- * registro manual correspondente) no momento do parse/geração (`fatura_*` → 'fatura', `extrato_*` →
- * 'extrato', `form_vr`/`form_vr_*` → 'form_vr', `form_rendimentos`/`form_rendimentos_*` →
- * 'form_rendimentos') — nunca depende de `lancamentos` nem de `mesRef`, ao contrário de
- * `classificarFonte` (heurística por data, rebaixada a cross-check informativo).
+ * Valor exato do campo `fonte` de uma linha inserida à mão pela grid de revisão (item 38 do TODO).
  *
- * `'form_vr'` e `'form_rendimentos'` são tipos nomeados adicionais (não `'fatura'`, não `'extrato'`,
- * não `'manual'` — reservado para um caso futuro, D3 do ADR vr-despesas): lançamentos sintéticos
- * gerados pelos forms de VR/rendimentos não vêm de nenhum documento bancário, então nenhuma das duas
- * classificações existentes faria sentido para eles. A distinção entre os dois preserva rastreabilidade
- * de origem (D3, ADR rendimentos). A conciliação (`detectarConciliacaoRegistry`,
- * `src/dominio/registry.ts`) e o cross-check de desalinhamento (`detectarDesalinhamentoMes`, abaixo)
- * excluem/ignoram ambos naturalmente.
+ * Existe como constante para que a convenção tenha um único dono: quem cria a linha
+ * (`inserirLinha`, `src/ui/store/appStore.ts`), quem a classifica (`classificarFontePorPrefixo`,
+ * abaixo) e quem a exclui do casamento de pares (`FONTES_MANUAIS`, `src/dominio/pares.ts`) leem
+ * todos a mesma string.
+ */
+export const FONTE_MANUAL = 'manual'
+
+/**
+ * Fonte AUTORITATIVA de classificação fatura/extrato/form_vr/form_rendimentos/manual (D1, ADR
+ * conciliacao-robusta; D3, ADR vr-despesas; D3, ADR rendimentos; item 38 do TODO). Decide UNICAMENTE
+ * pelo prefixo do campo `fonte` declarado pelo parser (ou, no caso de `form_vr`/`form_rendimentos`,
+ * pelo form de registro manual correspondente; ou, no caso de `manual`, pela própria grid) no momento
+ * do parse/geração/inserção (`fatura_*` → 'fatura', `extrato_*` → 'extrato', `form_vr`/`form_vr_*` →
+ * 'form_vr', `form_rendimentos`/`form_rendimentos_*` → 'form_rendimentos', `manual` → 'manual') —
+ * nunca depende de `lancamentos` nem de `mesRef`, ao contrário de `classificarFonte` (heurística por
+ * data, rebaixada a cross-check informativo).
+ *
+ * `'form_vr'`, `'form_rendimentos'` e `'manual'` são tipos nomeados adicionais (não `'fatura'`, não
+ * `'extrato'`): lançamentos que nascem dentro do app não vêm de nenhum documento bancário, então
+ * nenhuma das duas classificações existentes faria sentido para eles. A distinção entre eles preserva
+ * rastreabilidade de origem (D3, ADR rendimentos) — inclusive na coluna A da planilha exportada
+ * (`src/xlsx/gerador.ts`). A conciliação (`detectarConciliacaoRegistry`, `src/dominio/registry.ts`) e
+ * o cross-check de desalinhamento (`detectarDesalinhamentoMes`, abaixo) excluem/ignoram os três
+ * naturalmente; o motor de pares os exclui via `FONTES_MANUAIS` (`src/dominio/pares.ts`).
+ *
+ * `'manual'` (item 38 — linha inserida à mão pela grid de revisão) fecha o caso que a Decisão 3 do
+ * ADR vr-despesas deixara reservado. Diferente dos demais, é reconhecida por **igualdade exata**, não
+ * por prefixo: `manual` não nomeia uma família de parsers com variantes por banco — a origem é sempre
+ * a mesma (o usuário). Manter `manual_*` fora da convenção preserva a falha ruidosa para qualquer
+ * parser futuro que invente um identificador parecido.
  *
  * Um `fonte` que não seguir nenhuma das convenções é um parser não-conformante: falha ruidosamente
  * (lança `Error`) em vez de assumir um default silencioso, para que o problema apareça no momento do
@@ -120,16 +137,17 @@ export function classificarFonte(
  */
 export function classificarFontePorPrefixo(
   fonte: string,
-): 'fatura' | 'extrato' | 'form_vr' | 'form_rendimentos' {
+): 'fatura' | 'extrato' | 'form_vr' | 'form_rendimentos' | 'manual' {
   if (fonte.startsWith('fatura_')) return 'fatura'
   if (fonte.startsWith('extrato_')) return 'extrato'
   if (fonte === 'form_vr' || fonte.startsWith('form_vr_')) return 'form_vr'
   if (fonte === 'form_rendimentos' || fonte.startsWith('form_rendimentos_')) {
     return 'form_rendimentos'
   }
+  if (fonte === FONTE_MANUAL) return 'manual'
 
   throw new Error(
-    `classificarFontePorPrefixo: prefixo de fonte desconhecido "${fonte}". Esperado "fatura_*", "extrato_*", "form_vr" ou "form_rendimentos"`,
+    `classificarFontePorPrefixo: prefixo de fonte desconhecido "${fonte}". Esperado "fatura_*", "extrato_*", "form_vr", "form_rendimentos" ou "manual"`,
   )
 }
 
@@ -142,10 +160,10 @@ export function classificarFontePorPrefixo(
  * mês escolhido — cenário motivador F1 desta spec).
  *
  * @returns `[]` quando prefixo e heurística concordam, ou quando `fonte` classifica como `'form_vr'`
- * (T2, ADR vr-despesas Decisão 3) ou `'form_rendimentos'` (T2, ADR rendimentos Decisão 3) — o
- * cross-check de mês não se aplica a lançamentos sintéticos, que não vêm de nenhum documento bancário
- * e não têm heurística por data significativa; um único `Aviso` `tipo:'informativo'` (sem
- * `mutacaoProposta`) quando fatura/extrato divergem.
+ * (T2, ADR vr-despesas Decisão 3), `'form_rendimentos'` (T2, ADR rendimentos Decisão 3) ou
+ * `'manual'` (item 38 do TODO) — o cross-check de mês não se aplica a lançamentos que nascem dentro
+ * do app, que não vêm de nenhum documento bancário e não têm heurística por data significativa; um
+ * único `Aviso` `tipo:'informativo'` (sem `mutacaoProposta`) quando fatura/extrato divergem.
  */
 export function detectarDesalinhamentoMes(
   fonte: string,
@@ -153,7 +171,9 @@ export function detectarDesalinhamentoMes(
   mesRef: string,
 ): Aviso[] {
   const porPrefixo = classificarFontePorPrefixo(fonte)
-  if (porPrefixo === 'form_vr' || porPrefixo === 'form_rendimentos') return []
+  if (porPrefixo === 'form_vr' || porPrefixo === 'form_rendimentos' || porPrefixo === 'manual') {
+    return []
+  }
 
   const porHeuristica = classificarFonte(fonte, lancamentos, mesRef)
 
