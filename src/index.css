@@ -773,6 +773,50 @@ tr.insp-fica td.ro {
   overflow-wrap: anywhere;
 }
 
+/* Menu de contexto da linha da grid (item 38). Posicionado por estilo inline (coordenadas de
+   viewport calculadas em `menuContexto.ts`); aqui ficam só a aparência e o alvo de clique.
+   `z-index` acima do tooltip: o menu abre sobre a célula que estava sob o cursor. */
+.menu-contexto {
+  z-index: 70;
+  min-width: 220px;
+  padding: 6px;
+  border-radius: var(--raio-campo);
+  border: 1px solid var(--borda-3);
+  background: var(--superficie);
+  box-shadow: var(--sombra-card);
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-contexto-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--texto);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-contexto-item:hover,
+.menu-contexto-item:focus-visible {
+  background: var(--verde-suave);
+  color: var(--verde-texto);
+}
+
+.menu-contexto-atalho {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 .rodape-soma {
   display: flex;
   align-items: center;

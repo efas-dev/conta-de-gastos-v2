@@ -225,9 +225,13 @@ export interface AcoesApp extends AcoesAvisosSlice {
    * `aplicarSplit`, que é o outro caso de mutação que muda a contagem de linhas.
    *
    * A linha nasce com `fonte: 'manual'` (ver `FONTE_MANUAL`, `src/dominio/mes.ts`), id serial
-   * novo, valor `0`, iniciais da sessão e `data` no primeiro dia de `mesRef`. Nasce
-   * deliberadamente **incompleta**: entra na contagem de pendentes e no aviso do modal de
-   * exportação, que é justamente o que lembra o usuário de terminar de preenchê-la.
+   * novo, valor `0`, iniciais da sessão e `data` no primeiro dia de `mesRef`.
+   *
+   * Ela nasce sem natureza, então aparece no filtro "só incompletos" da grid. No contador
+   * "X de Y classificados" e no aviso do modal de exportação, porém, ela NÃO conta como pendente
+   * enquanto estiver totalmente vazia: os dois usam `validarLinha` (`src/dominio/validacao.ts`),
+   * que só cobra natureza de linha que já tem dados. Vira pendente no instante em que o usuário
+   * digita um valor ou uma transcrição — verificado no app em 2026-09-09.
    *
    * @param indice - Índice REAL (não visual) da linha de referência.
    * @param posicao - `'acima'` ou `'abaixo'` da linha de referência.

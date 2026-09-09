@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { deveDevolverFocoAGrid, deveDevolverFocoAposFecharModal } from '../focoGrid'
+import { deveDevolverFocoAGrid, deveDevolverFocoAposFecharModal, haModalAberto } from '../focoGrid'
 
 let container: HTMLElement
 let grid: HTMLElement
@@ -176,5 +176,65 @@ describe('deveDevolverFocoAposFecharModal (item 51, via teclado)', () => {
 
   it('TL-51-21: sem container de grid montado, não faz nada', () => {
     expect(deveDevolverFocoAposFecharModal(paramsEscape({ containerGrid: null }))).toBe(false)
+  })
+})
+
+/**
+ * Item 38 — o menu de contexto da grid é uma superfície nova que dispara a política de foco.
+ *
+ * Sem contá-lo como dono do foco, o clique num item do menu (ou na sua própria moldura) faria a
+ * grid puxar o foco de volta dois frames depois, com o menu ainda aberto: o menu fecharia na cara
+ * do usuário e a navegação por teclado dentro dele morreria. `role="menu"` entrou em
+ * `SELETOR_MODAL` justamente para isso.
+ */
+describe('menu de contexto da grid conta como dono do foco (item 38)', () => {
+  it('TL-38-60: haModalAberto reconhece um role="menu" aberto', () => {
+    em(fora, 'div', { role: 'menu' })
+    expect(haModalAberto(document)).toBe(true)
+  })
+
+  it('TL-38-61: sem menu nem diálogo, haModalAberto é falso', () => {
+    expect(haModalAberto(document)).toBe(false)
+  })
+
+  it('TL-38-62: haModalAberto segue reconhecendo os diálogos do app (nenhuma regressão do item 51)', () => {
+    em(fora, 'div', { role: 'dialog' })
+    expect(haModalAberto(document)).toBe(true)
+  })
+
+  it('TL-38-63: com o menu aberto, clicar num item dele NÃO devolve o foco à grid — o menu continua respondendo ao teclado', () => {
+    const menu = em(fora, 'div', { role: 'menu' })
+    const item = em(menu, 'button', { role: 'menuitem' })
+    expect(
+      deveDevolverFocoAGrid(
+        params({ alvo: item, ativo: item, temModalAberto: haModalAberto(document) }),
+      ),
+    ).toBe(false)
+  })
+
+  it('TL-38-64: depois que o menu fecha, o clique volta a devolver o foco à grid', () => {
+    const menu = em(fora, 'div', { role: 'menu' })
+    const item = em(menu, 'button', { role: 'menuitem' })
+    menu.remove()
+    expect(
+      deveDevolverFocoAGrid(
+        params({ alvo: item, ativo: document.body, temModalAberto: haModalAberto(document) }),
+      ),
+    ).toBe(true)
+  })
+
+  it('TL-38-65: Escape que fecha o menu devolve o foco à grid — o usuário estava na grid quando o abriu', () => {
+    const menu = em(fora, 'div', { role: 'menu' })
+    const modalEstavaAberto = haModalAberto(document)
+    menu.remove()
+    expect(
+      deveDevolverFocoAposFecharModal({
+        modalEstavaAberto,
+        temModalAberto: haModalAberto(document),
+        ativo: document.body,
+        containerGrid: grid,
+        temCelulaCorrente: true,
+      }),
+    ).toBe(true)
   })
 })

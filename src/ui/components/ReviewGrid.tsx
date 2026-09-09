@@ -21,6 +21,7 @@ import {
   type DataEditorRef,
   type Highlight,
   type GridKeyEventArgs,
+  type CellClickedEventArgs,
 } from '@glideapps/glide-data-grid'
 import '@glideapps/glide-data-grid/dist/index.css'
 import { useAppStore, type CampoEditavel } from '../store/appStore'
@@ -28,6 +29,8 @@ import type { Lancamento, Aviso } from '../../types'
 import { GhostEditorCore } from './GhostEditor'
 import { montarColagem } from './colagemGrid'
 import { deveDevolverFocoAGrid, deveDevolverFocoAposFecharModal, haModalAberto } from './focoGrid'
+import { acaoDoAtalhoDeLinha, haEdicaoDeCelulaAberta } from './menuContexto'
+import { MenuContextoGrid } from './MenuContextoGrid'
 
 // ---------------------------------------------------------------------------
 // Índices de colunas
@@ -643,6 +646,11 @@ export interface ReviewGridProps {
    * A fiação para o SplitModal é responsabilidade do pai (T9 — App.tsx).
    */
   onSplitDetectado?: (indice: number) => void
+  /**
+   * Mês de referência escolhido na tela (`YYYY-MM`) — repassado ao `inserirLinha` do store para
+   * dar uma data ISO válida à linha em branco (item 38). Ausente, o store cai em `defaultMes()`.
+   */
+  mesRef?: string
 }
 
 /**
@@ -667,11 +675,13 @@ export interface ReviewGridProps {
  *
  * Detecção de split: ao editar Iniciais com `'/'`, chama `onSplitDetectado(indice)`.
  */
-export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
+export function ReviewGrid({ onSplitDetectado, mesRef }: ReviewGridProps) {
   const lancamentos = useAppStore((s) => s.lancamentos)
   const lancamentosVisiveis = useAppStore((s) => s.lancamentosVisiveis)
   const mapaIndiceVisualReal = useAppStore((s) => s.mapaIndiceVisualReal)
   const editarCelula = useAppStore((s) => s.editarCelula)
+  const excluirLinha = useAppStore((s) => s.excluirLinha)
+  const inserirLinha = useAppStore((s) => s.inserirLinha)
   const preencherIntervalo = useAppStore((s) => s.preencherIntervalo)
   const aplicarColagem = useAppStore((s) => s.aplicarColagem)
   const dicEntries = useAppStore((s) => s.dicEntries)
@@ -1200,13 +1210,74 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   )
 
   // -----------------------------------------------------------------
+  // Menu de contexto e atalhos de linha (item 38)
+  // -----------------------------------------------------------------
+
+  /** Menu de contexto aberto: ponto do clique (viewport) e linha VISUAL sob o cursor. */
+  const [menuContexto, setMenuContexto] = useState<{ x: number; y: number; linha: number } | null>(
+    null,
+  )
+
+  const fecharMenuContexto = useCallback(() => setMenuContexto(null), [])
+
+  // O botão direito numa célula abre o menu do app no lugar do menu do navegador. `bounds` já vem
+  // em coordenadas de viewport (mesma convenção do tooltip de célula truncada) e `localEventX/Y`
+  // são relativos à célula — somados dão o ponto exato do cursor.
+  const onCellContextMenu = useCallback(
+    (cell: Item, evento: CellClickedEventArgs) => {
+      evento.preventDefault()
+      const [, linha] = cell
+      if (linha < 0 || linha >= lancamentosExibidos.length) return
+      setMenuContexto({
+        x: evento.bounds.x + evento.localEventX,
+        y: evento.bounds.y + evento.localEventY,
+        linha,
+      })
+    },
+    [lancamentosExibidos.length],
+  )
+
+  /** Traduz a linha visual em índice real e despacha a ação de linha correspondente. */
+  const executarAcaoDeLinha = useCallback(
+    (linhaVisual: number, acao: 'excluir' | 'inserir-acima' | 'inserir-abaixo') => {
+      // Mesma tradução usada por toda edição de célula: sob filtro ou ordenação, a linha
+      // desenhada não é a linha do array do store.
+      const indiceReal = mapaExibidoReal[linhaVisual] ?? linhaVisual
+      if (acao === 'excluir') {
+        excluirLinha(indiceReal)
+        return
+      }
+      inserirLinha(indiceReal, acao === 'inserir-acima' ? 'acima' : 'abaixo', mesRef)
+    },
+    [mapaExibidoReal, excluirLinha, inserirLinha, mesRef],
+  )
+
+  // -----------------------------------------------------------------
   // onKeyDown: feedback visual de "copiado". Ctrl/Cmd+C desenha o contorno
   // tracejado no range selecionado; Esc limpa. Não faz preventDefault — o Glide
   // segue tratando copy/escape normalmente; aqui só ligamos/desligamos o realce.
+  //
+  // Item 38 acrescenta os atalhos de linha do Sheets (`Ctrl+-` / `Ctrl++`). Esses SIM dão
+  // `preventDefault`: sem ele o navegador aplica zoom na página junto com a ação.
   // -----------------------------------------------------------------
 
   const onKeyDown = useCallback(
     (e: GridKeyEventArgs) => {
+      const acaoDeLinha = acaoDoAtalhoDeLinha({
+        key: e.key,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        edicaoAberta: haEdicaoDeCelulaAberta(document),
+      })
+      if (acaoDeLinha !== null) {
+        const linha = e.location?.[1] ?? gridSelection.current?.cell[1]
+        if (linha !== undefined && linha >= 0 && linha < lancamentosExibidos.length) {
+          e.preventDefault()
+          executarAcaoDeLinha(linha, acaoDeLinha === 'excluir' ? 'excluir' : 'inserir-abaixo')
+        }
+        return
+      }
+
       const tecla = e.key.toLowerCase()
       if ((e.ctrlKey || e.metaKey) && tecla === 'c') {
         const r = gridSelection.current?.range
@@ -1222,7 +1293,7 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
         setHighlightRegions(undefined)
       }
     },
-    [gridSelection],
+    [gridSelection, lancamentosExibidos.length, executarAcaoDeLinha],
   )
 
   // -----------------------------------------------------------------
@@ -1415,6 +1486,8 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
           provideEditor={provideEditor}
           onCellActivated={onCellActivated}
           onHeaderClicked={onHeaderClicked}
+          /* Botão direito na célula: menu do app no lugar do menu do navegador (item 38). */
+          onCellContextMenu={onCellContextMenu}
           /* Tooltip de célula truncada — qualquer coluna cujo texto não caiba (item 14). */
           onItemHovered={onItemHovered}
           rangeSelect="multi-rect"
@@ -1456,6 +1529,34 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
         >
           {tooltip.texto}
         </div>
+      )}
+
+      {/* Menu de contexto da linha (item 38). A `key` amarra a instância ao ponto do clique: um
+          novo botão direito noutra célula remonta o menu, e ele volta a nascer com o foco no
+          primeiro item em vez de reaproveitar o estado da abertura anterior. */}
+      {menuContexto !== null && (
+        <MenuContextoGrid
+          key={`${menuContexto.linha}-${menuContexto.x}-${menuContexto.y}`}
+          x={menuContexto.x}
+          y={menuContexto.y}
+          onFechar={fecharMenuContexto}
+          acoes={[
+            {
+              rotulo: 'Inserir linha acima',
+              onSelecionar: () => executarAcaoDeLinha(menuContexto.linha, 'inserir-acima'),
+            },
+            {
+              rotulo: 'Inserir linha abaixo',
+              atalho: 'Ctrl +',
+              onSelecionar: () => executarAcaoDeLinha(menuContexto.linha, 'inserir-abaixo'),
+            },
+            {
+              rotulo: 'Excluir linha',
+              atalho: 'Ctrl −',
+              onSelecionar: () => executarAcaoDeLinha(menuContexto.linha, 'excluir'),
+            },
+          ]}
+        />
       )}
 
       {somaSelecao !== null && (

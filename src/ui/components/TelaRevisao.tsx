@@ -284,7 +284,12 @@ export function TelaRevisao({
         */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <div ref={gridWrapRef} style={{ flex: 1, minHeight: 0 }}>
-            <ReviewGrid onSplitDetectado={(indice) => setSplitIndice(indice)} />
+            {/* `mesRef`: a linha em branco do menu de contexto nasce com data no primeiro dia do
+                mês escolhido (item 38) — sem isso o store cairia no default do app. */}
+            <ReviewGrid
+              onSplitDetectado={(indice) => setSplitIndice(indice)}
+              mesRef={mesEscolhido}
+            />
           </div>
         </div>
 

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { useAppStore } from '../appStore'
 import type { CampoEditavel } from '../appStore'
 import type { Lancamento, DicEntry } from '../../../types'
+import { validarLinha } from '../../../dominio/validacao'
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -641,12 +642,27 @@ describe('inserirLinha (item 38)', () => {
     expect(useAppStore.getState().mapaIndiceVisualReal).toHaveLength(4)
   })
 
-  it('TL-38-29: a linha em branco nasce incompleta e ENTRA na contagem de pendentes — comportamento correto, não um bug', () => {
+  it('TL-38-29: a linha em branco nasce sem natureza e aparece no filtro "só incompletos" — não é escondida do usuário', () => {
+    // Mesmo critério de `calcularVisao` (`appStore.ts`), que alimenta o filtro da barra da grid.
     const contar = () =>
       useAppStore.getState().lancamentos.filter((l) => !l.natureza || !l.iniciais).length
     const antes = contar()
     useAppStore.getState().inserirLinha(0, 'abaixo', '2026-08')
     expect(contar()).toBe(antes + 1)
+  })
+
+  it('TL-38-66: no contador "X de Y classificados" (e no aviso do modal de exportação) a linha recém-inserida NÃO conta como pendente enquanto estiver totalmente vazia — `validarLinha` só cobra natureza de linha com dados', () => {
+    // Verificado no app em 2026-09-09: inserir uma linha leva o contador de "0 de 2" para "1 de 3".
+    // Não é bug: `validarLinha` (`src/dominio/validacao.ts`) considera "precisa de atenção" apenas
+    // a linha que TEM dados (transcrição ou valor) e não tem natureza. Uma linha ainda intocada não
+    // é dívida de classificação — ela vira pendente no instante em que o usuário digita um valor.
+    useAppStore.setState({ naturezasValidas: ['Alimentação'] })
+    useAppStore.getState().inserirLinha(0, 'abaixo', '2026-08')
+    const nova = useAppStore.getState().lancamentos[1]
+    expect(validarLinha(nova, ['Alimentação'])).toBe(false)
+
+    useAppStore.getState().editarCelula(1, 'valor', -30)
+    expect(validarLinha(useAppStore.getState().lancamentos[1], ['Alimentação'])).toBe(true)
   })
 })
 

@@ -12,8 +12,13 @@
  * o `ReviewGrid` guarda apenas a fiação (ouvir o clique e chamar `focus()` do Glide).
  */
 
-/** Seletor dos elementos que recebem digitação e nunca podem perder o foco para a grid. */
-const SELETOR_ENTRADA_DE_TEXTO = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]'
+/**
+ * Seletor dos elementos que recebem digitação e nunca podem perder o foco para a grid.
+ *
+ * Exportado desde o item 38 para que `menuContextoGrid.ts` decida "há célula em edição?" com a
+ * mesma lista, em vez de manter uma segunda cópia que envelheceria sozinha.
+ */
+export const SELETOR_ENTRADA_DE_TEXTO = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]'
 
 /** `true` quando `el` é — ou está dentro de — um elemento que casa com `seletor`. */
 function casaOuEstaDentro(el: Element | null, seletor: string): boolean {
@@ -35,8 +40,15 @@ export interface ParamsFocoGrid {
   temModalAberto: boolean
 }
 
-/** Seletor dos modais que, abertos, ficam donos do foco da página. */
-export const SELETOR_MODAL = '[role="dialog"], [aria-modal="true"]'
+/**
+ * Seletor dos elementos que, abertos, ficam donos do foco da página.
+ *
+ * `[role="menu"]` entrou com o item 38: o menu de contexto da grid não é um diálogo, mas é dono
+ * do foco pelo mesmo motivo que um. Sem ele aqui, o clique num item do menu (ou na sua moldura)
+ * faria a grid puxar o foco de volta dois frames depois, com o menu ainda aberto — ele fecharia
+ * na cara do usuário e a navegação por teclado dentro dele morreria.
+ */
+export const SELETOR_MODAL = '[role="dialog"], [aria-modal="true"], [role="menu"]'
 
 /** `true` quando algum modal está aberto em `doc` — a leitura de DOM que alimenta `temModalAberto`. */
 export function haModalAberto(doc: Document): boolean {
@@ -65,8 +77,12 @@ export interface ParamsFocoAposFecharModal {
  * para matar, só que pela via do teclado.
  *
  * A condição é deliberadamente estreita — "havia modal e agora não há" — para não sequestrar o
- * Escape em nenhum outro papel: cancelar a edição de uma célula, sair de um menu, limpar uma
- * busca. Nesses casos `modalEstavaAberto` é `false` e a função não opina.
+ * Escape em nenhum outro papel: cancelar a edição de uma célula, limpar uma busca. Nesses casos
+ * `modalEstavaAberto` é `false` e a função não opina.
+ *
+ * O menu de contexto da grid (item 38) entra pela porta do `SELETOR_MODAL` e é caso desejado, não
+ * exceção: o usuário estava na grid quando abriu o menu, então o Escape que o fecha tem de
+ * devolver o foco exatamente para lá.
  */
 export function deveDevolverFocoAposFecharModal({
   modalEstavaAberto,
