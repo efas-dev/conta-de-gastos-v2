@@ -7,6 +7,20 @@ const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
 /**
+ * Data fixa carimbada no cabeçalho DOS de cada entrada do .xlsx gerado.
+ *
+ * Sem isso, `zipSync` usa `Date.now()`: o mesmo insumo produzia bytes diferentes conforme o
+ * relógio — o campo guarda os segundos em passos de 2 (`seconds >> 1`), então duas gerações
+ * seguidas batiam dentro do mesmo balde e divergiam em 2 bytes ao cruzar a fronteira. Era o flake
+ * intermitente de `src/ui/store/__tests__/exportacao.test.ts`, que compara dois .xlsx byte a byte.
+ *
+ * O valor precisa cair na faixa 1980–2099 do formato DOS (`mtime: 0` = 1970 e o fflate lança
+ * "date not in range 1980-2099"). O Excel ignora o carimbo das entradas do zip; o que se ganha é
+ * uma propriedade real: mesmo insumo, mesmos bytes.
+ */
+const MTIME_FIXO = Date.UTC(2020, 0, 1, 12, 0, 0)
+
+/**
  * Escapa caracteres especiais XML no conteúdo de texto de células.
  * Necessário para embutir valores como inline strings sem corromper o XML.
  */
@@ -335,5 +349,7 @@ export function gerarXlsx(
     }
   }
 
-  return zipSync(parts)
+  // `mtime` fixo: sem ele o zip carimba `Date.now()` e o mesmo insumo sai com bytes diferentes
+  // conforme a hora da geração (ver `MTIME_FIXO`).
+  return zipSync(parts, { mtime: MTIME_FIXO })
 }

@@ -1,5 +1,5 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -545,6 +545,57 @@ describe('gerarXlsx — valor não-finito nunca vira XML', () => {
 
   it('TL-INF-09: saldo inicial não-finito em B4 também faz a geração falhar', () => {
     expect(() => gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', -Infinity)).toThrow(/não-finito/i)
+  })
+})
+
+/**
+ * Bytes estáveis no tempo (TL-MTIME).
+ *
+ * `zipSync` sem opções carimba `Date.now()` no cabeçalho DOS de cada entrada do zip. O campo
+ * guarda os segundos em passos de 2 (`seconds >> 1`), então duas gerações do MESMO insumo saíam
+ * byte-idênticas dentro do mesmo balde de 2 s e divergiam em 2 bytes quando o relógio cruzava a
+ * fronteira — a origem do flake intermitente de `src/ui/store/__tests__/exportacao.test.ts`, que
+ * compara dois .xlsx byte a byte. Medido: 0 bytes de divergência dentro do balde, 2 ao cruzar.
+ */
+describe('gerarXlsx — bytes estáveis no tempo (TL-MTIME)', () => {
+  let modeloBytes: Uint8Array
+
+  beforeAll(() => {
+    modeloBytes = new Uint8Array(readFileSync(FIXTURE_PATH))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const LANCAMENTOS: Lancamento[] = [
+    { fonte: 'Nubank', data: '2026-06-01', transcricao: 'L1', valor: -10, iniciais: 'ES', natureza: 'ALM', descricao: '' },
+  ]
+
+  it('TL-MTIME-01: duas gerações do mesmo insumo cruzando a fronteira de 2 s saem byte-idênticas', () => {
+    vi.useFakeTimers()
+
+    // 10:00:01 e 10:00:03 caem em baldes DIFERENTES do campo de 2 s do cabeçalho DOS —
+    // é exatamente aqui que o zip carimbado com `Date.now()` divergia.
+    vi.setSystemTime(new Date('2026-06-15T10:00:01.000Z'))
+    const primeira = gerarXlsx(modeloBytes, 'ES', LANCAMENTOS, [], '2026-06')
+
+    vi.setSystemTime(new Date('2026-06-15T10:00:03.000Z'))
+    const segunda = gerarXlsx(modeloBytes, 'ES', LANCAMENTOS, [], '2026-06')
+
+    expect(hashSha256(segunda)).toBe(hashSha256(primeira))
+  })
+
+  it('TL-MTIME-02: nem um ano de distância entre as gerações muda um byte', () => {
+    vi.useFakeTimers()
+
+    vi.setSystemTime(new Date('2026-06-15T10:00:01.000Z'))
+    const primeira = gerarXlsx(modeloBytes, 'ES', LANCAMENTOS, [], '2026-06')
+
+    vi.setSystemTime(new Date('2027-11-02T23:41:59.000Z'))
+    const segunda = gerarXlsx(modeloBytes, 'ES', LANCAMENTOS, [], '2026-06')
+
+    expect(hashSha256(segunda)).toBe(hashSha256(primeira))
   })
 })
 
