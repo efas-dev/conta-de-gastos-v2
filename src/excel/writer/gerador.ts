@@ -39,8 +39,18 @@ function celulaStr(ref: string, style: string | null, value: string): string {
  * Gera o XML de uma célula numérica.
  * Formato: <c r="REF" [s="STYLE"]><v>VALUE</v></c>
  * Quando style é null, omite o atributo s (célula sem estilo explícito).
+ *
+ * Guarda de última linha contra valor não-finito: `Infinity`/`NaN` interpolados crus produziriam
+ * `<v>Infinity</v>`, que NÃO é conteúdo numérico válido em OOXML — o Excel não reclama da célula,
+ * recusa o arquivo INTEIRO como corrompido, e o usuário só descobre ao abrir o .xlsx já baixado.
+ * Este é o choke point que produz o arquivo, então é onde a garantia vale: falhar alto, sem
+ * entregar artefato ruim. As fronteiras de entrada (forms, store) já barram antes; se algo chegar
+ * aqui, é bug de código novo, não entrada de usuário.
  */
 function celulaNum(ref: string, style: string | null, value: number): string {
+  if (!Number.isFinite(value)) {
+    throw new Error(`Valor não-finito na célula ${ref}: ${value}. O .xlsx não foi gerado.`)
+  }
   const styleAttr = style ? ` s="${style}"` : ''
   return `<c r="${ref}"${styleAttr}><v>${value}</v></c>`
 }

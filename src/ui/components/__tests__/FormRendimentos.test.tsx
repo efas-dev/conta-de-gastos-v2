@@ -270,3 +270,31 @@ describe('FormRendimentos — aviso ausente (T10-FR-12)', () => {
     expect(useAppStore.getState().lancamentos).toHaveLength(0)
   })
 })
+
+describe('FormRendimentos — valores não-finitos na fronteira do form (TL-INF)', () => {
+  // `!Number.isNaN(x)` deixava passar `Infinity`, que seguia para `gerarLancamentoRendimento` e
+  // nascia como lançamento de valor infinito — `<v>Infinity</v>` no XML do .xlsx, que o Excel
+  // recusa como arquivo corrompido. A fronteira usa `Number.isFinite`, mesmo padrão de
+  // `escreverCampoNoDraft` (`appStore.ts`).
+  it('TL-INF-04: conta corrente que estoura o double é recusada e nada é lançado', () => {
+    render(<FormRendimentos mesRef="2026-07" />)
+
+    fireEvent.change(screen.getByLabelText('Conta corrente'), { target: { value: '9'.repeat(320) } })
+    fireEvent.change(screen.getByLabelText('Aplicações'), { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Lançar rendimento' }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Informe um valor numérico para a conta corrente.')
+    expect(useAppStore.getState().lancamentos).toHaveLength(0)
+  })
+
+  it('TL-INF-05: aplicações que estouram o double são recusadas e nada é lançado', () => {
+    render(<FormRendimentos mesRef="2026-07" />)
+
+    fireEvent.change(screen.getByLabelText('Conta corrente'), { target: { value: '900' } })
+    fireEvent.change(screen.getByLabelText('Aplicações'), { target: { value: '9'.repeat(320) } })
+    fireEvent.click(screen.getByRole('button', { name: 'Lançar rendimento' }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('O campo de aplicações não foi reconhecido.')
+    expect(useAppStore.getState().lancamentos).toHaveLength(0)
+  })
+})

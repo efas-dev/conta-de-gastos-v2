@@ -54,6 +54,16 @@ export function parsearSomaInline(texto: string): { valor: number | null; valido
     0,
   )
 
+  // A regex não impõe teto de grandeza (`^\d+…` aceita 320 dígitos), mas o double impõe: acima de
+  // ~1,8e308 o `Number(...)` — ou a soma dos termos — estoura para `Infinity`. Sem esta guarda,
+  // um valor infinito saía daqui como `valido: true` e chegava ao writer, que o emitia cru em
+  // `<v>Infinity</v>`: XML que não é conteúdo numérico válido em OOXML e faz o Excel recusar o
+  // .xlsx gerado como corrompido. Mesma fronteira por `Number.isFinite` de `escreverCampoNoDraft`
+  // (`src/ui/store/appStore.ts`).
+  if (!Number.isFinite(somaCentavos)) {
+    return { valor: null, valido: false }
+  }
+
   return { valor: somaCentavos / 100, valido: true }
 }
 

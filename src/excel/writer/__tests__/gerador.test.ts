@@ -506,6 +506,48 @@ describe('gerarXlsx — saldo inicial em B4 (item 49)', () => {
   })
 })
 
+/**
+ * Guarda de última linha contra valor não-finito (TL-INF).
+ *
+ * `celulaNum` interpolava o número cru em `<v>${value}</v>`: um `Infinity`/`NaN` que escapasse
+ * das fronteiras de entrada virava `<v>Infinity</v>` no XML — que NÃO é conteúdo numérico válido
+ * em OOXML. O Excel não reclama do número: recusa o arquivo inteiro como corrompido, e o usuário
+ * só descobre ao abrir o .xlsx já baixado. Falhar alto aqui é melhor do que entregar o arquivo ruim.
+ */
+describe('gerarXlsx — valor não-finito nunca vira XML', () => {
+  let modeloBytes: Uint8Array
+
+  beforeAll(() => {
+    modeloBytes = new Uint8Array(readFileSync(FIXTURE_PATH))
+  })
+
+  function comValor(valor: number): Lancamento[] {
+    return [
+      {
+        fonte: 'Nubank',
+        data: '2026-06-01',
+        transcricao: 'L1',
+        valor,
+        iniciais: 'ES',
+        natureza: 'ALM',
+        descricao: '',
+      },
+    ]
+  }
+
+  it('TL-INF-07: lançamento com valor Infinity faz a geração falhar em vez de emitir <v>Infinity</v>', () => {
+    expect(() => gerarXlsx(modeloBytes, 'ES', comValor(Infinity), [], '2026-06')).toThrow(/não-finito/i)
+  })
+
+  it('TL-INF-08: lançamento com valor NaN também faz a geração falhar', () => {
+    expect(() => gerarXlsx(modeloBytes, 'ES', comValor(NaN), [], '2026-06')).toThrow(/não-finito/i)
+  })
+
+  it('TL-INF-09: saldo inicial não-finito em B4 também faz a geração falhar', () => {
+    expect(() => gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', -Infinity)).toThrow(/não-finito/i)
+  })
+})
+
 // Guard de drift do Modelo (2026-08-04): o app exporta injetando em
 // public/Modelo.xlsx, mas os testes rodam contra a fixture. Se os dois divergirem,
 // os testes passam mas o app quebra (foi o que aconteceu no bug das abas agrupadas:

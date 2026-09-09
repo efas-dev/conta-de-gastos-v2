@@ -102,6 +102,20 @@ describe('parsearSomaInline', () => {
   it('T6-PSI-10: precisão em centavos evita drift de ponto flutuante', () => {
     expect(parsearSomaInline('0,1+0,2')).toEqual({ valor: 0.3, valido: true })
   })
+
+  // A regex `^\d+(,\d+)?$` aceita QUALQUER quantidade de dígitos, mas um double não: acima de
+  // ~1,8e308 o `Number(...)` estoura para `Infinity`. Sem teto, a soma saía `valido: true` com
+  // `valor: Infinity`, atravessava o form e chegava ao writer como `<v>Infinity</v>` — XML que
+  // não é conteúdo numérico válido em OOXML e faz o Excel abrir o arquivo como corrompido.
+  it('TL-INF-01: termo que estoura o double devolve valido:false em vez de valor Infinity', () => {
+    expect(parsearSomaInline('9'.repeat(320))).toEqual({ valor: null, valido: false })
+  })
+
+  it('TL-INF-02: soma de termos finitos que estoura o double também devolve valido:false', () => {
+    // Cada termo isolado cabe no double; a SOMA em centavos é que passa do teto.
+    const termo = '9'.repeat(306)
+    expect(parsearSomaInline(`${termo}+${termo}`)).toEqual({ valor: null, valido: false })
+  })
 })
 
 describe('avaliarSanityCheck', () => {

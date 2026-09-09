@@ -277,3 +277,19 @@ describe('FormVR — caminhos inválidos, sem crash (TL-74, TL-75, TL-76, TL-77,
     expect(useAppStore.getState().lancamentos).toHaveLength(0)
   })
 })
+
+describe('FormVR — valor não-finito na fronteira do form (TL-INF)', () => {
+  // `Number.isNaN(x) || x <= 0` deixava passar `Infinity` (não é NaN e é > 0). O valor seguia
+  // para a store e daí para o writer, que emite `<v>Infinity</v>` — XML inválido em OOXML, que
+  // faz o Excel abrir o .xlsx gerado como corrompido. A fronteira usa `Number.isFinite`, mesmo
+  // padrão de `escreverCampoNoDraft` (`appStore.ts`).
+  it('TL-INF-03: valor que estoura o double é recusado e nenhum lançamento é inserido', () => {
+    render(<FormVR mesRef="2026-07" />)
+
+    preencherDespesa(1, '9'.repeat(320), 'ALM', 'Mercado')
+    fireEvent.click(screen.getByRole('button', { name: 'Efetivar lançamentos' }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Cada despesa precisa de um valor maior que zero.')
+    expect(useAppStore.getState().lancamentos).toHaveLength(0)
+  })
+})
