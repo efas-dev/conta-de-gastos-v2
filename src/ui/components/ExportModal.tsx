@@ -1,7 +1,7 @@
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
 // ADR: see Docs/specs/patches-ui-ux.adr.md
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 export interface ExportModalProps {
   /** Fase corrente do modal: confirmação antes de gerar ou tela de sucesso após gerar. */
@@ -33,6 +33,16 @@ export interface ExportModalProps {
 export function ExportModal({ fase, nome, pendentes, onConfirmar, onFechar, onContinuar }: ExportModalProps) {
   const fecharOverlay = fase === 'confirmar' ? onContinuar : onFechar
 
+  // Foco de entrada: sem ele o diálogo abria com o foco ainda fora, e quem navega por teclado
+  // precisava tabular o documento inteiro para alcançá-lo. O foco vai para o CONTAINER, não para
+  // um botão: esta é uma confirmação, e armar o Enter em "Baixar .xlsx" faria o usuário passar
+  // por cima do alerta de pendentes sem lê-lo. Reposiciona a cada troca de fase, porque o
+  // conteúdo (e o elemento antes focado) é substituído.
+  const dialogoRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    dialogoRef.current?.focus()
+  }, [fase])
+
   useEffect(() => {
     function aoTeclar(evento: KeyboardEvent) {
       if (evento.key === 'Escape') {
@@ -46,10 +56,13 @@ export function ExportModal({ fase, nome, pendentes, onConfirmar, onFechar, onCo
   return (
     <div className="overlay" onClick={fecharOverlay}>
       <div
+        ref={dialogoRef}
         className="modal"
         role="dialog"
         aria-modal="true"
         aria-label={fase === 'confirmar' ? 'Exportar planilha' : 'Planilha exportada'}
+        // `-1`: focável por script (o foco de entrada acima), fora da ordem natural do Tab.
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
       >
         {fase === 'confirmar' ? (

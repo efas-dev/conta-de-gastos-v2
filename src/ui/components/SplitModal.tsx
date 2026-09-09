@@ -112,6 +112,11 @@ export function SplitModal({ lancamento, indice, onClose }: SplitModalProps) {
               i={i}
               valor={preview[i]?.valor}
               iniciais={alvo.iniciais}
+              // O modal abre ao digitar "/" numa célula (`ReviewGrid.tsx`), então nasce com o
+              // foco preso no canvas do Glide: sem foco de entrada, o teclado seguia editando a
+              // célula ATRÁS do diálogo. O 1º campo de iniciais é o que o usuário veio editar.
+              // Só na montagem: alvos adicionados depois não roubam o foco de onde ele estiver.
+              autoFocus={i === 0}
               onEdit={(v) => handleEditarIniciais(i, v)}
               onRemove={alvos.length > 1 ? () => handleRemoverAlvo(i) : undefined}
             />
@@ -140,12 +145,15 @@ function Linha({
   i,
   iniciais,
   valor,
+  autoFocus,
   onEdit,
   onRemove,
 }: {
   i: number
   iniciais: string
   valor: number | undefined
+  /** Recebe o foco ao montar — usado só na primeira linha, para o foco entrar no diálogo. */
+  autoFocus?: boolean
   onEdit: (v: string) => void
   onRemove?: () => void
 }) {
@@ -155,6 +163,7 @@ function Linha({
         className="input"
         aria-label={`Iniciais do alvo ${i + 1}`}
         value={iniciais}
+        autoFocus={autoFocus}
         onChange={(e) => onEdit(e.target.value)}
       />
       <span

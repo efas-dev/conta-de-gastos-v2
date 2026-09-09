@@ -268,4 +268,37 @@ describe('ExportModal', () => {
       expect(onFechar).toHaveBeenCalledTimes(1)
     })
   })
+  describe('foco de entrada (TL-FOCO-MODAL)', () => {
+    // Sem foco de entrada, o diálogo abria com o foco ainda fora dele: quem navega por teclado
+    // precisava tabular o documento inteiro para alcançá-lo. O foco vai para o CONTAINER (e não
+    // para um botão): esta é uma confirmação, e armar o Enter em "Baixar .xlsx" faria o usuário
+    // passar por cima do alerta de pendentes sem lê-lo.
+    it('TL-FOCO-MODAL-03: fase confirmar — o foco entra no elemento com role="dialog"', () => {
+      const { container } = render(
+        <ExportModal
+          fase="confirmar"
+          nome="2026-08-ES.xlsx"
+          pendentes={3}
+          onConfirmar={vi.fn()}
+          onFechar={vi.fn()}
+          onContinuar={vi.fn()}
+        />,
+      )
+      expect(document.activeElement).toBe(container.querySelector('[role="dialog"]'))
+    })
+
+    it('TL-FOCO-MODAL-04: fase feito — o foco também entra no elemento com role="dialog"', () => {
+      const { container } = render(
+        <ExportModal
+          fase="feito"
+          nome="2026-08-ES.xlsx"
+          pendentes={0}
+          onConfirmar={vi.fn()}
+          onFechar={vi.fn()}
+          onContinuar={vi.fn()}
+        />,
+      )
+      expect(document.activeElement).toBe(container.querySelector('[role="dialog"]'))
+    })
+  })
 })
