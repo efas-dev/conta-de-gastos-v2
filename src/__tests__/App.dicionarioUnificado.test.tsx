@@ -281,7 +281,7 @@ describe('App — input unificado (T3)', () => {
       { chave: 'Mercado', fonte: 'extrato_nubank', natureza: 'SM', descricao: 'Supermercado', iniciais: 'ES', vezes: 1, ambiguo: false },
     ]
     useAppStore.setState({ dicEntries: entradas })
-    vi.stubGlobal('fetch', vi.fn(async () => ({ arrayBuffer: async () => new Uint8Array([0]).buffer })))
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => new Uint8Array([0]).buffer })))
 
     try {
       render(<App />)
@@ -362,7 +362,7 @@ describe('App — naturezas ricas no call-site (T3)', () => {
     resetarStore()
     vi.clearAllMocks()
     vi.mocked(lerNaturezas).mockReturnValue(naturezasMock)
-    vi.stubGlobal('fetch', vi.fn(async () => ({ arrayBuffer: async () => new Uint8Array([0x50, 0x4b]).buffer })))
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => new Uint8Array([0x50, 0x4b]).buffer })))
   })
 
   afterEach(() => {

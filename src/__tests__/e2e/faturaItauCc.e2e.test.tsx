@@ -103,7 +103,7 @@ describe('E2E — Task T12: fatura Itaú .xlsx solta sozinha até lançamentos n
     faturaBytes = new Uint8Array(readFileSync(CAMINHO_FIXTURE_FATURA))
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({ arrayBuffer: async () => modeloBytes.buffer }) as Response),
+      vi.fn(async () => ({ ok: true, arrayBuffer: async () => modeloBytes.buffer }) as Response),
     )
     vi.stubGlobal('URL', {
       ...URL,

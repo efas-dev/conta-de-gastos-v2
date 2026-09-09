@@ -65,7 +65,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => ({ arrayBuffer: async () => new Uint8Array([0]).buffer }) as Response),
+    // `ok: true` é obrigatório: `handleProduzir` checa o status HTTP antes de ler o corpo.
+    vi.fn(async () => ({ ok: true, arrayBuffer: async () => new Uint8Array([0]).buffer }) as Response),
   )
 })
 

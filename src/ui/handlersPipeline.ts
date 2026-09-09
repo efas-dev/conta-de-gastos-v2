@@ -110,6 +110,15 @@ export async function handleProduzir(deps: DepsHandleProduzir): Promise<void> {
   try {
     // BASE_URL resolve o subcaminho do GitHub Pages ('/' em dev)
     const resp = await fetch(`${import.meta.env.BASE_URL}Modelo.xlsx`)
+    // `fetch` só REJEITA em falha de rede — um 404/500 resolve normalmente, com o HTML da página
+    // de erro no corpo. Sem esta checagem o `catch` abaixo nunca via nada: `modeloBytes` ficava
+    // com o HTML, `lerNaturezas` engolia a exceção do zip inválido e devolvia `[]`
+    // (`src/excel/reader/leitor.ts`), e o app seguia com a colinha vazia e um Modelo que só
+    // falharia na exportação — sem um único aviso. O `throw` cai no mesmo caminho de erro já
+    // existente, sem uma segunda mensagem para o usuário decifrar.
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status} ao buscar Modelo.xlsx`)
+    }
     modelo = new Uint8Array(await resp.arrayBuffer())
   } catch (err) {
     console.error('[handlersPipeline] Falha ao carregar Modelo.xlsx:', err)

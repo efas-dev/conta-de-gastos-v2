@@ -121,7 +121,7 @@ beforeEach(() => {
   const modeloBytes = new Uint8Array(readFileSync(CAMINHO_MODELO))
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => ({ arrayBuffer: async () => modeloBytes.buffer }) as Response),
+    vi.fn(async () => ({ ok: true, arrayBuffer: async () => modeloBytes.buffer }) as Response),
   )
 })
 
