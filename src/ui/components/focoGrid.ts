@@ -43,6 +43,49 @@ export function haModalAberto(doc: Document): boolean {
   return doc.querySelector(SELETOR_MODAL) !== null
 }
 
+export interface ParamsFocoAposFecharModal {
+  /** `true` se havia modal aberto no instante da tecla, antes do React reagir. */
+  modalEstavaAberto: boolean
+  /** `true` se ainda há modal aberto depois que a tecla foi processada. */
+  temModalAberto: boolean
+  /** Elemento focado depois que a tecla foi processada (`document.activeElement`). */
+  ativo: Element | null
+  /** Container que embrulha o `DataEditor` do Glide; `null` antes da montagem. */
+  containerGrid: Element | null
+  /** `true` quando a grid tem célula corrente — sem ela não há para onde voltar. */
+  temCelulaCorrente: boolean
+}
+
+/**
+ * Decide se o foco deve voltar para a grid depois de uma tecla que **fechou um modal**.
+ *
+ * A política do clique (`deveDevolverFocoAGrid`) não cobre este caminho, e a inspeção visual da
+ * onda 4 mostrou o buraco: fechar o modal de exportação com Escape desmonta o diálogo, o foco cai
+ * no `<body>` e a grid volta a ficar surda ao teclado — exatamente o sintoma que o item 51 existe
+ * para matar, só que pela via do teclado.
+ *
+ * A condição é deliberadamente estreita — "havia modal e agora não há" — para não sequestrar o
+ * Escape em nenhum outro papel: cancelar a edição de uma célula, sair de um menu, limpar uma
+ * busca. Nesses casos `modalEstavaAberto` é `false` e a função não opina.
+ */
+export function deveDevolverFocoAposFecharModal({
+  modalEstavaAberto,
+  temModalAberto,
+  ativo,
+  containerGrid,
+  temCelulaCorrente,
+}: ParamsFocoAposFecharModal): boolean {
+  if (!modalEstavaAberto) return false
+  if (temModalAberto) return false
+  if (!temCelulaCorrente) return false
+  if (containerGrid === null) return false
+
+  // Quem quer que tenha ficado com o foco de texto manda — mesmo raciocínio da política do clique.
+  if (casaOuEstaDentro(ativo, SELETOR_ENTRADA_DE_TEXTO)) return false
+
+  return true
+}
+
 /**
  * Decide se o foco deve voltar para a grid após um clique na UI ao redor.
  *

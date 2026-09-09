@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest'
-import { deveDevolverFocoAGrid } from '../focoGrid'
+import { deveDevolverFocoAGrid, deveDevolverFocoAposFecharModal } from '../focoGrid'
 
 let container: HTMLElement
 let grid: HTMLElement
@@ -129,5 +129,52 @@ describe('deveDevolverFocoAGrid (item 51)', () => {
     // container da grid, roubar o foco cancelaria a edição em curso.
     const campo = em(grid, 'input')
     expect(deveDevolverFocoAGrid(params({ alvo: campo, ativo: campo }))).toBe(false)
+  })
+})
+
+/**
+ * Fechar o modal pelo teclado também precisa devolver o foco — achado da inspeção visual da
+ * onda 4. A política do clique não cobre esse caminho: o Escape não é clique, e quando o
+ * diálogo desmonta o foco cai no `<body>`, deixando a grid surda outra vez. É o sintoma do
+ * item 51 reaparecendo pela via do teclado.
+ */
+describe('deveDevolverFocoAposFecharModal (item 51, via teclado)', () => {
+  /** Default: havia modal, ele fechou, e o foco sobrou no `<body>`. */
+  function paramsEscape(overrides: Partial<Parameters<typeof deveDevolverFocoAposFecharModal>[0]> = {}) {
+    return {
+      modalEstavaAberto: true,
+      temModalAberto: false,
+      ativo: document.body,
+      containerGrid: grid,
+      temCelulaCorrente: true,
+      ...overrides,
+    }
+  }
+
+  it('TL-51-16: Escape que fecha o modal devolve o foco à grid', () => {
+    expect(deveDevolverFocoAposFecharModal(paramsEscape())).toBe(true)
+  })
+
+  it('TL-51-17: Escape sem modal aberto antes não mexe no foco', () => {
+    // Escape para cancelar a edição de uma célula, por exemplo — o Glide cuida disso.
+    expect(deveDevolverFocoAposFecharModal(paramsEscape({ modalEstavaAberto: false }))).toBe(false)
+  })
+
+  it('TL-51-18: Escape com o modal ainda aberto não mexe no foco', () => {
+    // Modal que não fecha no Escape, ou um segundo modal por baixo: o foco segue sendo dele.
+    expect(deveDevolverFocoAposFecharModal(paramsEscape({ temModalAberto: true }))).toBe(false)
+  })
+
+  it('TL-51-19: se o foco já foi para um campo de texto, respeita quem o recebeu', () => {
+    const campo = em(fora, 'input')
+    expect(deveDevolverFocoAposFecharModal(paramsEscape({ ativo: campo }))).toBe(false)
+  })
+
+  it('TL-51-20: sem célula corrente não há para onde voltar', () => {
+    expect(deveDevolverFocoAposFecharModal(paramsEscape({ temCelulaCorrente: false }))).toBe(false)
+  })
+
+  it('TL-51-21: sem container de grid montado, não faz nada', () => {
+    expect(deveDevolverFocoAposFecharModal(paramsEscape({ containerGrid: null }))).toBe(false)
   })
 })

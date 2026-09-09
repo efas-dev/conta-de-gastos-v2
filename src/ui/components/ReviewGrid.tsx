@@ -26,7 +26,7 @@ import { useAppStore, type CampoEditavel } from '../store/appStore'
 import type { Lancamento, Aviso } from '../../types'
 import { GhostEditorCore } from './GhostEditor'
 import { montarColagem } from './colagemGrid'
-import { deveDevolverFocoAGrid, haModalAberto } from './focoGrid'
+import { deveDevolverFocoAGrid, deveDevolverFocoAposFecharModal, haModalAberto } from './focoGrid'
 
 // ---------------------------------------------------------------------------
 // Índices de colunas
@@ -1330,9 +1330,36 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
       })
     }
 
+    // Fechar o modal pelo teclado precisa do mesmo desfecho do clique. `modalEstavaAberto` é lido
+    // ANTES do React reagir, e a decisão roda depois do commit — é a diferença entre os dois
+    // instantes que caracteriza "esta tecla fechou um modal".
+    function aoTeclar() {
+      const modalEstavaAberto = haModalAberto(document)
+      if (!modalEstavaAberto) return
+
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          if (
+            !deveDevolverFocoAposFecharModal({
+              modalEstavaAberto,
+              temModalAberto: haModalAberto(document),
+              ativo: document.activeElement,
+              containerGrid: containerGridRef.current,
+              temCelulaCorrente: gridSelection.current !== undefined,
+            })
+          ) {
+            return
+          }
+          dataEditorRef.current?.focus()
+        })
+      })
+    }
+
     document.addEventListener('click', aoClicar, true)
+    document.addEventListener('keydown', aoTeclar, true)
     return () => {
       document.removeEventListener('click', aoClicar, true)
+      document.removeEventListener('keydown', aoTeclar, true)
       cancelAnimationFrame(frame)
     }
   }, [gridSelection])
