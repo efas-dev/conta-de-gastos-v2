@@ -7,6 +7,7 @@
  * espírito de `focoGrid.ts` e `colagemGrid.ts`.
  */
 
+import type { Aviso } from '../../types'
 import { SELETOR_ENTRADA_DE_TEXTO } from './focoGrid'
 
 /** Distância mínima entre o menu e a borda da janela, em px. */
@@ -101,4 +102,44 @@ export function acaoDoAtalhoDeLinha({
 export function haEdicaoDeCelulaAberta(doc: Document): boolean {
   const ativo = doc.activeElement
   return ativo !== null && ativo.closest(SELETOR_ENTRADA_DE_TEXTO) !== null
+}
+
+/** Origem do aviso de linha inserida que o filtro esconde — também serve de chave de dedupe. */
+export const ORIGEM_LINHA_ESCONDIDA = 'linha-manual-escondida'
+
+/**
+ * Aviso informativo para quando a linha recém-inserida nasce escondida pelo filtro de natureza.
+ *
+ * Achado da inspeção visual da onda 5: a linha em branco não tem natureza, então **qualquer**
+ * filtro de natureza ativo a exclui da visão. A inserção funcionava — o contador subia, o undo
+ * desfazia — mas nada aparecia na grid, e a ação lia como um clique que não fez nada. O projeto
+ * evita silêncio; então, em vez de esconder o efeito, ele passa a ser declarado.
+ *
+ * A condição é exata e não precisa consultar a visão derivada: natureza vazia nunca casa com uma
+ * lista de naturezas selecionadas, logo "há filtro de natureza" já implica "a linha está oculta".
+ *
+ * O id deriva da posição real da linha para ser estável: reinserir na mesma posição substitui o
+ * aviso em vez de empilhar outro.
+ *
+ * @param filtroNaturezas Naturezas atualmente selecionadas nos cartões da colinha.
+ * @param indiceReal      Posição da linha criada em `lancamentos`.
+ * @returns O aviso a registrar, ou `null` quando não há filtro — e portanto nada a avisar.
+ */
+export function avisoDeLinhaInseridaEscondida(
+  filtroNaturezas: string[],
+  indiceReal: number,
+): Aviso | null {
+  if (filtroNaturezas.length === 0) return null
+
+  return {
+    id: `${ORIGEM_LINHA_ESCONDIDA}-${indiceReal}`,
+    tipo: 'informativo',
+    origem: ORIGEM_LINHA_ESCONDIDA,
+    mensagem:
+      'A linha foi criada, mas está escondida pelo filtro de natureza ativo ' +
+      `(${filtroNaturezas.join(', ')}). Limpe o filtro para vê-la e classificá-la.`,
+    alvo: [String(indiceReal)],
+    permanece: [],
+    estado: 'pendente',
+  }
 }

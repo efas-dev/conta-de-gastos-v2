@@ -7,7 +7,11 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { acaoDoAtalhoDeLinha, posicionarMenuContexto } from '../menuContexto'
+import {
+  acaoDoAtalhoDeLinha,
+  posicionarMenuContexto,
+  avisoDeLinhaInseridaEscondida,
+} from '../menuContexto'
 
 /** Viewport de referência dos testes de posicionamento. */
 const VIEWPORT = { larguraViewport: 1000, alturaViewport: 800 }
@@ -86,5 +90,41 @@ describe('acaoDoAtalhoDeLinha (item 38)', () => {
     for (const key of ['c', 'v', 'z', 'a', 'f', 'ArrowDown', ' ']) {
       expect(acaoDoAtalhoDeLinha(atalho({ key }))).toBeNull()
     }
+  })
+})
+
+/**
+ * Achado da inspeção visual da onda 5: com um filtro de natureza ativo, inserir linha criava a
+ * linha certa mas ela nascia invisível — a linha em branco não tem natureza, então nenhum filtro
+ * de natureza a inclui. Do ponto de vista do usuário, o menu não fazia nada. O aviso quebra esse
+ * silêncio, que é justamente o que o projeto evita.
+ */
+describe('avisoDeLinhaInseridaEscondida (item 38)', () => {
+  it('TL-38-67: com filtro de natureza ativo, devolve aviso informativo dispensável', () => {
+    const aviso = avisoDeLinhaInseridaEscondida(['MR'], 7)
+    expect(aviso).not.toBeNull()
+    expect(aviso?.tipo).toBe('informativo')
+    expect(aviso?.estado).toBe('pendente')
+    expect(aviso?.origem).toBe('linha-manual-escondida')
+    expect(aviso?.alvo).toEqual(['7'])
+  })
+
+  it('TL-38-68: sem filtro de natureza, não há nada a avisar', () => {
+    expect(avisoDeLinhaInseridaEscondida([], 7)).toBeNull()
+  })
+
+  it('TL-38-69: a mensagem nomeia as naturezas filtradas, para o usuário saber o que limpar', () => {
+    const aviso = avisoDeLinhaInseridaEscondida(['MR', 'GO'], 3)
+    expect(aviso?.mensagem).toContain('MR')
+    expect(aviso?.mensagem).toContain('GO')
+  })
+
+  it('TL-38-70: o id é estável por linha — reinserir na mesma posição não empilha avisos', () => {
+    expect(avisoDeLinhaInseridaEscondida(['MR'], 7)?.id).toBe(
+      avisoDeLinhaInseridaEscondida(['GO'], 7)?.id,
+    )
+    expect(avisoDeLinhaInseridaEscondida(['MR'], 7)?.id).not.toBe(
+      avisoDeLinhaInseridaEscondida(['MR'], 8)?.id,
+    )
   })
 })

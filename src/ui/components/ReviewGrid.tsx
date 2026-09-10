@@ -29,7 +29,11 @@ import type { Lancamento, Aviso } from '../../types'
 import { GhostEditorCore } from './GhostEditor'
 import { montarColagem } from './colagemGrid'
 import { deveDevolverFocoAGrid, deveDevolverFocoAposFecharModal, haModalAberto } from './focoGrid'
-import { acaoDoAtalhoDeLinha, haEdicaoDeCelulaAberta } from './menuContexto'
+import {
+  acaoDoAtalhoDeLinha,
+  avisoDeLinhaInseridaEscondida,
+  haEdicaoDeCelulaAberta,
+} from './menuContexto'
 import { MenuContextoGrid } from './MenuContextoGrid'
 
 // ---------------------------------------------------------------------------
@@ -682,6 +686,8 @@ export function ReviewGrid({ onSplitDetectado, mesRef }: ReviewGridProps) {
   const editarCelula = useAppStore((s) => s.editarCelula)
   const excluirLinha = useAppStore((s) => s.excluirLinha)
   const inserirLinha = useAppStore((s) => s.inserirLinha)
+  const filtroNaturezas = useAppStore((s) => s.filtroNaturezas)
+  const adicionarAvisos = useAppStore((s) => s.adicionarAvisos)
   const preencherIntervalo = useAppStore((s) => s.preencherIntervalo)
   const aplicarColagem = useAppStore((s) => s.aplicarColagem)
   const dicEntries = useAppStore((s) => s.dicEntries)
@@ -1248,8 +1254,14 @@ export function ReviewGrid({ onSplitDetectado, mesRef }: ReviewGridProps) {
         return
       }
       inserirLinha(indiceReal, acao === 'inserir-acima' ? 'acima' : 'abaixo', mesRef)
+
+      // A linha nasce sem natureza, então um filtro de natureza ativo a esconde na hora. Sem
+      // isto, inserir sob filtro parecia não fazer nada (inspeção da onda 5).
+      const posicaoDaNova = acao === 'inserir-acima' ? indiceReal : indiceReal + 1
+      const aviso = avisoDeLinhaInseridaEscondida(filtroNaturezas, posicaoDaNova)
+      if (aviso !== null) adicionarAvisos([aviso])
     },
-    [mapaExibidoReal, excluirLinha, inserirLinha, mesRef],
+    [mapaExibidoReal, excluirLinha, inserirLinha, mesRef, filtroNaturezas, adicionarAvisos],
   )
 
   // -----------------------------------------------------------------
