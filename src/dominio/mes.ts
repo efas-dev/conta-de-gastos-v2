@@ -121,7 +121,7 @@ export const FONTE_MANUAL = 'manual'
  * `'extrato'`): lançamentos que nascem dentro do app não vêm de nenhum documento bancário, então
  * nenhuma das duas classificações existentes faria sentido para eles. A distinção entre eles preserva
  * rastreabilidade de origem (D3, ADR rendimentos) — inclusive na coluna A da planilha exportada
- * (`src/xlsx/gerador.ts`). A conciliação (`detectarConciliacaoRegistry`, `src/dominio/registry.ts`) e
+ * (`src/excel/writer/gerador.ts`). A conciliação (`detectarConciliacaoRegistry`, `src/dominio/registry.ts`) e
  * o cross-check de desalinhamento (`detectarDesalinhamentoMes`, abaixo) excluem/ignoram os três
  * naturalmente; o motor de pares os exclui via `FONTES_MANUAIS` (`src/dominio/pares.ts`).
  *
