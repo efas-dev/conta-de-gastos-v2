@@ -6,40 +6,11 @@
 > **Concluídos** ("Faxina do TODO"). Cada remoção foi verificada no app rodando (Playwright,
 > dados reais de `data_sample/`), não só por leitura de código. O que sobrou abaixo foi
 > verificado como **ausente** — não é backlog herdado por inércia.
-
-### 23. Detecção de reembolso: entrada e saída de igual valor em períodos próximos
-Funcionalidade que detecta pares de entrada e saída de **igual valor** (sinais opostos) em
-**datas próximas** e propõe ao usuário considerá-los reembolso de despesa, anulando os dois
-lançamentos (entrada + saída) para simplificar a revisão e não poluir o resultado do mês.
-Pontos a decidir na spec: janela de proximidade (dias), se o par pode cruzar fontes
-(ex.: saída na fatura, reembolso no extrato), interação com as detecções existentes
-(transferência interna e investimento têm precedência?), e a UX da proposta — sugestão
-não destrutiva que o usuário confirma (nos moldes das flags/cores já usadas na grid),
-nunca anulação automática silenciosa.
-
-### 27. Transferência própria: casar o **par** entre fontes distintas (parcialmente entregue)
-Quando há transferência própria entre contas pessoais — mesmo valor saindo de uma conta do
-usuário e entrando em outra conta dele (ex.: extratos de dois bancos carregados juntos) — o
-sistema deve casar os **dois** lançamentos e propor anular o par.
-
-**O que já existe** (spec `dominio-regras` + `fundacao-operacoes`): a detecção virou proposta
-acionável na central de avisos (`detectarTransferenciaInternaAvisos`, origem
-`transferencia-interna` no registry), com Aplicar/Dispensar, modo inspeção e Desfazer.
-Verificado no app em 2026-08-16 com `data_sample/pp/`.
-
-**O que falta — e é o item:** o casamento é **por lançamento isolado**, não em par. Cada linha
-que bate nos padrões (transferência genérica ou Pix nominal via `nomeUsuario`) vira uma
-proposta própria; duas pernas da mesma transferência viram dois avisos independentes, e uma
-perna sozinha vira proposta mesmo sem par. O próprio código declara o escopo em
-`src/dominio/transferencia.ts:73-75`:
-
-> "O par entre contas de bancos distintos (item 27 do TODO — matching cruzado entre dois
-> lançamentos de fontes diferentes) NÃO é adicionado por este wrapper e segue fora de escopo."
-
-Decidir na spec: tolerância de valor e janela de datas (a conciliação usa R$ 0,05); o que
-fazer com a perna órfã (proposta individual como hoje, ou silêncio); e a precedência entre a
-proposta em par e as individuais que hoje já disparam. Compartilha o motor com os itens 23,
-35 e 36 — todos são "casar par por igual valor e propor remoção".
+>
+> **Sanitização de 2026-09-10.** Repetida a faxina contra o estado real da `dev` após a spec
+> `motor-de-pares` e as ondas 3–5 de hotfixes: saíram daqui os itens **23, 27, 38, 41, 49 e 51**
+> (entregues e verificados no app), o **48** (não era item — era o 38) e o **39.1** (já fechado).
+> O **47** virou diagnóstico e continua aberto como spec.
 
 ### 35. BB Rende Fácil: anular resgates que apenas cobrem débitos da conta
 No extrato do Banco do Brasil (`src/parsers/extrato_bb.ts`) as linhas **"BB Rende Fácil"** são o
@@ -75,6 +46,15 @@ saldo faltante); janela temporal (mesmo dia?); tolerância de centavos; o que fa
 **aplicação** (Saída de excedente — também é investimento a neutralizar?); precedência frente às
 detecções existentes; e se a natureza do resíduo vira "investimento"/"aplicação" já classificado.
 
+**Atualização de 2026-09-10:** o motor de pares que este item esperava **já existe** —
+`encontrarPares` (`src/dominio/pares.ts`), entregue pela spec `motor-de-pares`, com precedência
+explícita no registry. Mas este item **não** é caso dele como está: o motor casa 1 perna
+positiva ↔ 1 negativa de valor idêntico, e aqui o resgate bate com o **somatório dos débitos do
+dia**. Note também que `BB Rende Fácil` está deliberadamente na lista de exclusão do motor
+(`PADROES_EXCLUSAO_REEMBOLSO`, `pares.ts:256`), justamente para ele não propor apagar despesa
+real. A spec deste item precisa decidir se estende o motor para N-para-1 ou se constrói um
+detector próprio por cima dele.
+
 ### 36. Transferências internas entre pessoas da mesma casa
 Tratar o problema das transferências entre **pessoas da mesma casa** (ex.: casal, família no
 mesmo orçamento): funcionam como tirar dinheiro de um bolso e colocar no outro — não são
@@ -86,6 +66,12 @@ informada pelo usuário? aprendizado pelo dicionário? campo nome já usado no P
 `detectarTransferenciaInterna`?), e se a anulação é sempre em par ou aceita lançamento único
 (só uma das contas carregada).
 
+**Atualização de 2026-09-10:** com o item 27 entregue, este é o candidato mais direto a reusar o
+motor: `encontrarPares` já casa o par entre fontes, e o que falta é só a **política** que decide
+que aquele par é "mesma casa" — exatamente o formato das duas políticas que já existem sobre o
+motor (`transferencia-interna` e `reembolso`). O trabalho real virou a origem dos nomes da casa,
+não o casamento.
+
 ### 37. Botão de retorno à tela de importação + stepper persistente na top bar
 Incluir um botão que permita **retornar à tela de importação** a partir da revisão. Proposta
 visual (print `image.png` na raiz): usar a mesma semântica do **Stepper de 3 passos**
@@ -95,33 +81,6 @@ passo "Importar" clicável funciona como o retorno. Cuidados: preservar o estado
 (lançamentos/edições não podem se perder sem confirmação — interação com a flag `sujo` e o
 prompt de saída), e alinhar com os itens 22 (upload incremental) e 32/33 (jornada e
 readequação da UI — este stepper de telas e o stepper de jornada precisam conversar).
-
-### 38. Grid: selecionar linha inteira + menu de contexto (excluir / adicionar linha em branco)
-Opção de **selecionar a linha toda** na grid de revisão (clique no número/cabeçalho da linha,
-como no Google Sheets) e, com o **botão direito**, abrir menu de contexto com as ações
-**excluir linha** e **adicionar linha em branco** (acima/abaixo — decidir). Cuidados: as
-mutações entram no undo/redo e na flag `sujo`; comportamento sob filtro/ordenação (excluir a
-linha certa da visão derivada); linha em branco nasce incompleta (interação com validação,
-chips de incompletos e avisos); e o Glide Data Grid já expõe `onCellContextMenu`/seleção de
-linha — verificar o suporte nativo antes de customizar.
-
-**Emenda (2026-08-31):** além do menu de contexto, entregar os **atalhos de teclado do Google
-Sheets** para as mesmas ações — `Shift+Espaço` (selecionar linha inteira), `Ctrl+Espaço`
-(selecionar coluna inteira), `Ctrl+-` (excluir a linha selecionada) e `Ctrl++` (inserir linha
-em branco). Cuidados extras: os atalhos não podem disparar com célula em edição (o GhostEditor
-intercepta o teclado), `Ctrl+-`/`Ctrl++` colidem com o **zoom nativo do navegador** e exigem
-`preventDefault`, e cada ação continua sendo **1 mutação única** no undo/redo.
-
-**O que já existe** (auditoria de 2026-08-31): `Shift+Espaço` e `Ctrl+Espaço` **já funcionam** —
-são defaults do Glide 6.0.3 e o `keybindings` do `ReviewGrid` já traz `selectRow`/`selectColumn`.
-O clique no número da linha passou a selecionar a linha inteira (`rowMarkers="clickable-number"`,
-commit `ea6c1e5`). `excluirLinha` já existe no store.
-
-**O que falta — e é o grosso do item:** (a) o **menu de contexto** em si — nada parecido existe
-no repo, nem componente nem CSS; falta passar `onCellContextMenu` e dar `preventDefault` no menu
-nativo; (b) uma action de **inserir linha em branco** no store (não existe; `excluirLinha` só
-precisa ser fiada na UI); (c) os atalhos `Ctrl+-`/`Ctrl++` no `onKeyDown`, com `preventDefault`
-contra o zoom; (d) a tradução índice-visual→real sob filtro/ordenação. **Não é hotfix: é spec.**
 
 ### 39. Navegar até as linhas relevantes (inspeção e incompletos) — achado da faxina 2026-08-16
 Hoje o app **aponta** para linhas mas não **leva** até elas.
@@ -146,8 +105,16 @@ Hoje o app **aponta** para linhas mas não **leva** até elas.
 
 Decidir na spec: auto-scroll ao entrar em inspeção vs. botão "ir para"; navegação
 próxima/anterior entre as linhas de um mesmo aviso; e se os incompletos voltam como filtro,
-como salto (n/N com setas), ou ambos. Interage com o item 38 (seleção de linha) e com o 32/33
-(jornada) — a etapa "Classificar" só fecha quando não há incompletos.
+como salto (n/N com setas), ou ambos. Interage com o 32/33 (jornada) — a etapa "Classificar"
+só fecha quando não há incompletos.
+
+**Atualização de 2026-09-10:** o item 38 (seleção de linha + menu de contexto), que este item
+citava como dependência, foi **entregue** na onda 5 — ver Concluídos. Nota de escopo que nasceu
+lá: a linha em branco inserida manualmente, enquanto totalmente vazia, **não** conta como
+incompleta (`validarLinha`, `src/dominio/validacao.ts:13`, só cobra natureza de linha com
+transcrição ou valor). Ela aparece no filtro de só-incompletos, mas não no contador
+"X de Y classificados" — comportamento deliberado, e a spec deste item precisa saber disso ao
+definir o critério de "etapa Classificar concluída".
 
 ### 40. Bug: colar múltiplas células às vezes buga na grid — **parcialmente entregue**
 Ao copiar duas células (ex.: Natureza + Descrição de uma linha) e colar em outra linha, às
@@ -171,15 +138,6 @@ lá. Falta um teste manual do usuário. Segue em aberto também o suspeito que n
 daqui: `navigator.clipboard.read()` sem try/catch dentro do próprio Glide
 (`data-editor.js:2215`) — se a leitura falhar, a colagem não acontece e nada é dito.
 
-### 41. Colinha de naturezas: switch para somar só as iniciais do titular
-O somatório por natureza (cartões da colinha/painel de naturezas) deve ganhar um **switch**
-para somar apenas os lançamentos cujas **iniciais** sejam as de quem faz o extrato (campo
-"Suas iniciais" da sessão). Hoje soma indistintamente os valores de cada natureza, mesmo
-quando a linha tem iniciais de outras pessoas (ex.: despesas rateadas da casa). Com o switch
-ligado, filtra por `iniciais === iniciais da sessão`; desligado, mantém o total geral.
-Decidir: estado default do switch e se o filtro do cartão sobre a grid (clique no cartão)
-acompanha o mesmo recorte.
-
 ### 46. Jornada de usuário mais intuitiva — induzir a ordem correta das etapas
 O app tem todas as peças, mas não **conduz** o usuário: ele precisa saber por conta própria o
 que fazer, em que ordem. A feature é transformar a sequência abaixo — hoje implícita — em
@@ -196,11 +154,14 @@ real de cada etapa):
 2. **Limpeza primeiro.** Na tela de revisão, induzir o usuário a resolver antes de tudo as
    **propostas dos detectores** (registry em `src/dominio/registry.ts`): remover
    aplicações/resgates (`investimento`), conciliar fatura × extrato (`conciliacao`),
-   transferência interna (`transferencia-interna`) e os casos especiais marcados pelo parser
-   via `origemEspecial` (`valor-pendente` e `pagamento-recebido`, `detectarPorOrigemEspecial`
-   em `src/dominio/deteccoes.ts:105`) — inclusive o caso do **Nubank**, em que o pagamento da
+   transferência interna (`transferencia-interna`), **reembolso** (`reembolso`, acrescentado
+   pela spec `motor-de-pares`) e os casos especiais marcados pelo parser via `origemEspecial`
+   (`valor-pendente` e `pagamento-recebido`, `detectarPorOrigemEspecial` em
+   `src/dominio/deteccoes.ts:105`) — inclusive o caso do **Nubank**, em que o pagamento da
    fatura vem duplicado pela própria fatura importada e precisa sair. Limpar antes evita
-   classificar linhas que vão ser removidas.
+   classificar linhas que vão ser removidas. Note que o registry hoje aplica **precedência
+   explícita** entre detectores, então a ordem de resolução já é parcialmente imposta pelo
+   domínio, não só pela UI.
 3. **Classificar o que sobrou.** Induzir o usuário a zerar os **incompletos** (linha sem
    natureza/descrição): a etapa só fecha quando o contador "X de Y classificados" bate. Depende
    do item 39 (levar até as linhas incompletas, não só contá-las).
@@ -221,13 +182,68 @@ etapa fora de ordem (a preferência do projeto tem sido nunca bloquear); qual é
 
 ---
 
+## Reportados na versão deployada (2026-09-08)
+
+Cinco achados do uso real da versão que estava no ar. **Três foram fechados** nas ondas 3–5 de
+hotfixes: o **49** (saldo em `B4`), o **51** (foco na grid) e o **48** (que não era item próprio
+— era o 38) — ver Concluídos. Os dois abaixo seguem em aberto, e ambos são spec, não hotfix.
+
+### 47. Bug: fatura Itaú não está conciliando adequadamente — **diagnosticado, vira spec**
+Na versão deployada, a conciliação da **fatura Itaú** não funciona como deveria (a do Nubank
+foi a validada nas specs).
+
+**Diagnóstico de 2026-09-08 (onda 3): a suspeita inicial estava errada — nada específico do
+Itaú está quebrado.** O pipeline foi rodado contra os arquivos reais de `data_sample/`: o
+parser lê os 30 lançamentos, `classificarFonte` acerta (`fatura_itau_cc`→fatura,
+`extrato_itau`→extrato, `mes.ts:121`), `pagamento-recebido` tira a quitação anterior do
+somatório, o upload não confunde a fatura com dicionário, e o parser está na `main`. **Com o
+pagamento presente no extrato a conciliação acerta** — provado injetando a linha de −1.443,99,
+que gera a proposta correta.
+
+**A causa real é o fallback de subconjunto:** quando o pagamento **não** está no extrato
+carregado, `subsetComposicaoIndices` (`deteccoes.ts:203-224`) acha um subconjunto para quase
+qualquer valor — com 30 itens de centavos as somas alcançáveis ficam densas. No caso real saem
+**14 candidatos espúrios** que **substituem** a mensagem honesta "não encontrei o pagamento
+desta fatura" (`deteccoes.ts:368-376` vs `:400-412`). Agrava o ciclo do cartão: a fatura com
+vencimento em julho traz compras de junho, mas o pagamento cai no extrato de julho.
+
+É a **dívida do ruído do subset-sum já registrada na spec `conciliacao-robusta`**. Mudar o
+critério é decisão de política (limiar, tamanho mínimo do subconjunto, precedência sobre o "sem
+casamento") e regride o pagamento parcial que a spec suporta de propósito — **vira spec, não
+hotfix**.
+
+*Achado lateral, não corrigido:* `classificarFontePorPrefixo` lança para prefixo fora da
+convenção e `orquestrarDeteccao` (`registry.ts:229-260`) não tem try/catch, com
+`reproduzirAvisos` rodando **antes** de `setLancamentos` (`handlersPipeline.ts:178` vs `:189`)
+— uma fonte fora da convenção derrubaria a importação inteira. Inalcançável hoje (os parsers
+usam literais conformantes, a coluna Fonte é somente leitura e a fonte `manual` entrou na
+convenção); interessa como robustez do contrato de extensão, que é decisão de produto.
+
+### 50. Dicionário por similaridade em vez de igualdade pura
+O dicionário poderia usar um **algoritmo de similaridade** em vez de casamento por semelhança
+pura/exata: assim, compras parceladas ("Parcela N de N'", em que só o número muda a cada mês)
+seriam reconhecidas nos meses seguintes e classificadas automaticamente. Decidir na spec: a
+métrica (normalizar dígitos/parcela antes de comparar? distância de edição? prefixo comum?),
+o limiar de aceitação, o que fazer com empates (campo `ambiguo` já existe no dicionário) e
+como não regredir os casos que hoje casam exato.
+
+---
+
 ## Rescaldo das entregas (não são itens de produto)
 
 - **Migrar decisões dos agentes** para os ADRs originais (tarefa manual, sem pressa):
   11 em `Docs/specs/grid-ux-filtros.adr-agente.md`, 8 em `Docs/specs/mes-referencia-ui.adr-agente.md`,
   11 em `Docs/specs/dicionario-ponta-a-ponta.adr-agente.md`.
-- **CI:** aviso de depreciação do Node 20 nas actions (`checkout@v4`, `setup-node@v4`,
-  `upload-artifact@v4`) — subir para v5/v6 quando conveniente. Não bloqueia.
+- ~~**CI:** depreciação do Node 20 nas actions.~~ **Feito** na onda 4 (commit `7a64bb6`):
+  `checkout` e `setup-node` em **v7** (major documentada, tags conferidas na API do GitHub —
+  v7.0.1 e v7.0.0), não v5/v6 que já nascem defasadas. O repo não usa `upload-artifact`; usa
+  `upload-pages-artifact@v3` e `deploy-pages@v4`, ambas na major corrente.
+- **Dívidas técnicas obsoletas:** dos 32 arquivos de `Docs/debt/tecnica/`, **30 estão
+  resolvidos** e foram anotados como tal na onda 4 (15 são meta-registros do harness, os demais
+  são defeitos já corrigidos — verificados um a um contra o código). Seguem **2 vivos**:
+  `candidatos-de-aviso-nunca-renderizados.md` (`Aviso.candidatos` sem leitor na UI) e
+  `security-spec-20260824-fatura-itau-xlsx.md` (array denso sem teto em
+  `leitorCelulas.ts:128-140`). `Docs/` é git-ignored, então a faxina vive só em disco.
 - **Achados de segurança da spec dicionário** (zip bomb no `unzipSync` + `sheetTarget` como
   chave de lookup): **DESCARTADOS como irrelevantes por decisão do usuário (2026-07-18)** —
   arquitetura 100% client-side e stateless; o impacto máximo é o usuário travar a própria aba
@@ -237,6 +253,93 @@ etapa fora de ordem (a preferência do projeto tem sido nunca bloquear); qual é
 ---
 
 ## ✅ Concluídos
+
+### Spec `spec-20260831-motor-de-pares` — itens 23 e 27 (arquivada, mesclada na dev)
+Motor de casamento de pares que se anulam. 7 tasks + 2 fixes de fachada; arquivada em
+`Docs/specs/`. Nasceu `encontrarPares` (`src/dominio/pares.ts`) como **função pura** que casa
+perna positiva ↔ negativa de valor idêntico dentro de uma janela de 7 dias, com duas políticas
+por cima decidindo o rótulo.
+
+- **Item 23 — reembolso.** Origem nova `reembolso` no registry (`registry.ts:225`): par de igual
+  valor sem sinal de transferência vira proposta de remover as duas linhas, com Desfazer. ✅
+- **Item 27 — par da transferência própria.** `detectarTransferenciaInternaAvisos`
+  (`src/dominio/transferencia.ts`) deixou de olhar lançamento isolado e passou a consultar
+  `encontrarPares`; quando a contrapartida não existe, o card **declara** que não achou, em vez
+  de propor no escuro. ✅
+- **Infraestrutura que vale para todos:** o registry ganhou **precedência explícita** — proposta
+  de remoção cujo alvo já foi reivindicado por um detector anterior é descartada. É o que impede
+  o motor de tentar apagar um `Resgate RDB` que o detector de investimento já reivindicou.
+- Auto-sweep e aplicação (`BB Rende Fácil`, `RDB`, `CDB`) ficam **fora** do motor por padrão de
+  transcrição, com prova e2e de que despesa real nunca é apagada.
+
+### Onda 5 de hotfixes — item 38 completo (2026-09-10, branch `hotfixes-onda-3`)
+Fecha o item 38 e, com ele, o 48. Verificado no app com clique direito real, teclado real e
+dados de `data_sample/pp/`. A auditoria de 2026-08-31 dizia "não é hotfix, é spec"; a revisão de
+2026-09-09 mostrou que **uma das quatro justificativas era falsa** (a tradução índice-visual→real
+já existia e era usada em toda edição, `ReviewGrid.tsx:1022`) e que o trabalho pesado —
+`excluirLinha` com undo e `reconciliarObsoletos`, mutação que muda a contagem de linhas
+(`aplicarSplit`), criação de lançamento com id serial (`atribuirIds`) — já estava pronto.
+
+- **Fonte `manual`** (commit `1453d72`). Decisão do usuário: linha inserida manualmente recebe
+  `fonte: 'manual'`. Sem isso, linha em branco faria `classificarFontePorPrefixo` lançar e o
+  `catch {}` de `TelaRevisao.tsx` engoliria — matando em silêncio o cross-check de mês.
+  Reconhecida por **igualdade exata** (não prefixo): não nomeia família de parsers, e assim
+  `manual_*` segue falhando ruidosamente. Entrou em `FONTES_MANUAIS` (`pares.ts`), ficando fora
+  do motor de pares como as linhas de formulário. ✅
+- **`inserirLinha` no store** (commit `7ddfcae`). Template do `aplicarSplit`; 1 mutação única no
+  undo/redo. Decisões: **acima e abaixo** (só "abaixo" impediria criar linha antes da primeira);
+  `data` = **1º dia do `mesRef`** (a coluna Data é somente leitura, o valor vai direto para a
+  planilha e precisa ser ISO válida; o app fecha mês concluído, então "hoje" pode cair fora). ✅
+- **Menu de contexto, atalhos e fiação** (commit `21b9c94`). `onCellContextMenu` com
+  `preventDefault`; menu com `role=menu`, primeiro item focado, setas/Home/End, Escape e clique
+  fora. Atalhos `Ctrl+-`, `Ctrl++` e `Ctrl+=` com `preventDefault` contra o zoom e guard de
+  célula em edição. `role="menu"` entrou em `SELETOR_MODAL` — sem isso a política de foco puxaria
+  o foco de volta e o menu fecharia sozinho. ✅
+- **Aviso de linha escondida** (commit `fa8788c`, achado da inspeção). Com filtro de natureza
+  ativo a linha nasce invisível (não tem natureza), e a ação lia como um clique que não fez nada.
+  Em vez de mexer no filtro, o efeito passou a ser **declarado**: aviso informativo dispensável
+  nomeando as naturezas filtradas. ✅
+
+### Onda 4 de hotfixes — `Infinity`, 404 do Modelo, flake do zip e a11y (2026-09-09)
+- **`Infinity` corrompia o `.xlsx`** (commit `e74994c`). As fronteiras dos forms perguntavam
+  `Number.isNaN`, que responde `false` para infinito, enquanto a grid já usava `Number.isFinite`
+  (`appStore.ts:377`). `celulaNum` interpola o número cru, então saía `<v>Infinity</v>` — XML
+  inválido, arquivo que o Excel recusa. Fechadas as 3 fronteiras + guarda no writer. A dívida
+  registrava isto como severidade **baixa**; era corrupção de output. ✅
+- **404 no `Modelo.xlsx` virava silêncio** (commit `fb00159`). `fetch` não rejeita em status HTTP
+  de erro, então o HTML da página de erro passava por planilha: grid populada, naturezas vazias,
+  nenhum aviso. Checagem de `resp.ok` no `try` que já existia. ✅
+- **Flake da exportação, causa fechada** (commit `2310577`). Era o `mtime` do ZIP. A medição que
+  faltava: duas gerações no mesmo balde de 2 s divergem **0** bytes; **cruzando a fronteira**,
+  **2** bytes — o que explica a intermitência e o "pouquíssimos bytes" que fazia a hipótese
+  parecer errada. `mtime` fixo resolve (cuidado: `mtime: 0` lança, a faixa DOS é 1980–2099). ✅
+- **Foco inicial nos modais e a11y** (commits `9ca0a12`, `7ce2ce7`). SplitModal foca o 1º campo;
+  ExportModal foca o container (não um botão — armar o Enter no "Baixar" faria pular o alerta de
+  pendentes). `aria-expanded` só nos cards que expandem; `type="button"` no SplitModal. ✅
+
+### Onda 3 de hotfixes — itens 49, 51 e 41 (2026-09-08)
+- **Item 49 — saldo inicial em `B4`** (commit `ac4b3cd`). `B4` nunca fez parte do contrato de
+  injeção: o saldo era lido, exibido na toolbar e morria ali; o gerado saía em branco e a fórmula
+  de `B5` fechava o mês como se o usuário começasse do zero. Confirmado antes de escrever que
+  `B4` é célula **livre** e que a fórmula mora em `B5` (`B4+SUM(H9:H1004)`), que segue intocada.
+  Verificado no `.xlsx` real gerado pelo app. ✅
+- **Item 51 — foco preso na grid** (commits `1d2bc95`, `d6649ab`, `1f9f91f`). Nasceu `focoGrid.ts`
+  (política pura sobre o DOM). A **inspeção visual** achou três furos que os testes de unidade não
+  pegariam: abrir o modal devolvia o foco à grid e a digitação editava a célula **atrás** dele;
+  fechá-lo por clique deixava o foco no `<body>`; e fechá-lo por **Escape** também. A raiz comum
+  era olhar *onde o clique caiu* em vez do estado da página depois dele. Duas descobertas que
+  valem além do item: o `ExportModal` chama `stopPropagation()` e o React delega na raiz, então
+  **listener global de clique aqui tem de ser em captura**; e a decisão espera **dois frames**,
+  porque o React só commita o diálogo depois do primeiro. ✅
+- **Item 41 — switch da colinha** (commit `4c01403`). `somarPorNatureza` ganhou `iniciaisFiltro`;
+  `role="switch"` com rótulo que nomeia as iniciais em uso. Decisões: **default desligado**; o
+  filtro do cartão sobre a grid **não** acompanha o recorte; iniciais comparadas de forma
+  normalizada (a coluna é digitada à mão); e o switch não é renderizado quando não há iniciais na
+  sessão, em vez de virar controle morto. Efeito colateral conhecido: trocar de aba reseta o
+  switch. ✅
+- **Item 48 — diagnóstico, sem código.** Não era caminho quebrado: `excluirLinha` nunca teve
+  chamador de UI em branch nenhum (`git log -S` vazio, `origin/main` idem) e `adicionarLinha` não
+  existia. Era **feature ausente, ou seja, o item 38** — entregue na onda 5. ✅
 
 ### Onda 2 de hotfixes — itens 14, 39.1 e parte do 40 (2026-08-31)
 - **Item 14 — tooltip de célula truncada.** O tooltip valia só para a Transcrição e aparecia
