@@ -112,6 +112,7 @@ describe('avisosSlice — limparAvisos (T09, ADR Decisão 8)', () => {
       adicionados: {},
       avisoEmInspecao: null,
       focoInspecao: 0,
+      candidatoEmFoco: null,
     })
 
     acoes.limparAvisos()
@@ -121,6 +122,7 @@ describe('avisosSlice — limparAvisos (T09, ADR Decisão 8)', () => {
       adicionados: {},
       avisoEmInspecao: null,
       focoInspecao: 0,
+      candidatoEmFoco: null,
     })
   })
 })

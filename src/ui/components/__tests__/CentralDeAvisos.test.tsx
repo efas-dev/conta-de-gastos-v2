@@ -30,14 +30,21 @@ const mockSairInspecao = vi.fn(() => {
   avisoEmInspecaoMock = null
 })
 const mockFocarInspecao = vi.fn()
+const mockFocarCandidato = vi.fn()
 
 let avisosMock: Aviso[] = []
 let avisoEmInspecaoMock: string | null = null
+let candidatoEmFocoMock: string | null = null
 
 vi.mock('../../store/appStore', () => ({
   useAppStore: (selector: (state: Record<string, unknown>) => unknown) =>
     selector({
-      avisosAcionaveis: { avisos: avisosMock, removidos: {}, avisoEmInspecao: avisoEmInspecaoMock },
+      avisosAcionaveis: {
+        avisos: avisosMock,
+        removidos: {},
+        avisoEmInspecao: avisoEmInspecaoMock,
+        candidatoEmFoco: candidatoEmFocoMock,
+      },
       lancamentos: [],
       saldoAnterior: 0,
       aplicar: mockAplicar,
@@ -46,6 +53,7 @@ vi.mock('../../store/appStore', () => ({
       entrarInspecao: mockEntrarInspecao,
       sairInspecao: mockSairInspecao,
       focarInspecao: mockFocarInspecao,
+      focarCandidato: mockFocarCandidato,
     }),
 }))
 
@@ -88,6 +96,8 @@ beforeEach(() => {
     avisoEmInspecaoMock = null
   })
   mockFocarInspecao.mockReset()
+  mockFocarCandidato.mockReset()
+  candidatoEmFocoMock = null
   spyGerarLancamentosVR.mockClear()
   spyGerarLancamentoRendimento.mockClear()
 })
@@ -822,5 +832,64 @@ describe('CentralDeAvisos — aria-expanded no card que expande formulário (TL-
     expect(screen.getByRole('button', { name: 'Fatura conciliável com pagamento do extrato.' })).not.toHaveAttribute(
       'aria-expanded',
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// TL-CAND-8..11 — dívida `candidatos-de-aviso-nunca-renderizados`
+//
+// `Aviso.candidatos` existe desde a spec `conciliacao-robusta` e nunca teve
+// leitor na UI: a mensagem manda "escolha qual remover" e a tela não mostrava
+// quais são nem levava até eles.
+// ---------------------------------------------------------------------------
+
+describe('CentralDeAvisos — candidatos do aviso', () => {
+  const comCandidatos = () =>
+    informativo({
+      id: 'conciliacao-ambiguo',
+      origem: 'conciliacao',
+      mensagem: '2 lançamentos do extrato têm o valor exato desta fatura.',
+      candidatos: [
+        { alvo: '7', resumo: 'R$ 1.443,99 em 10/07' },
+        { alvo: '19', resumo: 'R$ 1.443,99 em 24/07' },
+      ],
+    })
+
+  it('TL-CAND-8: lista o resumo de cada candidato do aviso', () => {
+    avisosMock = [comCandidatos()]
+    const { container } = render(<CentralDeAvisos />)
+
+    const lista = container.querySelector('.lista-candidatos') as HTMLElement
+    expect(lista).toBeInTheDocument()
+    expect(lista.textContent).toContain('R$ 1.443,99 em 10/07')
+    expect(lista.textContent).toContain('R$ 1.443,99 em 24/07')
+  })
+
+  it('TL-CAND-9: clicar num candidato pede foco na linha dele', () => {
+    avisosMock = [comCandidatos()]
+    const { container } = render(<CentralDeAvisos />)
+
+    const botoes = container.querySelectorAll('.lista-candidatos button')
+    expect(botoes).toHaveLength(2)
+    fireEvent.click(botoes[1])
+
+    expect(mockFocarCandidato).toHaveBeenCalledWith('19')
+  })
+
+  it('TL-CAND-10: aviso sem candidatos não renderiza a lista', () => {
+    avisosMock = [informativo()]
+    const { container } = render(<CentralDeAvisos />)
+
+    expect(container.querySelector('.lista-candidatos')).toBeNull()
+  })
+
+  it('TL-CAND-11: o candidato em foco se anuncia como o item corrente', () => {
+    avisosMock = [comCandidatos()]
+    candidatoEmFocoMock = '19'
+    const { container } = render(<CentralDeAvisos />)
+
+    const botoes = container.querySelectorAll('.lista-candidatos button')
+    expect(botoes[0].getAttribute('aria-current')).toBeNull()
+    expect(botoes[1].getAttribute('aria-current')).toBe('true')
   })
 })

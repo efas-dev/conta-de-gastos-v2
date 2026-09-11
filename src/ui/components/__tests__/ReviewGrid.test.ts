@@ -498,6 +498,18 @@ describe('indicesEnvolvidos', () => {
     expect(indicesEnvolvidos(undefined)).toEqual([])
     expect(indicesEnvolvidos(avisoConciliacaoFake({ origem: 'outra-origem' }))).toEqual([])
   })
+
+  // TL-CAND-12/13: sem isto, um candidato escondido pelo filtro ativo não seria revelado
+  // e o scroll não teria para onde ir.
+  it('TL-CAND-12: o candidato em foco entra nos índices envolvidos mesmo sem aviso', () => {
+    const lancamentos = [lancamentoFake({ id: 5 }), lancamentoFake({ id: 19 })]
+    expect(indicesEnvolvidos(undefined, lancamentos, '19')).toEqual([1])
+  })
+
+  it('TL-CAND-13: candidato inexistente não vira índice', () => {
+    const lancamentos = [lancamentoFake({ id: 5 })]
+    expect(indicesEnvolvidos(undefined, lancamentos, '404')).toEqual([])
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -524,6 +536,29 @@ describe('calcularLinhaAncoraVisual', () => {
 
   it('TL-10b (guarda): retorna undefined quando não há aviso em inspeção', () => {
     expect(calcularLinhaAncoraVisual([0, 1, 2], undefined)).toBeUndefined()
+  })
+
+  // TL-CAND-5..7 — dívida `candidatos-de-aviso-nunca-renderizados`: o aviso que lista
+  // candidatos é informativo e tem `alvo: []`, então a âncora por alvo nunca resolve.
+  // O candidato clicado no card é quem diz para onde rolar.
+  it('TL-CAND-5: candidato em foco ancora pelo id mesmo sem aviso em inspeção', () => {
+    const lancamentos = [
+      lancamentoFake({ id: 5 }), // índice real 0
+      lancamentoFake({ id: 19 }), // índice real 1
+    ]
+    expect(calcularLinhaAncoraVisual([0, 1], undefined, lancamentos, '19')).toBe(1)
+  })
+
+  it('TL-CAND-6: candidato em foco tem precedência sobre o alvo do aviso', () => {
+    const lancamentos = [lancamentoFake({ id: 5 }), lancamentoFake({ id: 19 })]
+    const aviso = avisoConciliacaoFake({ alvo: ['0'] })
+    expect(calcularLinhaAncoraVisual([0, 1], aviso, lancamentos, '19')).toBe(1)
+  })
+
+  it('TL-CAND-7 (guarda): candidato que não existe mais cai no caminho do alvo', () => {
+    const lancamentos = [lancamentoFake({ id: 5 })]
+    const aviso = avisoConciliacaoFake({ alvo: ['0'], permanece: [] })
+    expect(calcularLinhaAncoraVisual([0], aviso, lancamentos, '404')).toBe(0)
   })
 
   it('TL-T8-10 (regressão, guarda): retorna undefined para origem desconhecida', () => {

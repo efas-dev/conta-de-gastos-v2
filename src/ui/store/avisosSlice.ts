@@ -60,6 +60,14 @@ export interface EstadoAvisosSlice {
    * só a mudança importa.
    */
   focoInspecao: number
+  /**
+   * `Lancamento.id` do **candidato** para o qual a grid deve rolar, ou `null`. Existe separado de
+   * `avisoEmInspecao` porque o aviso que lista candidatos (`Aviso.candidatos`, ver ADR
+   * `conciliacao-robusta`) é informativo e tem `alvo: []` — não há proposta a destacar, só uma
+   * linha para a qual levar o usuário. Nunca afirma nada sobre o lançamento: rolar até uma linha
+   * não é dizer que ela sai.
+   */
+  candidatoEmFoco: string | null
 }
 
 /** Ações do slice de avisos acionáveis. */
@@ -133,6 +141,12 @@ export interface AcoesAvisosSlice {
    * Idempotente.
    */
   limparAvisos: () => void
+  /**
+   * Pede que a grid role até o lançamento `idLancamento`, um dos candidatos listados por um aviso
+   * (ver `EstadoAvisosSlice.candidatoEmFoco`). Incrementa `focoInspecao` para que pedir a MESMA
+   * linha de novo continue re-disparando o scroll — mesmo raciocínio de `focarInspecao`.
+   */
+  focarCandidato: (idLancamento: string) => void
 }
 
 /** Estado mínimo do store completo do qual o slice de avisos depende. */
@@ -148,6 +162,7 @@ export const estadoInicialAvisos: EstadoAvisosSlice = {
   adicionados: {},
   avisoEmInspecao: null,
   focoInspecao: 0,
+  candidatoEmFoco: null,
 }
 
 /**
@@ -410,7 +425,11 @@ export function criarAvisosSlice<TStore extends StoreComAvisos>(
 
     sairInspecao: () => {
       set((state) => ({
-        avisosAcionaveis: { ...state.avisosAcionaveis, avisoEmInspecao: null },
+        avisosAcionaveis: {
+          ...state.avisosAcionaveis,
+          avisoEmInspecao: null,
+          candidatoEmFoco: null,
+        },
       }) as Partial<TStore>)
     },
 
@@ -425,6 +444,16 @@ export function criarAvisosSlice<TStore extends StoreComAvisos>(
               },
             } as Partial<TStore>),
       )
+    },
+
+    focarCandidato: (idLancamento) => {
+      set((state) => ({
+        avisosAcionaveis: {
+          ...state.avisosAcionaveis,
+          candidatoEmFoco: idLancamento,
+          focoInspecao: state.avisosAcionaveis.focoInspecao + 1,
+        },
+      }) as Partial<TStore>)
     },
 
     reconciliarObsoletos: (lancamentosAtuais) => {
