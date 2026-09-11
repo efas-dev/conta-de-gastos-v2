@@ -58,7 +58,7 @@ export function FormRendimentos({ mesRef }: FormRendimentosProps) {
   const contaCorrenteNumerica = Number(contaCorrente.replace(',', '.'))
   if (
     contaCorrente.trim() !== '' &&
-    !Number.isNaN(contaCorrenteNumerica) &&
+    Number.isFinite(contaCorrenteNumerica) &&
     somaAplicacoes.valido &&
     saldoAnterior !== null
   ) {
@@ -79,7 +79,11 @@ export function FormRendimentos({ mesRef }: FormRendimentosProps) {
       }
 
       const contaCorrenteNumerica = Number(contaCorrente.replace(',', '.'))
-      if (contaCorrente.trim() === '' || Number.isNaN(contaCorrenteNumerica)) {
+      // `Number.isFinite` e não `Number.isNaN`: um saldo grande demais para o double vira
+      // `Infinity`, que não é NaN — passava a guarda, virava um lançamento RR de valor infinito e
+      // chegava ao writer como `<v>Infinity</v>`, XML inválido em OOXML que faz o Excel recusar o
+      // .xlsx como corrompido. Mesma fronteira de `escreverCampoNoDraft` (`appStore.ts`).
+      if (contaCorrente.trim() === '' || !Number.isFinite(contaCorrenteNumerica)) {
         setErro('Informe um valor numérico para a conta corrente.')
         return
       }

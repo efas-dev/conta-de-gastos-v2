@@ -60,6 +60,8 @@ export function TelaRevisao({
   const naturezasValidas = useAppStore((s) => s.naturezasValidas)
   const naturezasRicas = useAppStore((s) => s.naturezasRicas)
   const sujo = useAppStore((s) => s.sujo)
+  /** Saldo do mês anterior — vai para B4 do .xlsx gerado (item 49 do TODO). */
+  const saldoAnterior = useAppStore((s) => s.saldoAnterior)
 
   const adicionarAvisosAcionaveis = useAppStore((s) => s.adicionarAvisos)
   const undo = useAppStore((s) => s.undo)
@@ -204,7 +206,16 @@ export function TelaRevisao({
    * "Baixar .xlsx" do `ExportModal` (fase confirmar).
    */
   function handleGerar() {
-    handleGerarPipeline({ modeloBytes, lancamentos, iniciais, dicEntries, mesEscolhido, anchorRef, marcarLimpo })
+    handleGerarPipeline({
+      modeloBytes,
+      lancamentos,
+      iniciais,
+      dicEntries,
+      mesEscolhido,
+      saldoAnterior,
+      anchorRef,
+      marcarLimpo,
+    })
   }
 
   /** Confirma a exportação a partir do `ExportModal` (fase confirmar → "Baixar .xlsx"). */
@@ -273,7 +284,12 @@ export function TelaRevisao({
         */}
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <div ref={gridWrapRef} style={{ flex: 1, minHeight: 0 }}>
-            <ReviewGrid onSplitDetectado={(indice) => setSplitIndice(indice)} />
+            {/* `mesRef`: a linha em branco do menu de contexto nasce com data no primeiro dia do
+                mês escolhido (item 38) — sem isso o store cairia no default do app. */}
+            <ReviewGrid
+              onSplitDetectado={(indice) => setSplitIndice(indice)}
+              mesRef={mesEscolhido}
+            />
           </div>
         </div>
 

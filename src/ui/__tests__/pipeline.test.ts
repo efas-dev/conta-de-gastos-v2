@@ -373,6 +373,19 @@ describe('gerarAPartirDosRevisados', () => {
     const resultado = gerarAPartirDosRevisados(modeloBytes, 'ES', lancamentosRevisados, dicAnterior, '2025-03')
     expect(resultado).toBeInstanceOf(Uint8Array)
   })
+
+  // Item 49 do TODO — o saldo inicial precisa atravessar o pipeline até o writer.
+  it('TL-49-7: repassa o saldo anterior como 6º arg de gerarXlsx (destino B4)', () => {
+    gerarAPartirDosRevisados(modeloBytes, 'ES', lancamentosRevisados, dicAnterior, '2025-03', 1234.56)
+    const [, , , , , saldoArg] = vi.mocked(gerarXlsx).mock.calls[0]
+    expect(saldoArg).toBe(1234.56)
+  })
+
+  it('TL-49-8: sem saldo anterior, repassa null (B4 fica em branco)', () => {
+    gerarAPartirDosRevisados(modeloBytes, 'ES', lancamentosRevisados, dicAnterior, '2025-03', null)
+    const [, , , , , saldoArg] = vi.mocked(gerarXlsx).mock.calls[0]
+    expect(saldoArg).toBeNull()
+  })
 })
 
 // ---------------------------------------------------------------------------

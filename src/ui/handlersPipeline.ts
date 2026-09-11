@@ -110,6 +110,15 @@ export async function handleProduzir(deps: DepsHandleProduzir): Promise<void> {
   try {
     // BASE_URL resolve o subcaminho do GitHub Pages ('/' em dev)
     const resp = await fetch(`${import.meta.env.BASE_URL}Modelo.xlsx`)
+    // `fetch` só REJEITA em falha de rede — um 404/500 resolve normalmente, com o HTML da página
+    // de erro no corpo. Sem esta checagem o `catch` abaixo nunca via nada: `modeloBytes` ficava
+    // com o HTML, `lerNaturezas` engolia a exceção do zip inválido e devolvia `[]`
+    // (`src/excel/reader/leitor.ts`), e o app seguia com a colinha vazia e um Modelo que só
+    // falharia na exportação — sem um único aviso. O `throw` cai no mesmo caminho de erro já
+    // existente, sem uma segunda mensagem para o usuário decifrar.
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status} ao buscar Modelo.xlsx`)
+    }
     modelo = new Uint8Array(await resp.arrayBuffer())
   } catch (err) {
     console.error('[handlersPipeline] Falha ao carregar Modelo.xlsx:', err)
@@ -204,6 +213,12 @@ export interface DepsHandleGerar {
   iniciais: string
   dicEntries: DicEntry[]
   mesEscolhido: string
+  /**
+   * Saldo final do mês anterior lido do .xlsx importado (`lerSaldoAnterior`/B5).
+   * Vai para B4 do gerado — o saldo INICIAL do mês (item 49 do TODO).
+   * `null` quando o usuário não carregou o .xlsx do mês passado.
+   */
+  saldoAnterior: number | null
   anchorRef: { current: HTMLAnchorElement | null }
   marcarLimpo: () => void
 }
@@ -219,11 +234,27 @@ export interface DepsHandleGerar {
  * comportamento preservado byte-a-byte.
  */
 export function handleGerar(deps: DepsHandleGerar): void {
-  const { modeloBytes, lancamentos, iniciais, dicEntries, mesEscolhido, anchorRef, marcarLimpo } = deps
+  const {
+    modeloBytes,
+    lancamentos,
+    iniciais,
+    dicEntries,
+    mesEscolhido,
+    saldoAnterior,
+    anchorRef,
+    marcarLimpo,
+  } = deps
 
   if (!modeloBytes || lancamentos.length === 0) return
 
-  const xlsxBytes = gerarAPartirDosRevisados(modeloBytes, iniciais, lancamentos, dicEntries, mesEscolhido)
+  const xlsxBytes = gerarAPartirDosRevisados(
+    modeloBytes,
+    iniciais,
+    lancamentos,
+    dicEntries,
+    mesEscolhido,
+    saldoAnterior,
+  )
 
   // `.slice()` materializa Uint8Array<ArrayBuffer> puro a partir do
   // Uint8Array<ArrayBufferLike> do fflate — necessário para BlobPart no TS ≥ 5.7.

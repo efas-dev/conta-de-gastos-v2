@@ -250,3 +250,39 @@ describe('SplitModal — classes do design system (T1)', () => {
     expect(comHex).toHaveLength(0)
   })
 })
+
+describe('SplitModal — foco de entrada (TL-FOCO-MODAL)', () => {
+  // O modal abre ao digitar "/" numa célula da grid (`ReviewGrid.tsx`), então nasce com o foco
+  // preso no canvas do Glide: sem foco de entrada, o teclado seguia editando a célula ATRÁS do
+  // diálogo, e quem navega por teclado precisava tabular o documento inteiro para alcançá-lo.
+  it('TL-FOCO-MODAL-01: ao abrir, o foco vai para o primeiro campo de iniciais', () => {
+    render(<SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />)
+
+    expect(document.activeElement).toBe(screen.getByLabelText('Iniciais do alvo 1'))
+  })
+
+  it('TL-FOCO-MODAL-02: o elemento focado está dentro do .modal, não fora dele', () => {
+    const { container } = render(
+      <SplitModal lancamento={lancamentoSimples} indice={0} onClose={() => {}} />,
+    )
+
+    const modal = container.querySelector('.modal') as HTMLElement
+    expect(modal.contains(document.activeElement)).toBe(true)
+  })
+})
+
+describe('SplitModal — botões declaram type="button" (TL-A11Y)', () => {
+  // Sem `type`, um <button> dentro de um <form> ancestral vale como submit. O ExportModal já
+  // declara em todos os seus; aqui faltava nos quatro.
+  it('TL-A11Y-05: todos os botões do modal têm type="button"', () => {
+    const { container } = render(
+      <SplitModal lancamento={lancamentoDuplo} indice={0} onClose={() => {}} />,
+    )
+
+    const botoes = Array.from(container.querySelectorAll('button'))
+    expect(botoes.length).toBeGreaterThan(0)
+    for (const botao of botoes) {
+      expect(botao).toHaveAttribute('type', 'button')
+    }
+  })
+})

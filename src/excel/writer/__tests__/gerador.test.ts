@@ -1,5 +1,5 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
-import { describe, it, expect, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { createHash } from 'node:crypto'
@@ -430,6 +430,172 @@ describe('gerarSheetDataDicionario via gerarXlsx — cabeçalho e colunas Vezes/
     const sheet2 = new TextDecoder().decode(parts['xl/worksheets/sheet2.xml'])
 
     expect(sheet2).toContain('<sheetData/>')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Item 49 do TODO — saldo inicial em B4
+//
+// B4 é o saldo INICIAL do mês (célula livre, `<c r="B4" s="38"/>` no Modelo).
+// B5 é o saldo FINAL e é FÓRMULA (`B4+SUM(H9:H1004)`) — B4 é o único ponto que o
+// writer pode tocar, e tocar B5 quebraria o Modelo.
+// O valor vem de `lerSaldoAnterior` (B5 do .xlsx do mês anterior).
+// ---------------------------------------------------------------------------
+describe('gerarXlsx — saldo inicial em B4 (item 49)', () => {
+  let modeloBytes: Uint8Array
+
+  beforeAll(() => {
+    modeloBytes = new Uint8Array(readFileSync(FIXTURE_PATH))
+  })
+
+  it('TL-49-1: grava o saldo inicial em B4 como célula numérica com o estilo do Modelo', () => {
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', 1234.56)
+    const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
+
+    expect(sheet1).toContain('<c r="B4" s="38"><v>1234.56</v></c>')
+  })
+
+  it('TL-49-2: saldo negativo é gravado com o sinal preservado', () => {
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', -87.9)
+    const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
+
+    expect(sheet1).toContain('<c r="B4" s="38"><v>-87.9</v></c>')
+  })
+
+  it('TL-49-3: saldo zero é gravado (0 é valor legítimo, não "ausente")', () => {
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', 0)
+    const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
+
+    expect(sheet1).toContain('<c r="B4" s="38"><v>0</v></c>')
+  })
+
+  it('TL-49-4: sem saldo (null/omitido) B4 fica em branco, como no Modelo virgem', () => {
+    for (const saldo of [null, undefined]) {
+      const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', saldo)
+      const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
+
+      expect(sheet1).toContain('<c r="B4" s="38"/>')
+      expect(sheet1).not.toMatch(/<c r="B4"[^>]*>\s*<v>/)
+    }
+  })
+
+  it('TL-49-5: substitui B4 mesmo quando o re-save do Modelo a deixou preenchida', () => {
+    // Um re-save do Modelo com valor em B4 vira `<c r="B4" s="38"><v>10</v></c>`;
+    // o mesmo endurecimento por regex já aplicado a B3 precisa valer aqui.
+    const parts = unzipSync(modeloBytes)
+    const sheet1Original = new TextDecoder().decode(parts['xl/worksheets/sheet1.xml'])
+    parts['xl/worksheets/sheet1.xml'] = new TextEncoder().encode(
+      sheet1Original.replace('<c r="B4" s="38"/>', '<c r="B4" s="38"><v>10</v></c>'),
+    )
+    const modeloComB4 = zipSync(parts)
+
+    const resultado = gerarXlsx(modeloComB4, 'ES', [], [], '2026-06', 500)
+    const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
+
+    expect(sheet1).toContain('<c r="B4" s="38"><v>500</v></c>')
+    // O valor antigo não pode sobreviver *na célula B4* (outras células da planilha
+    // legitimamente têm <v>10</v> — a asserção precisa ser ancorada em B4).
+    expect(sheet1.match(/<c r="B4"[^>]*(?:\/>|>.*?<\/c>)/)?.[0]).not.toContain('<v>10</v>')
+  })
+
+  it('TL-49-6: a fórmula de B5 (saldo final) permanece intacta', () => {
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', 1234.56)
+    const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
+
+    expect(sheet1).toContain('<f>B4+SUM(H9:H1004)</f>')
+  })
+})
+
+/**
+ * Guarda de última linha contra valor não-finito (TL-INF).
+ *
+ * `celulaNum` interpolava o número cru em `<v>${value}</v>`: um `Infinity`/`NaN` que escapasse
+ * das fronteiras de entrada virava `<v>Infinity</v>` no XML — que NÃO é conteúdo numérico válido
+ * em OOXML. O Excel não reclama do número: recusa o arquivo inteiro como corrompido, e o usuário
+ * só descobre ao abrir o .xlsx já baixado. Falhar alto aqui é melhor do que entregar o arquivo ruim.
+ */
+describe('gerarXlsx — valor não-finito nunca vira XML', () => {
+  let modeloBytes: Uint8Array
+
+  beforeAll(() => {
+    modeloBytes = new Uint8Array(readFileSync(FIXTURE_PATH))
+  })
+
+  function comValor(valor: number): Lancamento[] {
+    return [
+      {
+        fonte: 'Nubank',
+        data: '2026-06-01',
+        transcricao: 'L1',
+        valor,
+        iniciais: 'ES',
+        natureza: 'ALM',
+        descricao: '',
+      },
+    ]
+  }
+
+  it('TL-INF-07: lançamento com valor Infinity faz a geração falhar em vez de emitir <v>Infinity</v>', () => {
+    expect(() => gerarXlsx(modeloBytes, 'ES', comValor(Infinity), [], '2026-06')).toThrow(/não-finito/i)
+  })
+
+  it('TL-INF-08: lançamento com valor NaN também faz a geração falhar', () => {
+    expect(() => gerarXlsx(modeloBytes, 'ES', comValor(NaN), [], '2026-06')).toThrow(/não-finito/i)
+  })
+
+  it('TL-INF-09: saldo inicial não-finito em B4 também faz a geração falhar', () => {
+    expect(() => gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', -Infinity)).toThrow(/não-finito/i)
+  })
+})
+
+/**
+ * Bytes estáveis no tempo (TL-MTIME).
+ *
+ * `zipSync` sem opções carimba `Date.now()` no cabeçalho DOS de cada entrada do zip. O campo
+ * guarda os segundos em passos de 2 (`seconds >> 1`), então duas gerações do MESMO insumo saíam
+ * byte-idênticas dentro do mesmo balde de 2 s e divergiam em 2 bytes quando o relógio cruzava a
+ * fronteira — a origem do flake intermitente de `src/ui/store/__tests__/exportacao.test.ts`, que
+ * compara dois .xlsx byte a byte. Medido: 0 bytes de divergência dentro do balde, 2 ao cruzar.
+ */
+describe('gerarXlsx — bytes estáveis no tempo (TL-MTIME)', () => {
+  let modeloBytes: Uint8Array
+
+  beforeAll(() => {
+    modeloBytes = new Uint8Array(readFileSync(FIXTURE_PATH))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  const LANCAMENTOS: Lancamento[] = [
+    { fonte: 'Nubank', data: '2026-06-01', transcricao: 'L1', valor: -10, iniciais: 'ES', natureza: 'ALM', descricao: '' },
+  ]
+
+  it('TL-MTIME-01: duas gerações do mesmo insumo cruzando a fronteira de 2 s saem byte-idênticas', () => {
+    vi.useFakeTimers()
+
+    // 10:00:01 e 10:00:03 caem em baldes DIFERENTES do campo de 2 s do cabeçalho DOS —
+    // é exatamente aqui que o zip carimbado com `Date.now()` divergia.
+    vi.setSystemTime(new Date('2026-06-15T10:00:01.000Z'))
+    const primeira = gerarXlsx(modeloBytes, 'ES', LANCAMENTOS, [], '2026-06')
+
+    vi.setSystemTime(new Date('2026-06-15T10:00:03.000Z'))
+    const segunda = gerarXlsx(modeloBytes, 'ES', LANCAMENTOS, [], '2026-06')
+
+    expect(hashSha256(segunda)).toBe(hashSha256(primeira))
+  })
+
+  it('TL-MTIME-02: nem um ano de distância entre as gerações muda um byte', () => {
+    vi.useFakeTimers()
+
+    vi.setSystemTime(new Date('2026-06-15T10:00:01.000Z'))
+    const primeira = gerarXlsx(modeloBytes, 'ES', LANCAMENTOS, [], '2026-06')
+
+    vi.setSystemTime(new Date('2027-11-02T23:41:59.000Z'))
+    const segunda = gerarXlsx(modeloBytes, 'ES', LANCAMENTOS, [], '2026-06')
+
+    expect(hashSha256(segunda)).toBe(hashSha256(primeira))
   })
 })
 

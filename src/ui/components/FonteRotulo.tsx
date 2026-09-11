@@ -6,7 +6,7 @@
 
 interface FonteRotuloProps {
   fonte: string
-  tipo: 'fatura' | 'extrato' | 'form_vr' | 'form_rendimentos' | 'fatura_itau_cc'
+  tipo: 'fatura' | 'extrato' | 'form_vr' | 'form_rendimentos' | 'fatura_itau_cc' | 'manual'
 }
 
 const ARIA_LABEL_POR_TIPO: Record<FonteRotuloProps['tipo'], string> = {
@@ -15,6 +15,7 @@ const ARIA_LABEL_POR_TIPO: Record<FonteRotuloProps['tipo'], string> = {
   form_vr: 'tipo form_vr',
   form_rendimentos: 'tipo form_rendimentos',
   fatura_itau_cc: 'tipo fatura_itau_cc',
+  manual: 'tipo manual',
 }
 
 /**
@@ -29,6 +30,7 @@ const RÓTULO_POR_TIPO: Record<FonteRotuloProps['tipo'], string> = {
   form_vr: 'VR',
   form_rendimentos: 'rendimentos',
   fatura_itau_cc: 'Fatura Itaú',
+  manual: 'manual',
 }
 
 /**
@@ -49,6 +51,11 @@ const RÓTULO_POR_TIPO: Record<FonteRotuloProps['tipo'], string> = {
  * consumidor futuro passe esse identificador diretamente como `tipo` (em vez do genérico
  * `'fatura'` que `classificarFontePorPrefixo` já atribui hoje a qualquer fonte com prefixo
  * `fatura_`) — o badge sabe exibir um rótulo humano ("Fatura Itaú") em vez do identificador cru.
+ *
+ * O sexto valor, `'manual'` (item 38 do TODO — linha inserida à mão pela grid de revisão), entra
+ * pelo mesmo motivo do terceiro e do quarto: fechar o narrowing contra o retorno estendido de
+ * `classificarFontePorPrefixo`. Também não aparece nesta tela — uma linha manual nasce depois do
+ * upload, já dentro da grid — e o identificador interno já é a própria palavra legível.
  */
 export function FonteRotulo({ fonte, tipo }: FonteRotuloProps) {
   return (

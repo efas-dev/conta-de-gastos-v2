@@ -135,7 +135,7 @@ describe('E2E — Task 9: fluxo completo VR (F7) + F6/D6 (recomposição não pr
     modeloBytes = new Uint8Array(readFileSync(CAMINHO_MODELO))
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({ arrayBuffer: async () => modeloBytes.buffer }) as Response),
+      vi.fn(async () => ({ ok: true, arrayBuffer: async () => modeloBytes.buffer }) as Response),
     )
     vi.stubGlobal('URL', {
       ...URL,

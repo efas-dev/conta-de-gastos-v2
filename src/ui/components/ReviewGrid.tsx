@@ -1,6 +1,7 @@
 // ADR: see Docs/specs/grid-revisao.adr.md
 // ADR: see Docs/specs/grid-ux-filtros.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
+// ADR: see Docs/specs/motor-de-pares.adr.md
 
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import {
@@ -20,12 +21,20 @@ import {
   type DataEditorRef,
   type Highlight,
   type GridKeyEventArgs,
+  type CellClickedEventArgs,
 } from '@glideapps/glide-data-grid'
 import '@glideapps/glide-data-grid/dist/index.css'
 import { useAppStore, type CampoEditavel } from '../store/appStore'
 import type { Lancamento, Aviso } from '../../types'
 import { GhostEditorCore } from './GhostEditor'
 import { montarColagem } from './colagemGrid'
+import { deveDevolverFocoAGrid, deveDevolverFocoAposFecharModal, haModalAberto } from './focoGrid'
+import {
+  acaoDoAtalhoDeLinha,
+  avisoDeLinhaInseridaEscondida,
+  haEdicaoDeCelulaAberta,
+} from './menuContexto'
+import { MenuContextoGrid } from './MenuContextoGrid'
 
 // ---------------------------------------------------------------------------
 // Índices de colunas
@@ -361,6 +370,10 @@ function criarTemaGrid() {
  * Enquanto existiu realce permanente por categoria, a cor de categoria mascarava a ausência; ela
  * foi aposentada em 2026-08-09 e o vão ficou visível.
  *
+ * `'reembolso'` entrou junto com o motor de pares (ADR `motor-de-pares`, Task T6): mesma convenção
+ * de `'transferencia-interna'`/`'investimento'` — propõe `remover` as duas linhas do par
+ * (`mutacaoProposta.alvo` com os 2 ids), `permanece` sempre `[]`.
+ *
  * O critério para entrar aqui é ter alvo que aponta para linha existente no grid. `'vr'` e
  * `'rendimentos'` ficam de fora porque *criam* lançamentos em vez de apontar para os existentes,
  * e `'desalinhamento-mes'` é informativo, sem alvo.
@@ -371,6 +384,7 @@ const ORIGENS_COM_EFEITO_GRID = new Set([
   'pagamento-recebido',
   'transferencia-interna',
   'investimento',
+  'reembolso',
 ])
 
 /**
@@ -378,15 +392,16 @@ const ORIGENS_COM_EFEITO_GRID = new Set([
  *
  * O campo `alvo` tem duas convenções no projeto, e a diferença é invisível pelo tipo (`string[]`
  * nos dois casos): `conciliacao`/`valor-pendente`/`pagamento-recebido` gravam a POSIÇÃO da linha
- * (ver `deteccoes.ts` e o remapeamento em `registry.ts`), enquanto `transferencia-interna` e
- * `investimento` gravam o ID do lançamento (ver `investimento.ts`, que documenta a escolha:
- * o aviso mira o lançamento independentemente de reordenação).
+ * (ver `deteccoes.ts` e o remapeamento em `registry.ts`), enquanto `transferencia-interna`,
+ * `investimento` e `reembolso` (motor de pares, `pares.ts`) gravam o ID do lançamento (ver
+ * `investimento.ts`, que documenta a escolha: o aviso mira o lançamento independentemente de
+ * reordenação; `reembolso` segue a mesma convenção, `alvo: [id1, id2]` do par).
  *
  * Comparar id contra índice não casaria nunca — e pior, poderia casar por acidente quando um id
  * coincidisse com a posição de outra linha, destacando a linha errada. Por isso a comparação é
  * decidida pela origem, não por heurística.
  */
-const ORIGENS_ALVO_POR_ID = new Set(['transferencia-interna', 'investimento'])
+const ORIGENS_ALVO_POR_ID = new Set(['transferencia-interna', 'investimento', 'reembolso'])
 
 /**
  * Conjuntos de identidade para os papéis "sai"/"fica" da inspeção.
@@ -635,6 +650,11 @@ export interface ReviewGridProps {
    * A fiação para o SplitModal é responsabilidade do pai (T9 — App.tsx).
    */
   onSplitDetectado?: (indice: number) => void
+  /**
+   * Mês de referência escolhido na tela (`YYYY-MM`) — repassado ao `inserirLinha` do store para
+   * dar uma data ISO válida à linha em branco (item 38). Ausente, o store cai em `defaultMes()`.
+   */
+  mesRef?: string
 }
 
 /**
@@ -659,11 +679,15 @@ export interface ReviewGridProps {
  *
  * Detecção de split: ao editar Iniciais com `'/'`, chama `onSplitDetectado(indice)`.
  */
-export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
+export function ReviewGrid({ onSplitDetectado, mesRef }: ReviewGridProps) {
   const lancamentos = useAppStore((s) => s.lancamentos)
   const lancamentosVisiveis = useAppStore((s) => s.lancamentosVisiveis)
   const mapaIndiceVisualReal = useAppStore((s) => s.mapaIndiceVisualReal)
   const editarCelula = useAppStore((s) => s.editarCelula)
+  const excluirLinha = useAppStore((s) => s.excluirLinha)
+  const inserirLinha = useAppStore((s) => s.inserirLinha)
+  const filtroNaturezas = useAppStore((s) => s.filtroNaturezas)
+  const adicionarAvisos = useAppStore((s) => s.adicionarAvisos)
   const preencherIntervalo = useAppStore((s) => s.preencherIntervalo)
   const aplicarColagem = useAppStore((s) => s.aplicarColagem)
   const dicEntries = useAppStore((s) => s.dicEntries)
@@ -1192,13 +1216,80 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   )
 
   // -----------------------------------------------------------------
+  // Menu de contexto e atalhos de linha (item 38)
+  // -----------------------------------------------------------------
+
+  /** Menu de contexto aberto: ponto do clique (viewport) e linha VISUAL sob o cursor. */
+  const [menuContexto, setMenuContexto] = useState<{ x: number; y: number; linha: number } | null>(
+    null,
+  )
+
+  const fecharMenuContexto = useCallback(() => setMenuContexto(null), [])
+
+  // O botão direito numa célula abre o menu do app no lugar do menu do navegador. `bounds` já vem
+  // em coordenadas de viewport (mesma convenção do tooltip de célula truncada) e `localEventX/Y`
+  // são relativos à célula — somados dão o ponto exato do cursor.
+  const onCellContextMenu = useCallback(
+    (cell: Item, evento: CellClickedEventArgs) => {
+      evento.preventDefault()
+      const [, linha] = cell
+      if (linha < 0 || linha >= lancamentosExibidos.length) return
+      setMenuContexto({
+        x: evento.bounds.x + evento.localEventX,
+        y: evento.bounds.y + evento.localEventY,
+        linha,
+      })
+    },
+    [lancamentosExibidos.length],
+  )
+
+  /** Traduz a linha visual em índice real e despacha a ação de linha correspondente. */
+  const executarAcaoDeLinha = useCallback(
+    (linhaVisual: number, acao: 'excluir' | 'inserir-acima' | 'inserir-abaixo') => {
+      // Mesma tradução usada por toda edição de célula: sob filtro ou ordenação, a linha
+      // desenhada não é a linha do array do store.
+      const indiceReal = mapaExibidoReal[linhaVisual] ?? linhaVisual
+      if (acao === 'excluir') {
+        excluirLinha(indiceReal)
+        return
+      }
+      inserirLinha(indiceReal, acao === 'inserir-acima' ? 'acima' : 'abaixo', mesRef)
+
+      // A linha nasce sem natureza, então um filtro de natureza ativo a esconde na hora. Sem
+      // isto, inserir sob filtro parecia não fazer nada (inspeção da onda 5).
+      const posicaoDaNova = acao === 'inserir-acima' ? indiceReal : indiceReal + 1
+      const aviso = avisoDeLinhaInseridaEscondida(filtroNaturezas, posicaoDaNova)
+      if (aviso !== null) adicionarAvisos([aviso])
+    },
+    [mapaExibidoReal, excluirLinha, inserirLinha, mesRef, filtroNaturezas, adicionarAvisos],
+  )
+
+  // -----------------------------------------------------------------
   // onKeyDown: feedback visual de "copiado". Ctrl/Cmd+C desenha o contorno
   // tracejado no range selecionado; Esc limpa. Não faz preventDefault — o Glide
   // segue tratando copy/escape normalmente; aqui só ligamos/desligamos o realce.
+  //
+  // Item 38 acrescenta os atalhos de linha do Sheets (`Ctrl+-` / `Ctrl++`). Esses SIM dão
+  // `preventDefault`: sem ele o navegador aplica zoom na página junto com a ação.
   // -----------------------------------------------------------------
 
   const onKeyDown = useCallback(
     (e: GridKeyEventArgs) => {
+      const acaoDeLinha = acaoDoAtalhoDeLinha({
+        key: e.key,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        edicaoAberta: haEdicaoDeCelulaAberta(document),
+      })
+      if (acaoDeLinha !== null) {
+        const linha = e.location?.[1] ?? gridSelection.current?.cell[1]
+        if (linha !== undefined && linha >= 0 && linha < lancamentosExibidos.length) {
+          e.preventDefault()
+          executarAcaoDeLinha(linha, acaoDeLinha === 'excluir' ? 'excluir' : 'inserir-abaixo')
+        }
+        return
+      }
+
       const tecla = e.key.toLowerCase()
       if ((e.ctrlKey || e.metaKey) && tecla === 'c') {
         const r = gridSelection.current?.range
@@ -1214,7 +1305,7 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
         setHighlightRegions(undefined)
       }
     },
-    [gridSelection],
+    [gridSelection, lancamentosExibidos.length, executarAcaoDeLinha],
   )
 
   // -----------------------------------------------------------------
@@ -1279,12 +1370,97 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
   )
 
   // -----------------------------------------------------------------
+  // Devolução de foco à grid (item 51)
+  // -----------------------------------------------------------------
+
+  /** Container da grid — usado para saber se um clique caiu dentro ou fora dela. */
+  const containerGridRef = useRef<HTMLDivElement | null>(null)
+
+  // Sem isto, clicar em qualquer botão/card/painel deixa a grid surda ao teclado até um
+  // novo clique nela. A política de quando devolver mora em `focoGrid.ts` (pura, testada);
+  // aqui fica só a fiação. O listener é de `click` (não `mousedown`) porque só depois dele
+  // o `document.activeElement` reflete quem realmente ficou com o foco.
+  //
+  // A decisão espera o clique se assentar, porque ele pode ABRIR ou FECHAR um modal e é o
+  // estado final da página que decide. São dois frames: no instante do evento o React ainda
+  // não commitou a mudança, e um frame só ainda pega o DOM antigo — o segundo roda depois
+  // do commit, então `haModalAberto` enxerga o diálogo que nasceu (ou o que morreu).
+  //
+  // O listener é de **captura**: o `ExportModal` chama `stopPropagation()` no clique da caixa
+  // (para o overlay não se fechar sozinho) e, como o React delega na raiz, isso mata o evento
+  // antes do `document`. Na descida nada foi interrompido ainda, então o clique que fecha o
+  // modal também chega aqui — sem isso o foco ficava no `<body>` e a grid seguia surda.
+  useEffect(() => {
+    let frame = 0
+
+    function decidir(alvo: Element | null, cliqueDePonteiro: boolean) {
+      if (
+        !deveDevolverFocoAGrid({
+          alvo,
+          ativo: document.activeElement,
+          containerGrid: containerGridRef.current,
+          cliqueDePonteiro,
+          temCelulaCorrente: gridSelection.current !== undefined,
+          temModalAberto: haModalAberto(document),
+        })
+      ) {
+        return
+      }
+      // `focus()` do Glide não mexe na seleção: `gridSelection` é estado controlado deste
+      // componente, então a célula corrente segue exatamente onde estava.
+      dataEditorRef.current?.focus()
+    }
+
+    function aoClicar(evento: MouseEvent) {
+      const alvo = evento.target instanceof Element ? evento.target : null
+      const cliqueDePonteiro = evento.detail > 0
+
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => decidir(alvo, cliqueDePonteiro))
+      })
+    }
+
+    // Fechar o modal pelo teclado precisa do mesmo desfecho do clique. `modalEstavaAberto` é lido
+    // ANTES do React reagir, e a decisão roda depois do commit — é a diferença entre os dois
+    // instantes que caracteriza "esta tecla fechou um modal".
+    function aoTeclar() {
+      const modalEstavaAberto = haModalAberto(document)
+      if (!modalEstavaAberto) return
+
+      frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          if (
+            !deveDevolverFocoAposFecharModal({
+              modalEstavaAberto,
+              temModalAberto: haModalAberto(document),
+              ativo: document.activeElement,
+              containerGrid: containerGridRef.current,
+              temCelulaCorrente: gridSelection.current !== undefined,
+            })
+          ) {
+            return
+          }
+          dataEditorRef.current?.focus()
+        })
+      })
+    }
+
+    document.addEventListener('click', aoClicar, true)
+    document.addEventListener('keydown', aoTeclar, true)
+    return () => {
+      document.removeEventListener('click', aoClicar, true)
+      document.removeEventListener('keydown', aoTeclar, true)
+      cancelAnimationFrame(frame)
+    }
+  }, [gridSelection])
+
+  // -----------------------------------------------------------------
   // Render
   // -----------------------------------------------------------------
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div ref={containerGridRef} style={{ flex: 1, minHeight: 0 }}>
         <DataEditor
           ref={dataEditorRef}
           columns={colunas}
@@ -1322,6 +1498,8 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
           provideEditor={provideEditor}
           onCellActivated={onCellActivated}
           onHeaderClicked={onHeaderClicked}
+          /* Botão direito na célula: menu do app no lugar do menu do navegador (item 38). */
+          onCellContextMenu={onCellContextMenu}
           /* Tooltip de célula truncada — qualquer coluna cujo texto não caiba (item 14). */
           onItemHovered={onItemHovered}
           rangeSelect="multi-rect"
@@ -1363,6 +1541,34 @@ export function ReviewGrid({ onSplitDetectado }: ReviewGridProps) {
         >
           {tooltip.texto}
         </div>
+      )}
+
+      {/* Menu de contexto da linha (item 38). A `key` amarra a instância ao ponto do clique: um
+          novo botão direito noutra célula remonta o menu, e ele volta a nascer com o foco no
+          primeiro item em vez de reaproveitar o estado da abertura anterior. */}
+      {menuContexto !== null && (
+        <MenuContextoGrid
+          key={`${menuContexto.linha}-${menuContexto.x}-${menuContexto.y}`}
+          x={menuContexto.x}
+          y={menuContexto.y}
+          onFechar={fecharMenuContexto}
+          acoes={[
+            {
+              rotulo: 'Inserir linha acima',
+              onSelecionar: () => executarAcaoDeLinha(menuContexto.linha, 'inserir-acima'),
+            },
+            {
+              rotulo: 'Inserir linha abaixo',
+              atalho: 'Ctrl +',
+              onSelecionar: () => executarAcaoDeLinha(menuContexto.linha, 'inserir-abaixo'),
+            },
+            {
+              rotulo: 'Excluir linha',
+              atalho: 'Ctrl −',
+              onSelecionar: () => executarAcaoDeLinha(menuContexto.linha, 'excluir'),
+            },
+          ]}
+        />
       )}
 
       {somaSelecao !== null && (

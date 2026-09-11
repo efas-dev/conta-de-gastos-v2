@@ -112,21 +112,28 @@ export function SplitModal({ lancamento, indice, onClose }: SplitModalProps) {
               i={i}
               valor={preview[i]?.valor}
               iniciais={alvo.iniciais}
+              // O modal abre ao digitar "/" numa célula (`ReviewGrid.tsx`), então nasce com o
+              // foco preso no canvas do Glide: sem foco de entrada, o teclado seguia editando a
+              // célula ATRÁS do diálogo. O 1º campo de iniciais é o que o usuário veio editar.
+              // Só na montagem: alvos adicionados depois não roubam o foco de onde ele estiver.
+              autoFocus={i === 0}
               onEdit={(v) => handleEditarIniciais(i, v)}
               onRemove={alvos.length > 1 ? () => handleRemoverAlvo(i) : undefined}
             />
           ))}
         </div>
 
-        <button className="btn-texto" onClick={handleAdicionarAlvo} style={{ marginBottom: 22 }}>
+        {/* `type="button"` em todos: sem ele um <button> dentro de um <form> ancestral vale
+            como submit. O ExportModal já declarava; aqui faltava nos quatro. */}
+        <button type="button" className="btn-texto" onClick={handleAdicionarAlvo} style={{ marginBottom: 22 }}>
           + Adicionar alvo
         </button>
 
         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button className="btn sec" onClick={onClose}>
+          <button type="button" className="btn sec" onClick={onClose}>
             Cancelar
           </button>
-          <button className="btn pri" onClick={handleConfirmar}>
+          <button type="button" className="btn pri" onClick={handleConfirmar}>
             Confirmar
           </button>
         </div>
@@ -140,12 +147,15 @@ function Linha({
   i,
   iniciais,
   valor,
+  autoFocus,
   onEdit,
   onRemove,
 }: {
   i: number
   iniciais: string
   valor: number | undefined
+  /** Recebe o foco ao montar — usado só na primeira linha, para o foco entrar no diálogo. */
+  autoFocus?: boolean
   onEdit: (v: string) => void
   onRemove?: () => void
 }) {
@@ -155,6 +165,7 @@ function Linha({
         className="input"
         aria-label={`Iniciais do alvo ${i + 1}`}
         value={iniciais}
+        autoFocus={autoFocus}
         onChange={(e) => onEdit(e.target.value)}
       />
       <span
@@ -168,7 +179,12 @@ function Linha({
           : ''}
       </span>
       {onRemove ? (
-        <button aria-label={`Remover alvo ${i + 1}`} onClick={onRemove} className="btn sec mini icone">
+        <button
+          type="button"
+          aria-label={`Remover alvo ${i + 1}`}
+          onClick={onRemove}
+          className="btn sec mini icone"
+        >
           ×
         </button>
       ) : (

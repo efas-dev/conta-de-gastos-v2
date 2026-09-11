@@ -30,6 +30,8 @@ interface EstadoMock {
   historico: unknown[]
   /** Pilha de redo — controla o `disabled` do botão "Refazer" (Task B7a). */
   futuro: unknown[]
+  /** Saldo final do mês anterior (item 49) — destino B4 do .xlsx gerado. */
+  saldoAnterior: number | null
 }
 
 let estado: EstadoMock
@@ -185,6 +187,7 @@ beforeEach(() => {
     sugestaoReplicacao: null,
     historico: [],
     futuro: [],
+    saldoAnterior: null,
   }
   propsSeletorMesReferencia = null
   vi.clearAllMocks()
@@ -233,6 +236,19 @@ describe('TelaRevisao', () => {
 
     expect(mockHandleGerarPipeline).toHaveBeenCalledTimes(1)
     expect(screen.getByTestId('export-modal')).toHaveAttribute('data-fase', 'feito')
+  })
+
+  // Item 49 do TODO — o saldo lido do .xlsx do mês anterior precisa chegar ao writer.
+  it('TL-49-9: repassa o saldoAnterior do store a handleGerar (destino B4)', () => {
+    estado.saldoAnterior = 4321.09
+    render(<TelaRevisao {...props()} />)
+
+    fireEvent.click(screen.getByText('Exportar .xlsx').closest('button')!)
+    fireEvent.click(screen.getByText('confirmar-export'))
+
+    expect(mockHandleGerarPipeline).toHaveBeenCalledWith(
+      expect.objectContaining({ saldoAnterior: 4321.09 }),
+    )
   })
 
   it('PainelLateral é SEMPRE renderizado — painel null abre na aba "avisos" (hotfix 2026-08-02)', () => {

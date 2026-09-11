@@ -1,0 +1,152 @@
+/**
+ * Devolução de foco à grid de revisão — item 51 do TODO.
+ *
+ * Sintoma: a grid parece uma coisa separada do app. Ao clicar num botão, num card de
+ * aviso ou no painel lateral, o foco vai para o elemento clicado e o teclado deixa de
+ * chegar na grid; é preciso clicar nela de novo para voltar a digitar.
+ *
+ * A correção é devolver o foco à grid **depois** de interações da UI ao redor — mas só
+ * quando o clique não entregou o foco a alguém que legitimamente precisa dele. Esta
+ * decisão vive aqui como função **pura sobre o DOM** (mesmo espírito de `colagemGrid.ts`):
+ * o Glide desenha em canvas e não roda em jsdom, então a política fica testável sozinha e
+ * o `ReviewGrid` guarda apenas a fiação (ouvir o clique e chamar `focus()` do Glide).
+ */
+
+/**
+ * Seletor dos elementos que recebem digitação e nunca podem perder o foco para a grid.
+ *
+ * Exportado desde o item 38 para que `menuContextoGrid.ts` decida "há célula em edição?" com a
+ * mesma lista, em vez de manter uma segunda cópia que envelheceria sozinha.
+ */
+export const SELETOR_ENTRADA_DE_TEXTO = 'input, textarea, select, [contenteditable=""], [contenteditable="true"]'
+
+/** `true` quando `el` é — ou está dentro de — um elemento que casa com `seletor`. */
+function casaOuEstaDentro(el: Element | null, seletor: string): boolean {
+  return el !== null && el.closest(seletor) !== null
+}
+
+export interface ParamsFocoGrid {
+  /** Alvo do clique (`event.target`). */
+  alvo: Element | null
+  /** Elemento focado logo após o clique (`document.activeElement`). */
+  ativo: Element | null
+  /** Container que embrulha o `DataEditor` do Glide; `null` antes da montagem. */
+  containerGrid: Element | null
+  /** `true` para clique de ponteiro de verdade (`MouseEvent.detail > 0`). */
+  cliqueDePonteiro: boolean
+  /** `true` quando a grid tem célula corrente — sem ela não há para onde voltar. */
+  temCelulaCorrente: boolean
+  /** `true` quando há modal aberto na página **depois** que o clique foi processado. */
+  temModalAberto: boolean
+}
+
+/**
+ * Seletor dos elementos que, abertos, ficam donos do foco da página.
+ *
+ * `[role="menu"]` entrou com o item 38: o menu de contexto da grid não é um diálogo, mas é dono
+ * do foco pelo mesmo motivo que um. Sem ele aqui, o clique num item do menu (ou na sua moldura)
+ * faria a grid puxar o foco de volta dois frames depois, com o menu ainda aberto — ele fecharia
+ * na cara do usuário e a navegação por teclado dentro dele morreria.
+ */
+export const SELETOR_MODAL = '[role="dialog"], [aria-modal="true"], [role="menu"]'
+
+/** `true` quando algum modal está aberto em `doc` — a leitura de DOM que alimenta `temModalAberto`. */
+export function haModalAberto(doc: Document): boolean {
+  return doc.querySelector(SELETOR_MODAL) !== null
+}
+
+export interface ParamsFocoAposFecharModal {
+  /** `true` se havia modal aberto no instante da tecla, antes do React reagir. */
+  modalEstavaAberto: boolean
+  /** `true` se ainda há modal aberto depois que a tecla foi processada. */
+  temModalAberto: boolean
+  /** Elemento focado depois que a tecla foi processada (`document.activeElement`). */
+  ativo: Element | null
+  /** Container que embrulha o `DataEditor` do Glide; `null` antes da montagem. */
+  containerGrid: Element | null
+  /** `true` quando a grid tem célula corrente — sem ela não há para onde voltar. */
+  temCelulaCorrente: boolean
+}
+
+/**
+ * Decide se o foco deve voltar para a grid depois de uma tecla que **fechou um modal**.
+ *
+ * A política do clique (`deveDevolverFocoAGrid`) não cobre este caminho, e a inspeção visual da
+ * onda 4 mostrou o buraco: fechar o modal de exportação com Escape desmonta o diálogo, o foco cai
+ * no `<body>` e a grid volta a ficar surda ao teclado — exatamente o sintoma que o item 51 existe
+ * para matar, só que pela via do teclado.
+ *
+ * A condição é deliberadamente estreita — "havia modal e agora não há" — para não sequestrar o
+ * Escape em nenhum outro papel: cancelar a edição de uma célula, limpar uma busca. Nesses casos
+ * `modalEstavaAberto` é `false` e a função não opina.
+ *
+ * O menu de contexto da grid (item 38) entra pela porta do `SELETOR_MODAL` e é caso desejado, não
+ * exceção: o usuário estava na grid quando abriu o menu, então o Escape que o fecha tem de
+ * devolver o foco exatamente para lá.
+ */
+export function deveDevolverFocoAposFecharModal({
+  modalEstavaAberto,
+  temModalAberto,
+  ativo,
+  containerGrid,
+  temCelulaCorrente,
+}: ParamsFocoAposFecharModal): boolean {
+  if (!modalEstavaAberto) return false
+  if (temModalAberto) return false
+  if (!temCelulaCorrente) return false
+  if (containerGrid === null) return false
+
+  // Quem quer que tenha ficado com o foco de texto manda — mesmo raciocínio da política do clique.
+  if (casaOuEstaDentro(ativo, SELETOR_ENTRADA_DE_TEXTO)) return false
+
+  return true
+}
+
+/**
+ * Decide se o foco deve voltar para a grid após um clique na UI ao redor.
+ *
+ * Devolve `true` apenas no caso que o item 51 descreve: clique de ponteiro num elemento
+ * **não textual** fora da grid (botão, card de aviso, área do painel), com a grid tendo
+ * uma célula corrente para onde voltar. Todos os demais casos preservam o foco de quem o
+ * recebeu:
+ *
+ * - **Clique dentro da própria grid** — o Glide já gerencia o foco dela, inclusive o
+ *   overlay de edição (`GhostEditor`), que monta um `<input>` real.
+ * - **Campos de entrada de texto** (`input`/`textarea`/`select`/`contenteditable`), aqui e
+ *   em qualquer lugar: busca, formulários de VR/rendimentos, inputs inline de avisos e o
+ *   switch da colinha. Vale tanto para o alvo do clique quanto para quem ficou focado —
+ *   clicar num `<label>` foca o campo associado, e é o campo que manda.
+ * - **Modais**: enquanto um está aberto, o foco é dele; puxá-lo para a grid atrás do modal
+ *   quebraria a navegação por teclado do próprio modal e deixaria a digitação vazar para a
+ *   célula por trás.
+ *
+ * Sobre modais, o que decide é `temModalAberto` — lido do documento já com o clique
+ * processado — e não onde o clique caiu. Os dois casos que a inspeção visual pegou mostram
+ * por quê: o botão que **abre** o modal ("Exportar .xlsx") mora fora dele, e o botão que o
+ * **fecha** mora dentro mas já foi desmontado quando a decisão roda. Olhando o alvo, o
+ * primeiro vazava digitação para a grid atrás do modal e o segundo deixava o foco parado no
+ * `<body>`; olhando o estado da página, ambos acertam.
+ * - **Ativação por teclado** (`detail === 0`: Enter/Espaço num botão focado, navegação por
+ *   Tab): sequestrar o foco aí destruiria a navegação por teclado da página.
+ */
+export function deveDevolverFocoAGrid({
+  alvo,
+  ativo,
+  containerGrid,
+  cliqueDePonteiro,
+  temCelulaCorrente,
+  temModalAberto,
+}: ParamsFocoGrid): boolean {
+  if (!cliqueDePonteiro) return false
+  if (!temCelulaCorrente) return false
+  if (temModalAberto) return false
+  if (containerGrid === null || alvo === null) return false
+
+  // Clique dentro da grid: o Glide cuida do próprio foco.
+  if (containerGrid.contains(alvo)) return false
+
+  if (casaOuEstaDentro(alvo, SELETOR_ENTRADA_DE_TEXTO)) return false
+  if (casaOuEstaDentro(ativo, SELETOR_ENTRADA_DE_TEXTO)) return false
+
+  return true
+}

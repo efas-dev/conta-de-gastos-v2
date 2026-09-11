@@ -73,7 +73,11 @@ export function FormVR({ mesRef }: FormVRProps) {
     }
     for (const despesa of atual) {
       const valorNumerico = Number(despesa.valor.replace(',', '.'))
-      if (despesa.valor.trim() === '' || Number.isNaN(valorNumerico) || valorNumerico <= 0) {
+      // `Number.isFinite` e não `Number.isNaN`: um valor grande demais para o double vira
+      // `Infinity`, que não é NaN e é > 0 — passava a guarda e chegava ao writer como
+      // `<v>Infinity</v>`, XML inválido em OOXML que faz o Excel recusar o .xlsx como corrompido.
+      // Mesma fronteira de `escreverCampoNoDraft` (`src/ui/store/appStore.ts`).
+      if (despesa.valor.trim() === '' || !Number.isFinite(valorNumerico) || valorNumerico <= 0) {
         return 'Cada despesa precisa de um valor maior que zero.'
       }
       if (despesa.natureza.trim() === '') {

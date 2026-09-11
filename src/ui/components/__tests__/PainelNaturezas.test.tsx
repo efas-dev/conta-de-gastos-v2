@@ -2,7 +2,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
-import { PainelNaturezas } from '../PainelNaturezas'
+import { PainelNaturezas, somarPorNatureza } from '../PainelNaturezas'
 import { useAppStore } from '../../store/appStore'
 import type { Lancamento, NaturezaRica } from '../../../types'
 
@@ -219,5 +219,115 @@ describe('PainelNaturezas — cartão como filtro de natureza', () => {
 
     expect(cartao('TRN').getAttribute('aria-pressed')).toBe('true')
     expect(cartao('ALM').getAttribute('aria-pressed')).toBe('false')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Item 41 do TODO — switch "somar só as minhas iniciais"
+//
+// Decisões já tomadas: default DESLIGADO; o filtro do cartão sobre a grid NÃO
+// acompanha o recorte (o switch muda só a soma exibida).
+// ---------------------------------------------------------------------------
+
+/** Lançamento com iniciais explícitas — o `lancamento()` do topo fixa 'ES'. */
+function lancamentoDe(natureza: string, valor: number, iniciais: string): Lancamento {
+  return { ...lancamento(natureza, valor), iniciais }
+}
+
+describe('PainelNaturezas — somarPorNatureza com recorte por iniciais (item 41)', () => {
+  it('TLSN-6: com iniciais informadas, soma só os lançamentos daquela pessoa', () => {
+    const lancamentos = [
+      lancamentoDe('ALM', -100, 'ES'),
+      lancamentoDe('ALM', -40, 'RM'),
+      lancamentoDe('TRN', -30, 'RM'),
+    ]
+    expect(somarPorNatureza(lancamentos, 'ES')).toEqual(new Map([['ALM', -100]]))
+  })
+
+  it('TLSN-7: a comparação de iniciais ignora caixa e espaços em volta', () => {
+    const lancamentos = [lancamentoDe('ALM', -100, ' es '), lancamentoDe('ALM', -40, 'RM')]
+    expect(somarPorNatureza(lancamentos, 'Es')).toEqual(new Map([['ALM', -100]]))
+  })
+
+  it('TLSN-8: sem iniciais (undefined/vazio), soma tudo — comportamento original', () => {
+    const lancamentos = [lancamentoDe('ALM', -100, 'ES'), lancamentoDe('ALM', -40, 'RM')]
+    expect(somarPorNatureza(lancamentos)).toEqual(new Map([['ALM', -140]]))
+    expect(somarPorNatureza(lancamentos, '')).toEqual(new Map([['ALM', -140]]))
+  })
+})
+
+describe('PainelNaturezas — switch de iniciais na UI (item 41)', () => {
+  const naturezas: NaturezaRica[] = naturezasFicticias
+
+  function ligarSwitch() {
+    act(() => {
+      screen.getByRole('switch').click()
+    })
+  }
+
+  beforeEach(() => {
+    useAppStore.setState({
+      iniciais: 'ES',
+      lancamentos: [
+        lancamentoDe('ALM', -100, 'ES'),
+        lancamentoDe('ALM', -40, 'RM'),
+        lancamentoDe('TRN', -30, 'RM'),
+      ],
+    })
+  })
+
+  it('TLSN-9: nasce DESLIGADO e a soma exibida é a geral', () => {
+    render(<PainelNaturezas naturezas={naturezas} />)
+
+    expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'false')
+    expect(screen.getByText('-R$ 140,00')).toBeInTheDocument()
+    expect(screen.getByText('-R$ 30,00')).toBeInTheDocument()
+  })
+
+  it('TLSN-10: ligado, soma só os lançamentos das iniciais da sessão', () => {
+    render(<PainelNaturezas naturezas={naturezas} />)
+    ligarSwitch()
+
+    expect(screen.getByRole('switch')).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByText('-R$ 100,00')).toBeInTheDocument()
+    expect(screen.queryByText('-R$ 140,00')).toBeNull()
+  })
+
+  it('TLSN-11: ligado, natureza só com lançamentos de outra pessoa OMITE o número', () => {
+    const { container } = render(<PainelNaturezas naturezas={naturezas} />)
+    ligarSwitch()
+
+    // TRN só tem lançamento de 'RM' — some o número, não vira "R$ 0,00"
+    expect(container.querySelectorAll('.nat-soma')).toHaveLength(1)
+    expect(screen.queryByText(/R\$\s*0,00/)).toBeNull()
+  })
+
+  it('TLSN-12: o switch tem rótulo acessível', () => {
+    render(<PainelNaturezas naturezas={naturezas} />)
+
+    expect(screen.getByRole('switch', { name: /iniciais/i })).toBeInTheDocument()
+  })
+
+  it('TLSN-13: com o switch ligado, o cartão continua filtrando a grid pela natureza INTEIRA', () => {
+    render(<PainelNaturezas naturezas={naturezas} />)
+    ligarSwitch()
+
+    act(() => {
+      ;(screen.getByText('ALM').closest('button') as HTMLElement).click()
+    })
+
+    expect(useAppStore.getState().filtroNaturezas).toEqual(['ALM'])
+    // A visão da grid traz as DUAS linhas de ALM, inclusive a de 'RM'
+    const visiveis = useAppStore.getState().lancamentosVisiveis
+    expect(visiveis).toHaveLength(2)
+    expect(visiveis.map((l) => l.iniciais).sort()).toEqual(['ES', 'RM'])
+  })
+
+  it('TLSN-14: sem iniciais na sessão não há recorte possível — o switch não aparece', () => {
+    useAppStore.setState({ iniciais: '' })
+    render(<PainelNaturezas naturezas={naturezas} />)
+
+    expect(screen.queryByRole('switch')).toBeNull()
+    expect(screen.getByText('-R$ 140,00')).toBeInTheDocument()
   })
 })

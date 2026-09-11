@@ -386,7 +386,7 @@ describe('App — handleProduzir liga adicionarAvisos real ao pipeline (T6)', ()
   beforeEach(() => {
     // emRevisao precisa ser false para o input de upload ficar visível — zera lancamentos.
     useAppStore.setState({ lancamentos: [] })
-    vi.stubGlobal('fetch', vi.fn(async () => ({ arrayBuffer: async () => new Uint8Array([0]).buffer })))
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, arrayBuffer: async () => new Uint8Array([0]).buffer })))
   })
 
   afterEach(() => {

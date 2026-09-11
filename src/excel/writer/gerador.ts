@@ -7,6 +7,20 @@ const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
 /**
+ * Data fixa carimbada no cabeçalho DOS de cada entrada do .xlsx gerado.
+ *
+ * Sem isso, `zipSync` usa `Date.now()`: o mesmo insumo produzia bytes diferentes conforme o
+ * relógio — o campo guarda os segundos em passos de 2 (`seconds >> 1`), então duas gerações
+ * seguidas batiam dentro do mesmo balde e divergiam em 2 bytes ao cruzar a fronteira. Era o flake
+ * intermitente de `src/ui/store/__tests__/exportacao.test.ts`, que compara dois .xlsx byte a byte.
+ *
+ * O valor precisa cair na faixa 1980–2099 do formato DOS (`mtime: 0` = 1970 e o fflate lança
+ * "date not in range 1980-2099"). O Excel ignora o carimbo das entradas do zip; o que se ganha é
+ * uma propriedade real: mesmo insumo, mesmos bytes.
+ */
+const MTIME_FIXO = Date.UTC(2020, 0, 1, 12, 0, 0)
+
+/**
  * Escapa caracteres especiais XML no conteúdo de texto de células.
  * Necessário para embutir valores como inline strings sem corromper o XML.
  */
@@ -39,15 +53,25 @@ function celulaStr(ref: string, style: string | null, value: string): string {
  * Gera o XML de uma célula numérica.
  * Formato: <c r="REF" [s="STYLE"]><v>VALUE</v></c>
  * Quando style é null, omite o atributo s (célula sem estilo explícito).
+ *
+ * Guarda de última linha contra valor não-finito: `Infinity`/`NaN` interpolados crus produziriam
+ * `<v>Infinity</v>`, que NÃO é conteúdo numérico válido em OOXML — o Excel não reclama da célula,
+ * recusa o arquivo INTEIRO como corrompido, e o usuário só descobre ao abrir o .xlsx já baixado.
+ * Este é o choke point que produz o arquivo, então é onde a garantia vale: falhar alto, sem
+ * entregar artefato ruim. As fronteiras de entrada (forms, store) já barram antes; se algo chegar
+ * aqui, é bug de código novo, não entrada de usuário.
  */
 function celulaNum(ref: string, style: string | null, value: number): string {
+  if (!Number.isFinite(value)) {
+    throw new Error(`Valor não-finito na célula ${ref}: ${value}. O .xlsx não foi gerado.`)
+  }
   const styleAttr = style ? ` s="${style}"` : ''
   return `<c r="${ref}"${styleAttr}><v>${value}</v></c>`
 }
 
 /**
- * Injeta iniciais em B2, mês de referência em B3, e dados dos lançamentos
- * nas linhas A9:H{8+n} de sheet1.xml — layout Modelo 483f420.
+ * Injeta iniciais em B2, mês de referência em B3, saldo inicial em B4 e dados
+ * dos lançamentos nas linhas A9:H{8+n} de sheet1.xml — layout Modelo 483f420.
  *
  * Células do Modelo.xlsx virgem (483f420) nas linhas de dados (9–504):
  *   A (Fonte):        s="42"  — empty: <c r="An" s="42"/>
@@ -63,6 +87,10 @@ function celulaNum(ref: string, style: string | null, value: number): string {
  * B3 no Modelo.xlsx virgem: <c r="B3" s="45"/> — mas re-saves do Modelo já
  * variaram entre vazia e shared string (<c r="B3" s="45" t="s"><v>89</v></c>),
  * por isso a substituição é por regex que aceita ambas as formas.
+ * B4 no Modelo.xlsx virgem: <c r="B4" s="38"/> — saldo INICIAL do mês, célula
+ * livre (item 49 do TODO). Mesmo endurecimento por regex de B3, porque um
+ * re-save do Modelo com valor deixaria `<c r="B4" s="38"><v>…</v></c>`.
+ * B5 é o saldo FINAL e é FÓRMULA (`B4+SUM(H9:H1004)`) — intocável.
  *
  * Estilos derivados empiricamente do Modelo 483f420 via inspeção de
  * xl/worksheets/sheet1.xml no ZIP da fixture.
@@ -72,6 +100,7 @@ function injetarSheet1(
   iniciais: string,
   lancamentos: Lancamento[],
   mesReferencia: string,
+  saldoAnterior: number | null,
 ): string {
   let result = xml
 
@@ -87,6 +116,16 @@ function injetarSheet1(
     /<c r="B3" s="45"(?:\/>|[^>]*>.*?<\/c>)/,
     () => celulaStr('B3', '45', mesReferencia),
   )
+
+  // Injeta o saldo inicial em B4 como número (item 49). Sem saldo lido do .xlsx
+  // do mês anterior a célula fica em branco, exatamente como no Modelo virgem —
+  // e B5 (fórmula) resolve o saldo final como se o mês começasse do zero.
+  if (saldoAnterior !== null) {
+    result = result.replace(
+      /<c r="B4" s="38"(?:\/>|[^>]*>.*?<\/c>)/,
+      () => celulaNum('B4', '38', saldoAnterior),
+    )
+  }
 
   // Injeta cada lançamento nas linhas 9, 10, 11, ... (n = i + 9)
   for (let i = 0; i < lancamentos.length; i++) {
@@ -246,6 +285,9 @@ function definirTabSelected(xml: string, selecionada: boolean): string {
  * @param lancamentos - Lançamentos a injetar a partir da linha A9
  * @param dicEntries - Entradas do dicionário a injetar na aba Dicionario
  * @param mesReferencia - Mês de referência no formato YYYY-MM, gravado em B3 (obrigatório)
+ * @param saldoAnterior - Saldo final do mês anterior (`lerSaldoAnterior`/B5 do .xlsx
+ *                        importado), gravado em B4 como saldo inicial. `null`/omitido
+ *                        deixa B4 em branco, como no Modelo virgem (item 49 do TODO).
  * @returns Bytes do .xlsx gerado
  */
 export function gerarXlsx(
@@ -254,6 +296,7 @@ export function gerarXlsx(
   lancamentos: Lancamento[],
   dicEntries: DicEntry[],
   mesReferencia: string,
+  saldoAnterior: number | null = null,
 ): Uint8Array {
   if (mesReferencia.trim() === '') {
     throw new Error('mesReferencia é obrigatório')
@@ -261,11 +304,14 @@ export function gerarXlsx(
 
   const parts = unzipSync(modelo)
 
-  // 1. Modificar sheet1.xml (aba Extrato): B2, B3, linhas de dados A9:H{8+n}
+  // 1. Modificar sheet1.xml (aba Extrato): B2, B3, B4, linhas de dados A9:H{8+n}
   //    e seleção de aba (item 19 — o gerado abre na Extrato)
   const sheet1Xml = decoder.decode(parts['xl/worksheets/sheet1.xml'])
   parts['xl/worksheets/sheet1.xml'] = encoder.encode(
-    definirTabSelected(injetarSheet1(sheet1Xml, iniciais, lancamentos, mesReferencia), true),
+    definirTabSelected(
+      injetarSheet1(sheet1Xml, iniciais, lancamentos, mesReferencia, saldoAnterior),
+      true,
+    ),
   )
 
   // 2. Modificar sheet2.xml (aba Dicionario): substituir <sheetData/> com entradas
@@ -303,5 +349,7 @@ export function gerarXlsx(
     }
   }
 
-  return zipSync(parts)
+  // `mtime` fixo: sem ele o zip carimba `Date.now()` e o mesmo insumo sai com bytes diferentes
+  // conforme a hora da geração (ver `MTIME_FIXO`).
+  return zipSync(parts, { mtime: MTIME_FIXO })
 }
