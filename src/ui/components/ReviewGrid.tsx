@@ -790,6 +790,10 @@ export function ReviewGrid({ onSplitDetectado, mesRef }: ReviewGridProps) {
       rows: CompactSelection.fromSingleSelection(linhaAncora),
       current: undefined,
     })
+    // Seleção programática não dispara `onGridSelectionChange` (mesma armadilha documentada em
+    // `navegarParaRef` acima): sem isto o rodapé continuaria exibindo a soma da seleção
+    // ANTERIOR, que já não é a que está realçada na grid.
+    setSomaSelecao(calcularSomaSelecionados(lancamentosRef.current, [linhaAncora]))
   }, [mapaExibidoReal, avisoEmInspecao, lancamentos, focoInspecao, candidatoEmFoco])
 
   // -----------------------------------------------------------------
