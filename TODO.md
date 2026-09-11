@@ -96,25 +96,24 @@ Hoje o app **aponta** para linhas mas não **leva** até elas.
 > verificado no app (rolei ao topo, cliquei, a grid voltou à linha 45 sem sair da inspeção).
 
 1. ~~**Modo inspeção sem auto-scroll.**~~ Entregue por inteiro — ver a correção acima.
-2. **Incompletos sem localizador.** O item 34 alertava: "revisar o que os chips filtram para
-   não perder a localização de linhas incompletas". A linha de filterchips foi aposentada
-   (2026-08-02, commit `034221f`, que registra `filtroFontes`/só-incompletos ficando "sem UI")
-   e o que restou é o contador "X de Y classificados" com `title="N ainda sem natureza"`. Ele
-   **informa** quantas faltam; não leva a nenhuma delas. Numa grid de dezenas/centenas de
-   linhas isso é caçada visual.
+2. ~~**Incompletos sem localizador.**~~ **Entregue na onda 6** (2026-09-11) — ver Concluídos. O
+   contador "X de Y classificados" virou `role="switch"`: clicar liga o filtro que já existia no
+   store e mostra só as pendentes. Antes de expor, o filtro precisou ser **corrigido** — usava
+   critério próprio (`!natureza || !iniciais`) e mostrava um conjunto diferente do número que ele
+   promete localizar.
 
-Decidir na spec: auto-scroll ao entrar em inspeção vs. botão "ir para"; navegação
-próxima/anterior entre as linhas de um mesmo aviso; e se os incompletos voltam como filtro,
-como salto (n/N com setas), ou ambos. Interage com o 32/33 (jornada) — a etapa "Classificar"
-só fecha quando não há incompletos.
+O que **sobra** deste item para a spec: navegação próxima/anterior entre as linhas de um mesmo
+aviso, e o salto n/N com setas (o filtro entrega o recorte, não a navegação sequencial dentro
+dele). Interage com o 32/33 (jornada) — a etapa "Classificar" só fecha quando não há incompletos.
 
 **Atualização de 2026-09-10:** o item 38 (seleção de linha + menu de contexto), que este item
 citava como dependência, foi **entregue** na onda 5 — ver Concluídos. Nota de escopo que nasceu
 lá: a linha em branco inserida manualmente, enquanto totalmente vazia, **não** conta como
 incompleta (`validarLinha`, `src/dominio/validacao.ts:13`, só cobra natureza de linha com
-transcrição ou valor). Ela aparece no filtro de só-incompletos, mas não no contador
-"X de Y classificados" — comportamento deliberado, e a spec deste item precisa saber disso ao
-definir o critério de "etapa Classificar concluída".
+transcrição ou valor). Ela aparecia no filtro de só-incompletos mas não no contador
+"X de Y classificados" — **essa divergência acabou na onda 6**: os dois passaram a usar
+`validarLinha`, então a linha em branco não conta nem aparece em nenhum dos dois. A spec deste
+item precisa saber disso ao definir o critério de "etapa Classificar concluída".
 
 ### 40. Bug: colar múltiplas células às vezes buga na grid — **parcialmente entregue**
 Ao copiar duas células (ex.: Natureza + Descrição de uma linha) e colar em outra linha, às
@@ -212,12 +211,12 @@ critério é decisão de política (limiar, tamanho mínimo do subconjunto, prec
 casamento") e regride o pagamento parcial que a spec suporta de propósito — **vira spec, não
 hotfix**.
 
-*Achado lateral, não corrigido:* `classificarFontePorPrefixo` lança para prefixo fora da
-convenção e `orquestrarDeteccao` (`registry.ts:229-260`) não tem try/catch, com
-`reproduzirAvisos` rodando **antes** de `setLancamentos` (`handlersPipeline.ts:178` vs `:189`)
-— uma fonte fora da convenção derrubaria a importação inteira. Inalcançável hoje (os parsers
-usam literais conformantes, a coluna Fonte é somente leitura e a fonte `manual` entrou na
-convenção); interessa como robustez do contrato de extensão, que é decisão de produto.
+*Achado lateral — **corrigido na onda 6** (2026-09-11), ver Concluídos.* `orquestrarDeteccao`
+ganhou proteção por detector e a falha virou aviso declarado. A inspeção achou um **segundo
+caminho que este parágrafo não registrava**, anterior ao do pipeline: `TelaImportacao.tsx:452`
+chamava `classificarFontePorPrefixo` no RENDER da lista de arquivos, então a tela de importação
+caía antes mesmo do "Produzir". O ruído do subset-sum (os 14 candidatos) **continua sendo spec** —
+mas desde a onda 6 o usuário ao menos **vê** quais são os candidatos, em vez de só o número.
 
 ### 50. Dicionário por similaridade em vez de igualdade pura
 O dicionário poderia usar um **algoritmo de similaridade** em vez de casamento por semelhança
@@ -240,10 +239,14 @@ como não regredir os casos que hoje casam exato.
   `upload-pages-artifact@v3` e `deploy-pages@v4`, ambas na major corrente.
 - **Dívidas técnicas obsoletas:** dos 32 arquivos de `Docs/debt/tecnica/`, **30 estão
   resolvidos** e foram anotados como tal na onda 4 (15 são meta-registros do harness, os demais
-  são defeitos já corrigidos — verificados um a um contra o código). Seguem **2 vivos**:
-  `candidatos-de-aviso-nunca-renderizados.md` (`Aviso.candidatos` sem leitor na UI) e
+  são defeitos já corrigidos — verificados um a um contra o código). Dos 2 que seguiam vivos,
+  `candidatos-de-aviso-nunca-renderizados.md` foi **fechado na onda 6**. Segue **1 vivo**:
   `security-spec-20260824-fatura-itau-xlsx.md` (array denso sem teto em
-  `leitorCelulas.ts:128-140`). `Docs/` é git-ignored, então a faxina vive só em disco.
+  `leitorCelulas.ts:128-140`) — o `maxCol` vem do `r="XFD…"` da célula, então uma planilha com
+  referência de coluna alta aloca ~16k strings por linha. Mesmo modelo de ameaça já **descartado
+  como irrelevante** pelo usuário no caso do zip bomb (client-side, o usuário trava a própria aba
+  com um arquivo que ele mesmo carregou); o clamp é um hotfix de 2 linhas se um dia interessar.
+  `Docs/` é git-ignored, então a faxina vive só em disco.
 - **Achados de segurança da spec dicionário** (zip bomb no `unzipSync` + `sheetTarget` como
   chave de lookup): **DESCARTADOS como irrelevantes por decisão do usuário (2026-07-18)** —
   arquitetura 100% client-side e stateless; o impacto máximo é o usuário travar a própria aba
@@ -253,6 +256,38 @@ como não regredir os casos que hoje casam exato.
 ---
 
 ## ✅ Concluídos
+
+### Onda 6 de hotfixes — item 39.2, candidatos na UI e robustez do registry (2026-09-11, branch `hotfixes-onda-6`)
+Três pendências confirmadas como ausentes no código (`git log -S` no histórico completo, não só no
+estado atual) e corrigidas test-first. 1681 testes verdes; verificado no app com os arquivos reais
+do Itaú de `data_sample/` — o mesmo cenário que motivou o item 47.
+
+- **Item 39.2 — o contador virou o localizador.** `setFiltroSoIncompletos` existia no store desde
+  `grid-ux-filtros` e não tinha **um único chamador** desde que a linha de filterchips saiu
+  (`034221f`). O contador "X de Y classificados" virou `role="switch"`. Antes de expor, o filtro
+  teve de ser corrigido: usava critério próprio (`!natureza || !iniciais`) e divergia em três
+  pontos do contador que promete localizar — cobrava **iniciais** (que VR e rendimentos deixam
+  vazias de propósito, então todos apareceriam como incompletos), **escondia** natureza fora da
+  lista válida e **mostrava** a linha em branco do item 38. Agora os dois usam `validarLinha`.
+  `calcularVisao` recebe `naturezasValidas` como parâmetro obrigatório — o `tsc` provou a
+  cobertura dos 11 call-sites. No app: 26 de 67 classificados, filtro ligado → exatamente 41
+  linhas. Testes TL-INC-1..9. ✅
+- **`Aviso.candidatos` ganhou leitor.** A conciliação listava candidatos desde
+  `conciliacao-robusta` e a UI nunca os renderizou: a tela mandava "escolha qual remover" sem
+  mostrar quais. Agora o card informativo lista cada um pelo `resumo` e leva à linha. Como o aviso
+  é informativo e tem `alvo: []`, a inspeção não servia de carona — nasceu `candidatoEmFoco` no
+  slice, reusando o contador `focoInspecao`. A linha é **selecionada**, não pintada: o realce
+  sai/fica afirma decisão de detector, e aqui quem decide é o usuário. Testes TL-CAND-1..13. ✅
+- **Registry robusto ao contrato de extensão** (achado lateral do item 47). Cada detector roda
+  protegido e a falha vira aviso declarado com id determinístico. Nasceu também
+  `classificarFontePorPrefixoParaExibicao` para o render da lista de arquivos, onde a tela caía
+  antes do "Produzir" — caminho que o TODO não registrava. **Reverte parcialmente a Task 6 de
+  `conciliacao-robusta`** (TL-F): a intenção de não engolir o erro continua, mas o "ruidoso"
+  virava silêncio, porque o usuário só via uma tela que não reagia. Testes TL-ROB-1..6. ✅
+- **Achado da inspeção visual** (que teste nenhum pegaria): seleção programática não dispara
+  `onGridSelectionChange`, então o rodapé "Soma da seleção" ficava com o total da seleção
+  anterior enquanto a grid já realçava outra linha. Mesma armadilha que `navegarParaRef` já
+  documentava no arquivo. ✅
 
 ### Spec `spec-20260831-motor-de-pares` — itens 23 e 27 (arquivada, mesclada na dev)
 Motor de casamento de pares que se anulam. 7 tasks + 2 fixes de fachada; arquivada em
