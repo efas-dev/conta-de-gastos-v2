@@ -178,6 +178,11 @@ describe('exportacao — invariância ao filtro', () => {
       fazerLancamento({ natureza: 'Lazer', iniciais: 'ES' }),
     ]
 
+    // `filtroSoIncompletos` usa `validarLinha` (item 39.2 do TODO), que precisa da lista
+    // de naturezas do Modelo para saber o que é natureza válida — sem ela as três linhas
+    // seriam "pendentes" e o filtro não recortaria nada.
+    useAppStore.setState({ naturezasValidas: ['Alimentação', 'Lazer'] })
+
     const store = useAppStore.getState()
     store.setLancamentos(lancamentos)
 

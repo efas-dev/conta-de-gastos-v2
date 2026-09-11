@@ -215,6 +215,13 @@ a:hover {
   outline: 2px solid var(--verde);
   outline-offset: 2px;
 }
+/* Regra separada de propósito: o bloco acima é verificado literalmente por
+   `index-css-patches.test.ts` (alarme de drift da Task A1 do patch de UI/UX), e
+   inserir um sexto seletor no meio dele derrubaria esse alarme. */
+.progresso:focus-visible {
+  outline: 2px solid var(--verde);
+  outline-offset: 2px;
+}
 .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -558,6 +565,8 @@ select.input {
   padding: 2px 8px;
 }
 
+/* `.progresso` é um <button role="switch"> desde o item 39.2 do TODO (clicar filtra a
+   grid pelas linhas pendentes) — daí o reset de aparência nativa do botão. */
 .progresso {
   display: flex;
   align-items: center;
@@ -565,6 +574,25 @@ select.input {
   font-size: 12.5px;
   font-weight: 600;
   color: var(--texto-3);
+  font-family: inherit;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.progresso:hover:not(:disabled) {
+  background: var(--verde-suave);
+  border-color: var(--verde-borda);
+}
+.progresso.filtrando {
+  background: var(--verde-suave);
+  border-color: var(--verde);
+  color: var(--verde-texto);
+}
+.progresso:disabled {
+  cursor: default;
 }
 .prog-barra {
   width: 90px;
