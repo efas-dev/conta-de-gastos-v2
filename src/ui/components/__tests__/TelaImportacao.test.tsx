@@ -388,6 +388,47 @@ describe('TelaImportacao', () => {
     expect(screen.getByTestId('fonte-rotulo')).toHaveAttribute('data-tipo', 'fatura')
   })
 
+  // TL-ROB-5/6 (achado lateral do item 47): a convenção de prefixo é contrato, e
+  // `classificarFontePorPrefixo` lança para quem a viola. Aqui a chamada estava no RENDER: um
+  // parser da comunidade com fonte fora da convenção derrubava a tela de importação inteira
+  // antes mesmo de o usuário clicar em "Produzir".
+  it('TL-ROB-5: fonte fora da convenção não derruba a tela de importação', async () => {
+    estado.iniciais = 'ES'
+    mockParsear.mockReturnValue({
+      lancamentos: [
+        { id: '1', data: '2024-03-10', fonte: 'nubank_extrato' } as Lancamento,
+      ],
+    })
+    const { container } = render(<TelaImportacao {...props({ mesEscolhido: '2024-03' })} />)
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [csvFile('estranho.csv')] } })
+    })
+
+    // A tela continua de pé e o arquivo segue listado.
+    await waitFor(() => expect(container.textContent).toContain('estranho.csv'))
+  })
+
+  it('TL-ROB-6: fonte fora da convenção é exibida crua, sem badge de tipo inventado', async () => {
+    estado.iniciais = 'ES'
+    mockParsear.mockReturnValue({
+      lancamentos: [
+        { id: '1', data: '2024-03-10', fonte: 'nubank_extrato' } as Lancamento,
+      ],
+    })
+    const { container } = render(<TelaImportacao {...props({ mesEscolhido: '2024-03' })} />)
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [csvFile('estranho.csv')] } })
+    })
+
+    await waitFor(() => expect(container.textContent).toContain('nubank_extrato'))
+    // Sem classificação honesta possível, nenhum rótulo fatura/extrato é renderizado.
+    expect(screen.queryByTestId('fonte-rotulo')).toBeNull()
+  })
+
   it('rótulo de fonte "extrato_*" mostra "extrato" independente de mesEscolhido (Task 7)', async () => {
     estado.iniciais = 'ES'
     mockParsear.mockReturnValue({

@@ -268,7 +268,7 @@ export function orquestrarDeteccao(
 
   for (const detector of detectoresLista) {
     if (detector.escopo === 'global') {
-      avisos.push(...detector.detectar(lancamentos, contexto))
+      avisos.push(...executarDetector(detector, lancamentos, contexto))
       continue
     }
 
@@ -283,11 +283,55 @@ export function orquestrarDeteccao(
       }
     }
     for (const fatia of fatias.values()) {
-      avisos.push(...detector.detectar(fatia, contexto))
+      avisos.push(...executarDetector(detector, fatia, contexto, fatia[0]?.fonte))
     }
   }
 
   return deduplicarPorPrecedenciaDeAlvo(avisos)
+}
+
+/**
+ * Roda UM detector protegido: uma detecção que falha não pode derrubar as outras nem a
+ * importação inteira (achado lateral do item 47 do TODO).
+ *
+ * O contrato de extensão do projeto é o prefixo de `fonte` declarado pelo parser, e
+ * `classificarFontePorPrefixo` (`src/dominio/mes.ts`) lança para quem o viola — comportamento
+ * correto na fronteira, porque um prefixo desconhecido não tem classificação honesta. Só que
+ * `orquestrarDeteccao` roda dentro de `reproduzirAvisos`, ANTES de `setLancamentos`
+ * (`src/ui/handlersPipeline.ts`): sem esta proteção, um parser da comunidade com fonte fora da
+ * convenção fazia a importação inteira morrer — nenhum lançamento chegava à grid.
+ *
+ * A falha é DECLARADA, nunca engolida: vira um aviso informativo nomeando a origem que falhou,
+ * porque uma detecção que não rodou é exatamente o tipo de silêncio que a spec
+ * `conciliacao-robusta` existiu para matar. Id determinístico por origem (mais a fonte, no
+ * escopo `'por-fonte'`) — `reproduzirAvisos` re-roda a cada mudança de lançamentos, e um id
+ * aleatório encheria o painel de cards repetidos.
+ */
+function executarDetector(
+  detector: Detector,
+  lancamentos: Lancamento[],
+  contexto: ContextoDeteccao,
+  fonte?: string,
+): Aviso[] {
+  try {
+    return detector.detectar(lancamentos, contexto)
+  } catch (erro) {
+    const ondeaFalha = fonte === undefined ? detector.origem : `${detector.origem}/${fonte}`
+    const motivo = erro instanceof Error ? erro.message : String(erro)
+    return [
+      {
+        id: `deteccao-falhou-${ondeaFalha}`,
+        tipo: 'informativo',
+        origem: 'deteccao-falhou',
+        mensagem:
+          `A detecção "${ondeaFalha}" não pôde rodar e foi ignorada — os lançamentos estão na ` +
+          `grid, mas esta verificação não foi feita. Motivo: ${motivo}`,
+        alvo: [],
+        permanece: [],
+        estado: 'pendente',
+      },
+    ]
+  }
 }
 
 /**

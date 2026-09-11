@@ -152,6 +152,27 @@ export function classificarFontePorPrefixo(
 }
 
 /**
+ * Versão tolerante de `classificarFontePorPrefixo` para uso em EXIBIÇÃO: devolve `null` onde a
+ * autoritativa lança (achado lateral do item 47 do TODO).
+ *
+ * Existe porque o lugar errado de descobrir que um parser violou a convenção de prefixo é no meio
+ * de um `render`: a lista de arquivos da tela de importação classificava cada fonte para escolher
+ * o badge, e uma fonte fora da convenção derrubava a tela inteira antes de qualquer clique. A
+ * fronteira do domínio continua ruidosa — quem precisa DECIDIR fatura/extrato segue chamando a
+ * autoritativa e recebendo o erro. Quem só precisa DESENHAR um rótulo prefere não desenhar
+ * nenhum a inventar um tipo ou a derrubar a página.
+ */
+export function classificarFontePorPrefixoParaExibicao(
+  fonte: string,
+): ReturnType<typeof classificarFontePorPrefixo> | null {
+  try {
+    return classificarFontePorPrefixo(fonte)
+  } catch {
+    return null
+  }
+}
+
+/**
  * Cross-check informativo entre a classificação autoritativa por prefixo (`classificarFontePorPrefixo`,
  * T1) e a heurística por data (`classificarFonte`), rebaixada a este papel pela Decisão 1 do ADR
  * `conciliacao-robusta`. Função pura: nunca decide fatura/extrato — apenas sinaliza quando as duas
