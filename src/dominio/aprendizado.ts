@@ -1,7 +1,8 @@
 // ADR: see Docs/specs/dominio-transferencia-investimento-iniciais.adr.md
 
 import type { Lancamento, DicEntry } from '../types'
-import { normalizarChave } from './normalizacao'
+import { canonizarChave } from './normalizacao'
+import { valorEquivalente } from './dicionario'
 
 /**
  * Um padrão de classificação só tem valor no dicionário se Natureza E Descrição
@@ -50,11 +51,23 @@ export function aprenderDicionario(
     // Item 24: só aprende lançamento com Natureza e Descrição preenchidas
     if (!classificacaoCompleta(lan)) continue
 
-    const chave = normalizarChave(lan.transcricao)
-    const idx = dic.findIndex((e) => e.chave === chave && e.fonte === lan.fonte)
+    const { chave, afrouxadaPorParcela } = canonizarChave(lan.transcricao)
+    const mesmaChave = (e: DicEntry) => e.chave === chave && e.fonte === lan.fonte
+
+    // Em chave afrouxada por parcela, a identidade da entrada é `(chave, fonte, valor)`: duas
+    // compras distintas do mesmo lojista, ambas parceladas no mesmo número de vezes, colapsam na
+    // mesma chave e só o valor as separa (ADR `dicionario-chave-canonica`, Decisão 1). Procura-se
+    // primeiro a entrada de valor correspondente; na ausência dela, uma entrada herdada sem valor
+    // é PROMOVIDA (recebe o valor) em vez de duplicada — é assim que o "desempate por import
+    // futuro" da Decisão 5 acontece na prática.
+    const idx = afrouxadaPorParcela
+      ? acharOuPromover(dic, mesmaChave, lan.valor)
+      : dic.findIndex(mesmaChave)
 
     if (idx === -1) {
-      // Nova entrada — natureza em caixa alta (item 28)
+      // Nova entrada — natureza em caixa alta (item 28). O valor só é gravado onde discrimina
+      // (Decisão 16): em chave não afrouxada ele não distingue nada e sugeriria um significado
+      // que não tem.
       dic.push({
         chave,
         fonte: lan.fonte,
@@ -63,6 +76,7 @@ export function aprenderDicionario(
         iniciais: lan.iniciais,
         vezes: 1,
         ambiguo: false,
+        ...(afrouxadaPorParcela ? { valor: lan.valor } : {}),
       })
     } else {
       const entrada = dic[idx]
@@ -75,6 +89,12 @@ export function aprenderDicionario(
 
       if (padraoCasa) {
         entrada.vezes++
+        // Promoção da entrada herdada: grava o valor que faltava. Nunca sobrescreve um valor já
+        // gravado nem tira média (Decisão 16) — sobrescrever criaria deriva silenciosa ao longo
+        // dos meses.
+        if (afrouxadaPorParcela && entrada.valor === undefined) {
+          entrada.valor = lan.valor
+        }
       } else {
         entrada.ambiguo = true
       }
@@ -82,4 +102,25 @@ export function aprenderDicionario(
   }
 
   return dic
+}
+
+/**
+ * Localiza a entrada de uma chave afrouxada por parcela, na ordem de prioridade da Decisão 1:
+ * primeiro a de valor equivalente; na ausência dela, uma entrada herdada sem valor, que será
+ * promovida pelo chamador.
+ *
+ * Devolve `-1` quando nenhuma das duas existe — sinal de que é outra compra e merece entrada
+ * própria, não um `ambiguo: true` sobre a entrada alheia.
+ */
+function acharOuPromover(
+  dic: DicEntry[],
+  mesmaChave: (e: DicEntry) => boolean,
+  valorLancamento: number,
+): number {
+  const porValor = dic.findIndex(
+    (e) => mesmaChave(e) && e.valor !== undefined && valorEquivalente(e.valor, valorLancamento),
+  )
+  if (porValor !== -1) return porValor
+
+  return dic.findIndex((e) => mesmaChave(e) && e.valor === undefined)
 }
