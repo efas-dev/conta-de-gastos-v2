@@ -998,3 +998,40 @@ describe('layout do valor contábil', () => {
     expect(formatarValorContabil(1234.5)).toBe('R$ 1.234,50')
   })
 })
+
+// ---------------------------------------------------------------------------
+// T13 (spec dicionario-chave-canonica): origem do detector de similaridade
+// ---------------------------------------------------------------------------
+
+describe('derivarContextoInspecao — classificacao-similaridade (T13)', () => {
+  const avisoClassificar: Aviso = {
+    id: 'classificacao-similaridade-7',
+    tipo: 'proposta',
+    origem: 'classificacao-similaridade',
+    mensagem: 'parece ser Pensão residentes',
+    alvo: ['7'],
+    permanece: [],
+    estado: 'pendente',
+    mutacaoProposta: {
+      verbo: 'classificar',
+      alvo: [7],
+      natureza: 'OT',
+      descricao: 'Pensão residentes',
+      iniciais: 'ES',
+    },
+  }
+
+  it('RG13-01: a origem produz efeito na grid', () => {
+    expect(derivarContextoInspecao(avisoClassificar)).toBeDefined()
+  })
+
+  it('RG13-02: o alvo é comparado por id, não por índice', () => {
+    expect(derivarContextoInspecao(avisoClassificar)?.porId).toBe(true)
+  })
+
+  it('RG13-03: destaca a linha alvo e nenhuma linha no papel "fica"', () => {
+    const ctx = derivarContextoInspecao(avisoClassificar)
+    expect(ctx?.alvoSet.has('7')).toBe(true)
+    expect(ctx?.permaneceSet.size).toBe(0)
+  })
+})

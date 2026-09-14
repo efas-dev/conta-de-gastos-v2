@@ -33,6 +33,17 @@ export interface LancamentoRemovido {
  * `AvisoList.tsx`) — ver `Docs/.harness/iteracao-log-spec-20260720-avisos-acionaveis.md`,
  * bloco "iteracao 2 — Task 4 — Plan".
  */
+/**
+ * Classificação de um lançamento antes de `aplicar` sobrescrevê-la, para que `desfazer` restaure o
+ * estado exato — inclusive quando os campos estavam vazios, que é o caso comum.
+ */
+export interface ClassificacaoAnterior {
+  id: number
+  natureza: string
+  descricao: string
+  iniciais: string
+}
+
 export interface EstadoAvisosSlice {
   avisos: Aviso[]
   /** Lançamentos removidos por `aplicar` (verbo `'remover'`), indexados pelo id do aviso — usado por `desfazer`. */
@@ -46,6 +57,17 @@ export interface EstadoAvisosSlice {
    * `'adicionar'`) — os dois verbos precisam desfazer coisas estruturalmente diferentes.
    */
   adicionados: Record<string, number[]>
+  /**
+   * Classificação anterior dos lançamentos tocados por `aplicar` (verbo `'classificar'`, spec
+   * `dicionario-chave-canonica`), indexada pelo id do aviso — usada por `desfazer` para restaurar
+   * exatamente o que havia antes.
+   *
+   * Terceira estrutura irmã de `removidos`/`adicionados`, pelo mesmo motivo que as outras duas
+   * existem separadas: cada verbo desfaz algo estruturalmente diferente. `classificar` não tira
+   * nem põe linhas — ele sobrescreve três campos de linhas que continuam lá —, então o que precisa
+   * ser guardado é o valor anterior desses campos, não a linha nem o id.
+   */
+  classificados: Record<string, ClassificacaoAnterior[]>
   /**
    * Id do aviso atualmente em modo inspeção, ou `null` quando nenhum está
    * ativo. No máximo 1 ativo por vez — entrar em inspeção de outro aviso
@@ -160,6 +182,7 @@ export const estadoInicialAvisos: EstadoAvisosSlice = {
   avisos: [],
   removidos: {},
   adicionados: {},
+  classificados: {},
   avisoEmInspecao: null,
   focoInspecao: 0,
   candidatoEmFoco: null,
@@ -316,6 +339,40 @@ export function criarAvisosSlice<TStore extends StoreComAvisos>(
         return
       }
 
+      if (aviso.mutacaoProposta && aviso.mutacaoProposta.verbo === 'classificar') {
+        const mutacao = aviso.mutacaoProposta
+        const alvoIds = new Set(mutacao.alvo)
+        const anterior: ClassificacaoAnterior[] = []
+
+        const lancamentosClassificados = state.lancamentos.map((lancamento) => {
+          if (!alvoIds.has(lancamento.id)) return lancamento
+
+          anterior.push({
+            id: lancamento.id,
+            natureza: lancamento.natureza,
+            descricao: lancamento.descricao,
+            iniciais: lancamento.iniciais,
+          })
+          return {
+            ...lancamento,
+            natureza: mutacao.natureza,
+            descricao: mutacao.descricao,
+            iniciais: mutacao.iniciais,
+          }
+        })
+
+        set({
+          lancamentos: lancamentosClassificados,
+          avisosAcionaveis: {
+            ...state.avisosAcionaveis,
+            avisos: avisos.map((a) => (a.id === id ? { ...a, estado: 'aplicado' as const } : a)),
+            classificados: { ...state.avisosAcionaveis.classificados, [id]: anterior },
+            avisoEmInspecao: encerrarInspecaoSeForAviso(state.avisosAcionaveis, id),
+          },
+        } as Partial<TStore>)
+        return
+      }
+
       const alvos = new Set(resolverAlvoParaRemocao(aviso, state.lancamentos))
       const removidosDoAviso: LancamentoRemovido[] = []
       const lancamentosRestantes = state.lancamentos.filter((lancamento, indice) => {
@@ -343,6 +400,36 @@ export function criarAvisosSlice<TStore extends StoreComAvisos>(
       const { avisos, removidos, adicionados } = state.avisosAcionaveis
       const aviso = avisos.find((a) => a.id === id)
       if (!aviso) {
+        return
+      }
+
+      if (aviso.estado === 'aplicado' && aviso.mutacaoProposta?.verbo === 'classificar') {
+        const { classificados } = state.avisosAcionaveis
+        const anterior = classificados[id] ?? []
+        const porId = new Map(anterior.map((c) => [c.id, c]))
+
+        const lancamentosRestaurados = state.lancamentos.map((lancamento) => {
+          const anteriorDoLancamento = porId.get(lancamento.id)
+          if (!anteriorDoLancamento) return lancamento
+          return {
+            ...lancamento,
+            natureza: anteriorDoLancamento.natureza,
+            descricao: anteriorDoLancamento.descricao,
+            iniciais: anteriorDoLancamento.iniciais,
+          }
+        })
+
+        const { [id]: _classificadoDoAviso, ...classificadosSemAviso } = classificados
+
+        set({
+          lancamentos: lancamentosRestaurados,
+          avisosAcionaveis: {
+            ...state.avisosAcionaveis,
+            avisos: avisos.map((a) => (a.id === id ? { ...a, estado: 'pendente' as const } : a)),
+            classificados: classificadosSemAviso,
+            avisoEmInspecao: encerrarInspecaoSeForAviso(state.avisosAcionaveis, id),
+          },
+        } as Partial<TStore>)
         return
       }
 

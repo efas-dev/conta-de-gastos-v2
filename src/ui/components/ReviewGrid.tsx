@@ -377,6 +377,11 @@ function criarTemaGrid() {
  * O critério para entrar aqui é ter alvo que aponta para linha existente no grid. `'vr'` e
  * `'rendimentos'` ficam de fora porque *criam* lançamentos em vez de apontar para os existentes,
  * e `'desalinhamento-mes'` é informativo, sem alvo.
+ *
+ * `'classificacao-similaridade'` (spec `dicionario-chave-canonica`) entra por satisfazer esse
+ * mesmo critério — o alvo é uma linha que está na grid. Note que "efeito na grid" aqui significa
+ * "a inspeção destaca esta linha", não "a linha será removida": é a primeira origem cujo alvo
+ * sobrevive à aplicação, apenas com os campos de classificação preenchidos.
  */
 const ORIGENS_COM_EFEITO_GRID = new Set([
   'conciliacao',
@@ -385,6 +390,7 @@ const ORIGENS_COM_EFEITO_GRID = new Set([
   'transferencia-interna',
   'investimento',
   'reembolso',
+  'classificacao-similaridade',
 ])
 
 /**
@@ -401,7 +407,12 @@ const ORIGENS_COM_EFEITO_GRID = new Set([
  * coincidisse com a posição de outra linha, destacando a linha errada. Por isso a comparação é
  * decidida pela origem, não por heurística.
  */
-const ORIGENS_ALVO_POR_ID = new Set(['transferencia-interna', 'investimento', 'reembolso'])
+const ORIGENS_ALVO_POR_ID = new Set([
+  'transferencia-interna',
+  'investimento',
+  'reembolso',
+  'classificacao-similaridade',
+])
 
 /**
  * Conjuntos de identidade para os papéis "sai"/"fica" da inspeção.
