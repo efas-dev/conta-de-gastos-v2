@@ -97,6 +97,8 @@ describe('avisosSlice', () => {
         avisos: [],
         removidos: {},
         adicionados: {},
+        // `classificados` entrou com o verbo `classificar` (spec dicionario-chave-canonica, T12).
+        classificados: {},
         avisoEmInspecao: null,
         focoInspecao: 0,
         candidatoEmFoco: null,
