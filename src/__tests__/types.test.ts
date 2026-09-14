@@ -461,3 +461,80 @@ describe('Aviso.candidatos', () => {
     expect(aviso.candidatos).toBeUndefined()
   })
 })
+
+// ---------------------------------------------------------------------------
+// T01 (spec dicionario-chave-canonica): DicEntry.valor e verbo 'classificar'
+// ---------------------------------------------------------------------------
+
+describe('DicEntry.valor (T01, Decisão 1)', () => {
+  it('aceita valor numérico — entrada de chave afrouxada por parcela (TL-41)', () => {
+    const entry: DicEntry = {
+      chave: 'Autohubservice - Parcela #/4',
+      fonte: 'fatura_nubank_cc',
+      natureza: 'VC',
+      descricao: 'Conserto City',
+      iniciais: 'ES',
+      vezes: 2,
+      ambiguo: false,
+      valor: -275,
+    }
+    expect(entry.valor).toBe(-275)
+  })
+
+  it('é opcional — entrada herdada da migração não tem valor gravado (TL-42, D5)', () => {
+    const entry: DicEntry = {
+      chave: 'Mercado Extra',
+      fonte: 'Nubank',
+      natureza: 'CM',
+      descricao: 'Comestíveis',
+      iniciais: 'ES',
+      vezes: 3,
+      ambiguo: false,
+    }
+    expect(entry.valor).toBeUndefined()
+  })
+})
+
+describe("Mutacao verbo 'classificar' (T01, Decisão 8)", () => {
+  it('aceita alvo por id mais os três campos de classificação (TL-43)', () => {
+    const mutacao: Mutacao = {
+      verbo: 'classificar',
+      alvo: [7],
+      natureza: 'GO',
+      descricao: 'Spotify',
+      iniciais: 'ES',
+    }
+    expect(mutacao.verbo).toBe('classificar')
+    if (mutacao.verbo === 'classificar') {
+      expect(mutacao.alvo).toEqual([7])
+      expect(mutacao.natureza).toBe('GO')
+      expect(mutacao.descricao).toBe('Spotify')
+      expect(mutacao.iniciais).toBe('ES')
+    }
+  })
+
+  it('Aviso.mutacaoProposta aceita uma Mutacao de classificar (TL-44)', () => {
+    const aviso: Aviso = {
+      id: 'classificacao-similaridade-7',
+      tipo: 'proposta',
+      origem: 'classificacao-similaridade',
+      mensagem: 'teste',
+      alvo: [],
+      permanece: [],
+      estado: 'pendente',
+      mutacaoProposta: {
+        verbo: 'classificar',
+        alvo: [7],
+        natureza: 'GO',
+        descricao: 'Spotify',
+        iniciais: 'ES',
+      },
+    }
+    expect(aviso.mutacaoProposta?.verbo).toBe('classificar')
+  })
+
+  it("regressão: 'remover' e 'adicionar' continuam válidos após a extensão (TL-45)", () => {
+    const remover: Mutacao = { verbo: 'remover', alvo: [1, 2] }
+    expect(remover.verbo).toBe('remover')
+  })
+})
