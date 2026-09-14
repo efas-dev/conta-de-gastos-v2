@@ -62,14 +62,40 @@ describe('migrarDicionario — fusão e desempate (T06, D4)', () => {
     expect(dic[0].ambiguo).toBe(false)
   })
 
-  it('MG-06: empate de contagem nasce ambíguo, para o humano decidir', () => {
-    // Caso real: "Reembolso Spotify"(1) vs "Spotify"(1).
+  it('MG-06: empate NÃO cria ambíguo — vence o primeiro da ordem do arquivo (D4 revista)', () => {
+    // Caso real: "Reembolso Spotify"(1) vs "Spotify"(1). A regra anterior marcava ambíguo aqui, e
+    // isso transformava casamentos exatos em dúvidas — regressão medida no app (ver JSDoc do
+    // módulo). Agora funde e escolhe, de forma estável.
     const dic = migrarDicionario([
       entrada({ chave: 'PIX TRANSF Alexand06/03', descricao: 'Reembolso Spotify', vezes: 1 }),
       entrada({ chave: 'PIX TRANSF Alexand06/05', descricao: 'Spotify', vezes: 1 }),
     ])
     expect(dic).toHaveLength(1)
-    expect(dic[0].ambiguo).toBe(true)
+    expect(dic[0].ambiguo).toBe(false)
+    expect(dic[0].descricao).toBe('Reembolso Spotify')
+    expect(dic[0].vezes).toBe(2)
+  })
+
+  it('MG-06b: o desempate é estável — a mesma entrada migra sempre para o mesmo resultado', () => {
+    const entradas = [
+      entrada({ chave: 'Autohubservice - Parcela 2/4', descricao: 'Consero City', vezes: 2, fonte: 'fatura_nubank_cc' }),
+      entrada({ chave: 'Autohubservice - Parcela 3/4', descricao: 'Conserto City', vezes: 2, fonte: 'fatura_nubank_cc' }),
+    ]
+    const a = migrarDicionario(entradas)
+    const b = migrarDicionario(entradas)
+    expect(a[0].descricao).toBe(b[0].descricao)
+    expect(a[0].ambiguo).toBe(false)
+  })
+
+  it('MG-06c: a canonização não pode piorar o que já casava — empate continua classificando', () => {
+    // Invariante que a regressão do app expôs: antes desta correção, este grupo virava ambíguo e
+    // uma linha que casava exato deixava de ser classificada.
+    const dic = migrarDicionario([
+      entrada({ chave: 'Autohubservice - Parcela 2/4', descricao: 'Consero City', vezes: 2, fonte: 'fatura_nubank_cc' }),
+      entrada({ chave: 'Autohubservice - Parcela 3/4', descricao: 'Conserto City', vezes: 2, fonte: 'fatura_nubank_cc' }),
+    ])
+    expect(dic.some((e) => e.ambiguo)).toBe(false)
+    expect(dic[0].descricao).not.toBe('')
   })
 
   it('MG-07: entrada já ambígua permanece ambígua após a fusão', () => {

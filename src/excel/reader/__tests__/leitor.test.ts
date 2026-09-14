@@ -906,7 +906,7 @@ describe('lerDicionario — migração na leitura (T08, F5/F7)', () => {
     expect(dic[0].vezes).toBe(5)
   })
 
-  it('L08-09: empate na fusão chega ambíguo à aplicação', () => {
+  it('L08-09: empate na fusão funde e classifica, sem virar ambíguo (D4 revista)', () => {
     const bytes = criarXlsxDicionario([
       CAB7,
       ['PIX TRANSF Alexand06/03', 'extrato_itau', 'GO', 'Reembolso Spotify', 'ES', 1, 'false'],
@@ -914,6 +914,9 @@ describe('lerDicionario — migração na leitura (T08, F5/F7)', () => {
     ])
     const dic = lerDicionario(bytes)
     expect(dic).toHaveLength(1)
-    expect(dic[0].ambiguo).toBe(true)
+    // Marcar empate como ambíguo transformava casamentos exatos em dúvidas e fazia a spec
+    // classificar MENOS que o código anterior — regressão medida no app com dados reais.
+    expect(dic[0].ambiguo).toBe(false)
+    expect(dic[0].descricao).toBe('Reembolso Spotify')
   })
 })
