@@ -11,6 +11,10 @@
 > `motor-de-pares` e as ondas 3–5 de hotfixes: saíram daqui os itens **23, 27, 38, 41, 49 e 51**
 > (entregues e verificados no app), o **48** (não era item — era o 38) e o **39.1** (já fechado).
 > O **47** virou diagnóstico e continua aberto como spec.
+>
+> **Sanitização de 2026-09-14.** Após a spec `dicionario-chave-canonica` saiu daqui o item **50**
+> (dicionário por similaridade), entregue com as quatro decisões que este TODO pedia — métrica,
+> limiar, empates e não-regressão do casamento exato. Ver Concluídos.
 
 ### 35. BB Rende Fácil: anular resgates que apenas cobrem débitos da conta
 No extrato do Banco do Brasil (`src/parsers/extrato_bb.ts`) as linhas **"BB Rende Fácil"** são o
@@ -183,9 +187,10 @@ etapa fora de ordem (a preferência do projeto tem sido nunca bloquear); qual é
 
 ## Reportados na versão deployada (2026-09-08)
 
-Cinco achados do uso real da versão que estava no ar. **Três foram fechados** nas ondas 3–5 de
-hotfixes: o **49** (saldo em `B4`), o **51** (foco na grid) e o **48** (que não era item próprio
-— era o 38) — ver Concluídos. Os dois abaixo seguem em aberto, e ambos são spec, não hotfix.
+Cinco achados do uso real da versão que estava no ar. **Quatro foram fechados**: o **49** (saldo em
+`B4`), o **51** (foco na grid) e o **48** (que não era item próprio — era o 38) nas ondas 3–5 de
+hotfixes, e o **50** (similaridade) na spec `dicionario-chave-canonica` — ver Concluídos. Segue em
+aberto só o **47**, que é spec, não hotfix.
 
 ### 47. Bug: fatura Itaú não está conciliando adequadamente — **diagnosticado, vira spec**
 Na versão deployada, a conciliação da **fatura Itaú** não funciona como deveria (a do Nubank
@@ -218,14 +223,6 @@ chamava `classificarFontePorPrefixo` no RENDER da lista de arquivos, então a te
 caía antes mesmo do "Produzir". O ruído do subset-sum (os 14 candidatos) **continua sendo spec** —
 mas desde a onda 6 o usuário ao menos **vê** quais são os candidatos, em vez de só o número.
 
-### 50. Dicionário por similaridade em vez de igualdade pura
-O dicionário poderia usar um **algoritmo de similaridade** em vez de casamento por semelhança
-pura/exata: assim, compras parceladas ("Parcela N de N'", em que só o número muda a cada mês)
-seriam reconhecidas nos meses seguintes e classificadas automaticamente. Decidir na spec: a
-métrica (normalizar dígitos/parcela antes de comparar? distância de edição? prefixo comum?),
-o limiar de aceitação, o que fazer com empates (campo `ambiguo` já existe no dicionário) e
-como não regredir os casos que hoje casam exato.
-
 ---
 
 ## Rescaldo das entregas (não são itens de produto)
@@ -240,12 +237,26 @@ como não regredir os casos que hoje casam exato.
 - **Dívidas técnicas obsoletas:** dos 32 arquivos de `Docs/debt/tecnica/`, **30 estão
   resolvidos** e foram anotados como tal na onda 4 (15 são meta-registros do harness, os demais
   são defeitos já corrigidos — verificados um a um contra o código). Dos 2 que seguiam vivos,
-  `candidatos-de-aviso-nunca-renderizados.md` foi **fechado na onda 6**. Segue **1 vivo**:
-  `security-spec-20260824-fatura-itau-xlsx.md` (array denso sem teto em
-  `leitorCelulas.ts:128-140`) — o `maxCol` vem do `r="XFD…"` da célula, então uma planilha com
-  referência de coluna alta aloca ~16k strings por linha. Mesmo modelo de ameaça já **descartado
-  como irrelevante** pelo usuário no caso do zip bomb (client-side, o usuário trava a própria aba
-  com um arquivo que ele mesmo carregou); o clamp é um hotfix de 2 linhas se um dia interessar.
+  `candidatos-de-aviso-nunca-renderizados.md` foi **fechado na onda 6**.
+  Hoje são **34 arquivos** e **3 vivos** (a spec `dicionario-chave-canonica` acrescentou 2):
+  - `security-spec-20260824-fatura-itau-xlsx.md` — array denso sem teto em
+    `leitorCelulas.ts:128-140`: o `maxCol` vem do `r="XFD…"` da célula, então uma planilha com
+    referência de coluna alta aloca ~16k strings por linha. Mesmo modelo de ameaça já **descartado
+    como irrelevante** pelo usuário no caso do zip bomb (client-side, o usuário trava a própria aba
+    com um arquivo que ele mesmo carregou); o clamp é um hotfix de 2 linhas se um dia interessar.
+  - `testes-fora-do-typecheck.md` — **débito novo, e o mais relevante dos três.**
+    `tsconfig.app.json` exclui os testes do typecheck (correto para o build), mas o efeito colateral
+    é que **os testes não são verificados por nada**: o Vitest não checa tipos em runtime e o `tsc`
+    não os enxergava. `src/__tests__/types.test.ts`, cujo propósito é afirmar o formato dos tipos,
+    não podia falhar. Nasceu `tsconfig.test.json` + `npm run typecheck:tests` (opt-in, **fora** de
+    qualquer gate) só para tornar o débito mensurável: **550 linhas de erro**, 69 delas só falta de
+    `@types/node`. Zerar exige tocar ~100 arquivos de teste, que são a única rede de segurança do
+    projeto — **vira spec própria**, nunca hotfix.
+  - `security-spec-20260913-dicionario-chave-canonica.md` — 2 achados de severidade **baixa**, nenhum
+    bloqueante: custo O(n·m) do Levenshtein em `similaridadeClassificacao.ts` (contido pelas guardas
+    que vêm antes — mesma fonte, chave ≥8 caracteres e trava de valor) e ReDoS nos regex novos
+    (verificado, **sem vetor**). Mesmo modelo de ameaça dos demais: single-user, client-side.
+
   `Docs/` é git-ignored, então a faxina vive só em disco.
 - **Achados de segurança da spec dicionário** (zip bomb no `unzipSync` + `sheetTarget` como
   chave de lookup): **DESCARTADOS como irrelevantes por decisão do usuário (2026-07-18)** —
@@ -256,6 +267,50 @@ como não regredir os casos que hoje casam exato.
 ---
 
 ## ✅ Concluídos
+
+### Spec `spec-20260913-dicionario-chave-canonica` — item 50 (arquivada, mesclada na dev)
+15 tasks; 1804 testes verdes; arquivada em `Docs/specs/`. Fecha o **item 50** entregando as quatro
+decisões que ele pedia — métrica, limiar, empates e não-regressão do casamento exato — mas o
+diagnóstico da spec achou uma causa que o item não registrava, e ela pesava mais que a similaridade.
+
+- **A regressão do regex de data.** O legado Python limpava a data colada com
+  `\s*D?\d{2}/\d{2}(/\d{2,4})?\s*$`; a porta para TypeScript perdeu o `\s*` e o `D?`. Como o Itaú
+  trunca o nome em largura fixa e cola a data sem espaço (`PIX TRANSF JOAO AU05/06`), o regex
+  **não limpava nada**: 19 de 37 linhas (51%) do extrato real e 42 de 129 entradas (33%) do
+  dicionário real carregavam chave que nunca voltaria a casar, porque cada dia do mês criava uma
+  chave nova. Não era um caso de similaridade — era um bug de porte. ✅
+- **Chave canônica + trava de valor.** `Parcela 2/4` → `Parcela #/4` preservando o total. Mascarar
+  o número apaga informação que separava compras, então onde a chave foi afrouxada o
+  auto-preenchimento passa a exigir valor equivalente (tolerância de 5 centavos em inteiros). Nas
+  demais chaves o valor **não** participa — incluí-lo quebraria mercado, posto e farmácia, que têm
+  valor diferente toda vez. O caso real que exigiu a trava: `Mercadolivre*10produt - Parcela #/4`
+  abriga "Inceticidas" e "Fluido acendedor oratório", compras distintas no mesmo lojista. ✅
+- **Similaridade com limiar 0.9** (`similaridadeClassificacao.ts`), como detector no registry, com
+  guardas baratas antes do Levenshtein: mesma fonte, entrada não ambígua, chave ≥8 caracteres e a
+  trava de valor. O limiar **não é a trava de segurança** — está documentado no próprio arquivo que
+  nenhum valor de limiar separa nomes parecidos truncados em largura fixa; quem separa é o valor. ✅
+- **Migração do legado + coluna H.** `DicEntry` ganhou `valor?`, a aba `Dicionario` grava a coluna H
+  e a leitura aceita dicionário antigo sem ela (valor ilegível = ausente). Verificado
+  descompactando o `Modelo.xlsx`: a aba `Dicionario` não tem `_rels` nem tabela definida e não é
+  referenciada por fórmula — acrescentar a coluna **não** fere a imutabilidade do modelo. ✅
+- **Regressão achada só na verificação com dados reais** (commit `8deb736`), que teste nenhum pegou:
+  a fusão marcava empate como `ambiguo`, e isso transformava casamento exato que **já funcionava**
+  numa dúvida — a fatura Nubank caiu de 34 para 32 classificados. Daí saiu a invariante que a spec
+  assumia sem garantir: **a canonização nunca pode piorar o que já funcionava.** Decisão 4 revista:
+  a fusão nunca cria ambíguo novo e no empate vence o primeiro da ordem do arquivo (`sort` estável
+  desde ES2019 — arbitrário, mas reproduzível). ✅
+
+### Hotfix — byte NUL literal cegava o git em `migracaoDicionario.ts` (2026-09-14, commit `6f344bd`)
+O arquivo entrou na `dev` como `Bin 0 -> 4672 bytes`. Os separadores de chave composta (linhas 51 e
+78) usavam o byte NUL **literal** em vez da sequência de escape. A string em runtime é idêntica, mas
+o byte cru faz o git classificar o fonte como binário: `git diff` respondia "Binary files differ" e
+4672 bytes de regra de fusão de dicionário ficaram invisíveis a qualquer revisão — inclusive à
+revisão de segurança da própria spec. Corrigido para o escape, com o porquê do separador documentado
+agora que é legível. Nenhum teste de comportamento mudou, porque o comportamento não mudou.
+
+Nasceu o alarme de drift `src/__tests__/fontes-sem-byte-nul.test.ts`, que varre os fontes versionados
+e isenta os `.xlsx` (binários por natureza). **Nenhum teste de comportamento pegaria esta classe de
+defeito** — só um alarme de grafia pega, no mesmo espírito de `index-css-patches.test.ts`. ✅
 
 ### Onda 6 de hotfixes — item 39.2, candidatos na UI e robustez do registry (2026-09-11, branch `hotfixes-onda-6`)
 Três pendências confirmadas como ausentes no código (`git log -S` no histórico completo, não só no
