@@ -1,0 +1,19 @@
+{
+  // Typecheck dos TESTES.
+  //
+  // Existe porque `tsconfig.app.json` exclui `src/**/__tests__/**` e `*.test.ts(x)` — necessário
+  // para o build não carregar código de teste no bundle, mas com um efeito colateral que passou
+  // despercebido: os testes não eram verificados por NADA. O Vitest não checa tipos em runtime e o
+  // `tsc` não os enxergava, então um arquivo como `src/__tests__/types.test.ts`, cujo propósito é
+  // justamente afirmar o formato dos tipos, não podia falhar.
+  //
+  // Este arquivo cobre exatamente o que aquele exclui. `noEmit` porque aqui só interessa a
+  // verificação — nada deste conjunto entra no bundle.
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["vitest/globals"]
+  },
+  "include": ["src", "tests"],
+  "exclude": []
+}
