@@ -11,6 +11,10 @@
 > `motor-de-pares` e as ondas 3–5 de hotfixes: saíram daqui os itens **23, 27, 38, 41, 49 e 51**
 > (entregues e verificados no app), o **48** (não era item — era o 38) e o **39.1** (já fechado).
 > O **47** virou diagnóstico e continua aberto como spec.
+>
+> **Sanitização de 2026-09-14.** Após a spec `dicionario-chave-canonica` saiu daqui o item **50**
+> (dicionário por similaridade), entregue com as quatro decisões que este TODO pedia — métrica,
+> limiar, empates e não-regressão do casamento exato. Ver Concluídos.
 
 ### 35. BB Rende Fácil: anular resgates que apenas cobrem débitos da conta
 No extrato do Banco do Brasil (`src/parsers/extrato_bb.ts`) as linhas **"BB Rende Fácil"** são o
@@ -96,25 +100,24 @@ Hoje o app **aponta** para linhas mas não **leva** até elas.
 > verificado no app (rolei ao topo, cliquei, a grid voltou à linha 45 sem sair da inspeção).
 
 1. ~~**Modo inspeção sem auto-scroll.**~~ Entregue por inteiro — ver a correção acima.
-2. **Incompletos sem localizador.** O item 34 alertava: "revisar o que os chips filtram para
-   não perder a localização de linhas incompletas". A linha de filterchips foi aposentada
-   (2026-08-02, commit `034221f`, que registra `filtroFontes`/só-incompletos ficando "sem UI")
-   e o que restou é o contador "X de Y classificados" com `title="N ainda sem natureza"`. Ele
-   **informa** quantas faltam; não leva a nenhuma delas. Numa grid de dezenas/centenas de
-   linhas isso é caçada visual.
+2. ~~**Incompletos sem localizador.**~~ **Entregue na onda 6** (2026-09-11) — ver Concluídos. O
+   contador "X de Y classificados" virou `role="switch"`: clicar liga o filtro que já existia no
+   store e mostra só as pendentes. Antes de expor, o filtro precisou ser **corrigido** — usava
+   critério próprio (`!natureza || !iniciais`) e mostrava um conjunto diferente do número que ele
+   promete localizar.
 
-Decidir na spec: auto-scroll ao entrar em inspeção vs. botão "ir para"; navegação
-próxima/anterior entre as linhas de um mesmo aviso; e se os incompletos voltam como filtro,
-como salto (n/N com setas), ou ambos. Interage com o 32/33 (jornada) — a etapa "Classificar"
-só fecha quando não há incompletos.
+O que **sobra** deste item para a spec: navegação próxima/anterior entre as linhas de um mesmo
+aviso, e o salto n/N com setas (o filtro entrega o recorte, não a navegação sequencial dentro
+dele). Interage com o 32/33 (jornada) — a etapa "Classificar" só fecha quando não há incompletos.
 
 **Atualização de 2026-09-10:** o item 38 (seleção de linha + menu de contexto), que este item
 citava como dependência, foi **entregue** na onda 5 — ver Concluídos. Nota de escopo que nasceu
 lá: a linha em branco inserida manualmente, enquanto totalmente vazia, **não** conta como
 incompleta (`validarLinha`, `src/dominio/validacao.ts:13`, só cobra natureza de linha com
-transcrição ou valor). Ela aparece no filtro de só-incompletos, mas não no contador
-"X de Y classificados" — comportamento deliberado, e a spec deste item precisa saber disso ao
-definir o critério de "etapa Classificar concluída".
+transcrição ou valor). Ela aparecia no filtro de só-incompletos mas não no contador
+"X de Y classificados" — **essa divergência acabou na onda 6**: os dois passaram a usar
+`validarLinha`, então a linha em branco não conta nem aparece em nenhum dos dois. A spec deste
+item precisa saber disso ao definir o critério de "etapa Classificar concluída".
 
 ### 40. Bug: colar múltiplas células às vezes buga na grid — **parcialmente entregue**
 Ao copiar duas células (ex.: Natureza + Descrição de uma linha) e colar em outra linha, às
@@ -184,9 +187,10 @@ etapa fora de ordem (a preferência do projeto tem sido nunca bloquear); qual é
 
 ## Reportados na versão deployada (2026-09-08)
 
-Cinco achados do uso real da versão que estava no ar. **Três foram fechados** nas ondas 3–5 de
-hotfixes: o **49** (saldo em `B4`), o **51** (foco na grid) e o **48** (que não era item próprio
-— era o 38) — ver Concluídos. Os dois abaixo seguem em aberto, e ambos são spec, não hotfix.
+Cinco achados do uso real da versão que estava no ar. **Quatro foram fechados**: o **49** (saldo em
+`B4`), o **51** (foco na grid) e o **48** (que não era item próprio — era o 38) nas ondas 3–5 de
+hotfixes, e o **50** (similaridade) na spec `dicionario-chave-canonica` — ver Concluídos. Segue em
+aberto só o **47**, que é spec, não hotfix.
 
 ### 47. Bug: fatura Itaú não está conciliando adequadamente — **diagnosticado, vira spec**
 Na versão deployada, a conciliação da **fatura Itaú** não funciona como deveria (a do Nubank
@@ -212,20 +216,12 @@ critério é decisão de política (limiar, tamanho mínimo do subconjunto, prec
 casamento") e regride o pagamento parcial que a spec suporta de propósito — **vira spec, não
 hotfix**.
 
-*Achado lateral, não corrigido:* `classificarFontePorPrefixo` lança para prefixo fora da
-convenção e `orquestrarDeteccao` (`registry.ts:229-260`) não tem try/catch, com
-`reproduzirAvisos` rodando **antes** de `setLancamentos` (`handlersPipeline.ts:178` vs `:189`)
-— uma fonte fora da convenção derrubaria a importação inteira. Inalcançável hoje (os parsers
-usam literais conformantes, a coluna Fonte é somente leitura e a fonte `manual` entrou na
-convenção); interessa como robustez do contrato de extensão, que é decisão de produto.
-
-### 50. Dicionário por similaridade em vez de igualdade pura
-O dicionário poderia usar um **algoritmo de similaridade** em vez de casamento por semelhança
-pura/exata: assim, compras parceladas ("Parcela N de N'", em que só o número muda a cada mês)
-seriam reconhecidas nos meses seguintes e classificadas automaticamente. Decidir na spec: a
-métrica (normalizar dígitos/parcela antes de comparar? distância de edição? prefixo comum?),
-o limiar de aceitação, o que fazer com empates (campo `ambiguo` já existe no dicionário) e
-como não regredir os casos que hoje casam exato.
+*Achado lateral — **corrigido na onda 6** (2026-09-11), ver Concluídos.* `orquestrarDeteccao`
+ganhou proteção por detector e a falha virou aviso declarado. A inspeção achou um **segundo
+caminho que este parágrafo não registrava**, anterior ao do pipeline: `TelaImportacao.tsx:452`
+chamava `classificarFontePorPrefixo` no RENDER da lista de arquivos, então a tela de importação
+caía antes mesmo do "Produzir". O ruído do subset-sum (os 14 candidatos) **continua sendo spec** —
+mas desde a onda 6 o usuário ao menos **vê** quais são os candidatos, em vez de só o número.
 
 ---
 
@@ -240,10 +236,28 @@ como não regredir os casos que hoje casam exato.
   `upload-pages-artifact@v3` e `deploy-pages@v4`, ambas na major corrente.
 - **Dívidas técnicas obsoletas:** dos 32 arquivos de `Docs/debt/tecnica/`, **30 estão
   resolvidos** e foram anotados como tal na onda 4 (15 são meta-registros do harness, os demais
-  são defeitos já corrigidos — verificados um a um contra o código). Seguem **2 vivos**:
-  `candidatos-de-aviso-nunca-renderizados.md` (`Aviso.candidatos` sem leitor na UI) e
-  `security-spec-20260824-fatura-itau-xlsx.md` (array denso sem teto em
-  `leitorCelulas.ts:128-140`). `Docs/` é git-ignored, então a faxina vive só em disco.
+  são defeitos já corrigidos — verificados um a um contra o código). Dos 2 que seguiam vivos,
+  `candidatos-de-aviso-nunca-renderizados.md` foi **fechado na onda 6**.
+  Hoje são **34 arquivos** e **3 vivos** (a spec `dicionario-chave-canonica` acrescentou 2):
+  - `security-spec-20260824-fatura-itau-xlsx.md` — array denso sem teto em
+    `leitorCelulas.ts:128-140`: o `maxCol` vem do `r="XFD…"` da célula, então uma planilha com
+    referência de coluna alta aloca ~16k strings por linha. Mesmo modelo de ameaça já **descartado
+    como irrelevante** pelo usuário no caso do zip bomb (client-side, o usuário trava a própria aba
+    com um arquivo que ele mesmo carregou); o clamp é um hotfix de 2 linhas se um dia interessar.
+  - `testes-fora-do-typecheck.md` — **débito novo, e o mais relevante dos três.**
+    `tsconfig.app.json` exclui os testes do typecheck (correto para o build), mas o efeito colateral
+    é que **os testes não são verificados por nada**: o Vitest não checa tipos em runtime e o `tsc`
+    não os enxergava. `src/__tests__/types.test.ts`, cujo propósito é afirmar o formato dos tipos,
+    não podia falhar. Nasceu `tsconfig.test.json` + `npm run typecheck:tests` (opt-in, **fora** de
+    qualquer gate) só para tornar o débito mensurável: **550 linhas de erro**, 69 delas só falta de
+    `@types/node`. Zerar exige tocar ~100 arquivos de teste, que são a única rede de segurança do
+    projeto — **vira spec própria**, nunca hotfix.
+  - `security-spec-20260913-dicionario-chave-canonica.md` — 2 achados de severidade **baixa**, nenhum
+    bloqueante: custo O(n·m) do Levenshtein em `similaridadeClassificacao.ts` (contido pelas guardas
+    que vêm antes — mesma fonte, chave ≥8 caracteres e trava de valor) e ReDoS nos regex novos
+    (verificado, **sem vetor**). Mesmo modelo de ameaça dos demais: single-user, client-side.
+
+  `Docs/` é git-ignored, então a faxina vive só em disco.
 - **Achados de segurança da spec dicionário** (zip bomb no `unzipSync` + `sheetTarget` como
   chave de lookup): **DESCARTADOS como irrelevantes por decisão do usuário (2026-07-18)** —
   arquitetura 100% client-side e stateless; o impacto máximo é o usuário travar a própria aba
@@ -253,6 +267,82 @@ como não regredir os casos que hoje casam exato.
 ---
 
 ## ✅ Concluídos
+
+### Spec `spec-20260913-dicionario-chave-canonica` — item 50 (arquivada, mesclada na dev)
+15 tasks; 1804 testes verdes; arquivada em `Docs/specs/`. Fecha o **item 50** entregando as quatro
+decisões que ele pedia — métrica, limiar, empates e não-regressão do casamento exato — mas o
+diagnóstico da spec achou uma causa que o item não registrava, e ela pesava mais que a similaridade.
+
+- **A regressão do regex de data.** O legado Python limpava a data colada com
+  `\s*D?\d{2}/\d{2}(/\d{2,4})?\s*$`; a porta para TypeScript perdeu o `\s*` e o `D?`. Como o Itaú
+  trunca o nome em largura fixa e cola a data sem espaço (`PIX TRANSF JOAO AU05/06`), o regex
+  **não limpava nada**: 19 de 37 linhas (51%) do extrato real e 42 de 129 entradas (33%) do
+  dicionário real carregavam chave que nunca voltaria a casar, porque cada dia do mês criava uma
+  chave nova. Não era um caso de similaridade — era um bug de porte. ✅
+- **Chave canônica + trava de valor.** `Parcela 2/4` → `Parcela #/4` preservando o total. Mascarar
+  o número apaga informação que separava compras, então onde a chave foi afrouxada o
+  auto-preenchimento passa a exigir valor equivalente (tolerância de 5 centavos em inteiros). Nas
+  demais chaves o valor **não** participa — incluí-lo quebraria mercado, posto e farmácia, que têm
+  valor diferente toda vez. O caso real que exigiu a trava: `Mercadolivre*10produt - Parcela #/4`
+  abriga "Inceticidas" e "Fluido acendedor oratório", compras distintas no mesmo lojista. ✅
+- **Similaridade com limiar 0.9** (`similaridadeClassificacao.ts`), como detector no registry, com
+  guardas baratas antes do Levenshtein: mesma fonte, entrada não ambígua, chave ≥8 caracteres e a
+  trava de valor. O limiar **não é a trava de segurança** — está documentado no próprio arquivo que
+  nenhum valor de limiar separa nomes parecidos truncados em largura fixa; quem separa é o valor. ✅
+- **Migração do legado + coluna H.** `DicEntry` ganhou `valor?`, a aba `Dicionario` grava a coluna H
+  e a leitura aceita dicionário antigo sem ela (valor ilegível = ausente). Verificado
+  descompactando o `Modelo.xlsx`: a aba `Dicionario` não tem `_rels` nem tabela definida e não é
+  referenciada por fórmula — acrescentar a coluna **não** fere a imutabilidade do modelo. ✅
+- **Regressão achada só na verificação com dados reais** (commit `8deb736`), que teste nenhum pegou:
+  a fusão marcava empate como `ambiguo`, e isso transformava casamento exato que **já funcionava**
+  numa dúvida — a fatura Nubank caiu de 34 para 32 classificados. Daí saiu a invariante que a spec
+  assumia sem garantir: **a canonização nunca pode piorar o que já funcionava.** Decisão 4 revista:
+  a fusão nunca cria ambíguo novo e no empate vence o primeiro da ordem do arquivo (`sort` estável
+  desde ES2019 — arbitrário, mas reproduzível). ✅
+
+### Hotfix — byte NUL literal cegava o git em `migracaoDicionario.ts` (2026-09-14, commit `6f344bd`)
+O arquivo entrou na `dev` como `Bin 0 -> 4672 bytes`. Os separadores de chave composta (linhas 51 e
+78) usavam o byte NUL **literal** em vez da sequência de escape. A string em runtime é idêntica, mas
+o byte cru faz o git classificar o fonte como binário: `git diff` respondia "Binary files differ" e
+4672 bytes de regra de fusão de dicionário ficaram invisíveis a qualquer revisão — inclusive à
+revisão de segurança da própria spec. Corrigido para o escape, com o porquê do separador documentado
+agora que é legível. Nenhum teste de comportamento mudou, porque o comportamento não mudou.
+
+Nasceu o alarme de drift `src/__tests__/fontes-sem-byte-nul.test.ts`, que varre os fontes versionados
+e isenta os `.xlsx` (binários por natureza). **Nenhum teste de comportamento pegaria esta classe de
+defeito** — só um alarme de grafia pega, no mesmo espírito de `index-css-patches.test.ts`. ✅
+
+### Onda 6 de hotfixes — item 39.2, candidatos na UI e robustez do registry (2026-09-11, branch `hotfixes-onda-6`)
+Três pendências confirmadas como ausentes no código (`git log -S` no histórico completo, não só no
+estado atual) e corrigidas test-first. 1681 testes verdes; verificado no app com os arquivos reais
+do Itaú de `data_sample/` — o mesmo cenário que motivou o item 47.
+
+- **Item 39.2 — o contador virou o localizador.** `setFiltroSoIncompletos` existia no store desde
+  `grid-ux-filtros` e não tinha **um único chamador** desde que a linha de filterchips saiu
+  (`034221f`). O contador "X de Y classificados" virou `role="switch"`. Antes de expor, o filtro
+  teve de ser corrigido: usava critério próprio (`!natureza || !iniciais`) e divergia em três
+  pontos do contador que promete localizar — cobrava **iniciais** (que VR e rendimentos deixam
+  vazias de propósito, então todos apareceriam como incompletos), **escondia** natureza fora da
+  lista válida e **mostrava** a linha em branco do item 38. Agora os dois usam `validarLinha`.
+  `calcularVisao` recebe `naturezasValidas` como parâmetro obrigatório — o `tsc` provou a
+  cobertura dos 11 call-sites. No app: 26 de 67 classificados, filtro ligado → exatamente 41
+  linhas. Testes TL-INC-1..9. ✅
+- **`Aviso.candidatos` ganhou leitor.** A conciliação listava candidatos desde
+  `conciliacao-robusta` e a UI nunca os renderizou: a tela mandava "escolha qual remover" sem
+  mostrar quais. Agora o card informativo lista cada um pelo `resumo` e leva à linha. Como o aviso
+  é informativo e tem `alvo: []`, a inspeção não servia de carona — nasceu `candidatoEmFoco` no
+  slice, reusando o contador `focoInspecao`. A linha é **selecionada**, não pintada: o realce
+  sai/fica afirma decisão de detector, e aqui quem decide é o usuário. Testes TL-CAND-1..13. ✅
+- **Registry robusto ao contrato de extensão** (achado lateral do item 47). Cada detector roda
+  protegido e a falha vira aviso declarado com id determinístico. Nasceu também
+  `classificarFontePorPrefixoParaExibicao` para o render da lista de arquivos, onde a tela caía
+  antes do "Produzir" — caminho que o TODO não registrava. **Reverte parcialmente a Task 6 de
+  `conciliacao-robusta`** (TL-F): a intenção de não engolir o erro continua, mas o "ruidoso"
+  virava silêncio, porque o usuário só via uma tela que não reagia. Testes TL-ROB-1..6. ✅
+- **Achado da inspeção visual** (que teste nenhum pegaria): seleção programática não dispara
+  `onGridSelectionChange`, então o rodapé "Soma da seleção" ficava com o total da seleção
+  anterior enquanto a grid já realçava outra linha. Mesma armadilha que `navegarParaRef` já
+  documentava no arquivo. ✅
 
 ### Spec `spec-20260831-motor-de-pares` — itens 23 e 27 (arquivada, mesclada na dev)
 Motor de casamento de pares que se anulam. 7 tasks + 2 fixes de fachada; arquivada em

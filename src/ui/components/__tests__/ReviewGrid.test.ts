@@ -498,6 +498,18 @@ describe('indicesEnvolvidos', () => {
     expect(indicesEnvolvidos(undefined)).toEqual([])
     expect(indicesEnvolvidos(avisoConciliacaoFake({ origem: 'outra-origem' }))).toEqual([])
   })
+
+  // TL-CAND-12/13: sem isto, um candidato escondido pelo filtro ativo não seria revelado
+  // e o scroll não teria para onde ir.
+  it('TL-CAND-12: o candidato em foco entra nos índices envolvidos mesmo sem aviso', () => {
+    const lancamentos = [lancamentoFake({ id: 5 }), lancamentoFake({ id: 19 })]
+    expect(indicesEnvolvidos(undefined, lancamentos, '19')).toEqual([1])
+  })
+
+  it('TL-CAND-13: candidato inexistente não vira índice', () => {
+    const lancamentos = [lancamentoFake({ id: 5 })]
+    expect(indicesEnvolvidos(undefined, lancamentos, '404')).toEqual([])
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -524,6 +536,29 @@ describe('calcularLinhaAncoraVisual', () => {
 
   it('TL-10b (guarda): retorna undefined quando não há aviso em inspeção', () => {
     expect(calcularLinhaAncoraVisual([0, 1, 2], undefined)).toBeUndefined()
+  })
+
+  // TL-CAND-5..7 — dívida `candidatos-de-aviso-nunca-renderizados`: o aviso que lista
+  // candidatos é informativo e tem `alvo: []`, então a âncora por alvo nunca resolve.
+  // O candidato clicado no card é quem diz para onde rolar.
+  it('TL-CAND-5: candidato em foco ancora pelo id mesmo sem aviso em inspeção', () => {
+    const lancamentos = [
+      lancamentoFake({ id: 5 }), // índice real 0
+      lancamentoFake({ id: 19 }), // índice real 1
+    ]
+    expect(calcularLinhaAncoraVisual([0, 1], undefined, lancamentos, '19')).toBe(1)
+  })
+
+  it('TL-CAND-6: candidato em foco tem precedência sobre o alvo do aviso', () => {
+    const lancamentos = [lancamentoFake({ id: 5 }), lancamentoFake({ id: 19 })]
+    const aviso = avisoConciliacaoFake({ alvo: ['0'] })
+    expect(calcularLinhaAncoraVisual([0, 1], aviso, lancamentos, '19')).toBe(1)
+  })
+
+  it('TL-CAND-7 (guarda): candidato que não existe mais cai no caminho do alvo', () => {
+    const lancamentos = [lancamentoFake({ id: 5 })]
+    const aviso = avisoConciliacaoFake({ alvo: ['0'], permanece: [] })
+    expect(calcularLinhaAncoraVisual([0], aviso, lancamentos, '404')).toBe(0)
   })
 
   it('TL-T8-10 (regressão, guarda): retorna undefined para origem desconhecida', () => {
@@ -961,5 +996,42 @@ describe('layout do valor contábil', () => {
   it('TL-14-13: formatarValorContabil formata em pt-BR com o sinal no prefixo', () => {
     expect(formatarValorContabil(-10595.06)).toBe('-R$ 10.595,06')
     expect(formatarValorContabil(1234.5)).toBe('R$ 1.234,50')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// T13 (spec dicionario-chave-canonica): origem do detector de similaridade
+// ---------------------------------------------------------------------------
+
+describe('derivarContextoInspecao — classificacao-similaridade (T13)', () => {
+  const avisoClassificar: Aviso = {
+    id: 'classificacao-similaridade-7',
+    tipo: 'proposta',
+    origem: 'classificacao-similaridade',
+    mensagem: 'parece ser Pensão residentes',
+    alvo: ['7'],
+    permanece: [],
+    estado: 'pendente',
+    mutacaoProposta: {
+      verbo: 'classificar',
+      alvo: [7],
+      natureza: 'OT',
+      descricao: 'Pensão residentes',
+      iniciais: 'ES',
+    },
+  }
+
+  it('RG13-01: a origem produz efeito na grid', () => {
+    expect(derivarContextoInspecao(avisoClassificar)).toBeDefined()
+  })
+
+  it('RG13-02: o alvo é comparado por id, não por índice', () => {
+    expect(derivarContextoInspecao(avisoClassificar)?.porId).toBe(true)
+  })
+
+  it('RG13-03: destaca a linha alvo e nenhuma linha no papel "fica"', () => {
+    const ctx = derivarContextoInspecao(avisoClassificar)
+    expect(ctx?.alvoSet.has('7')).toBe(true)
+    expect(ctx?.permaneceSet.size).toBe(0)
   })
 })

@@ -1,15 +1,91 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
+// ADR: see Docs/specs/dicionario-chave-canonica.adr.md
 
 /**
- * Remove sufixo de data (DD/MM ou DD/MM/AAAA) do final de uma transcrição,
- * produzindo a chave de lookup no dicionário.
+ * Sufixo de data no final da transcrição, em paridade com o regex do sistema
+ * legado (`legado/src/gastos/classificador.py`).
+ *
+ * Os dois detalhes que parecem ruído são justamente o que faz a regra funcionar
+ * (ADR `dicionario-chave-canonica`, Decisão 6):
+ * - `\s*` em vez de `\s+`, porque o extrato Itaú trunca o nome em largura fixa
+ *   e cola a data sem espaço algum (`PIX TRANSF HENRIQU04/05`);
+ * - `D?`, porque nesse truncamento a inicial do sobrenome costuma sobrar
+ *   grudada na data (`PIX TRANSF CESAR D13/06`).
+ *
+ * A porta original para TypeScript perdeu os dois, e com isso 51% das linhas do
+ * extrato real deixavam de casar com o dicionário: cada dia do mês produzia uma
+ * chave nova.
+ */
+const SUFIXO_DATA = /\s*D?\d{2}\/\d{2}(\/\d{2,4})?\s*$/
+
+/**
+ * Número da parcela no final da transcrição, sempre ancorado na palavra
+ * "Parcela" — `Parcela 2/4` e `Parcela 1 de 6` casam, `Loja 2/4` não.
+ *
+ * A exigência da palavra é deliberada e conservadora: `N/M` solto é
+ * indistinguível de uma data, e o sistema legado nunca tratou esse caso.
+ */
+const SUFIXO_PARCELA = /(parcela\s*)\d{1,2}\s*(?:\/|de)\s*(\d{1,2})\s*$/i
+
+/**
+ * Remove sufixo de data do final de uma transcrição, produzindo a chave de
+ * lookup no dicionário.
  *
  * Regra: apenas sufixos no final da string são removidos; datas no meio da
- * transcrição são preservadas. Conforme Decisão 4 do ADR: só a transcrição
- * normalizada entra na chave — valor não participa.
+ * transcrição são preservadas. O `.trim()` final espelha o `.strip()` do
+ * legado.
+ *
+ * Esta função NÃO mascara parcela — quem faz isso é `canonizarChave`. A
+ * separação é a Decisão 15 do ADR e existe porque `normalizarParaBusca`
+ * (abaixo) é aplicada a descrições digitadas pelo usuário, não a transcrições.
  */
 export function normalizarChave(transcricao: string): string {
-  return transcricao.replace(/\s+\d{2}\/\d{2}(\/\d{4})?$/, '')
+  return transcricao.replace(SUFIXO_DATA, '').trim()
+}
+
+/**
+ * Resultado de `canonizarChave`: a chave de lookup e o sinal de que ela perdeu
+ * poder discriminante por causa do mascaramento de parcela.
+ *
+ * `afrouxadaPorParcela` é o que autoriza a trava de valor no casamento — o
+ * valor só participa onde a canonização apagou informação (ADR, Decisão 2).
+ */
+export interface ChaveCanonica {
+  chave: string
+  afrouxadaPorParcela: boolean
+}
+
+/**
+ * Produz a chave canônica de uma transcrição, removendo os tokens que variam a
+ * cada mês: o número da parcela e o sufixo de data.
+ *
+ * **A ordem importa e não é permutável.** O mascaramento de parcela roda ANTES
+ * da remoção de data porque `Parcela 02/04` casa com o padrão de data
+ * (`\d{2}/\d{2}$`): invertida a ordem, a chave viraria `Loja X - Parcela` e
+ * colapsaria planos de parcelamento diferentes do mesmo lojista.
+ *
+ * O total de parcelas é preservado (`Parcela #/4`) para distinguir uma compra
+ * em 4x de outra em 6x no mesmo estabelecimento, e normalizado via `Number`
+ * para que `02/04` e `2/4` não gerem duas chaves.
+ *
+ * Fail-safe da Decisão 13: se a canonização consumir a transcrição inteira —
+ * uma transcrição que seja só uma data produz string vazia —, a canonização é
+ * descartada e vale a transcrição original. Chave vazia casaria com qualquer
+ * outra chave vazia da mesma fonte, que é o pior modo de falha possível aqui.
+ */
+export function canonizarChave(transcricao: string): ChaveCanonica {
+  const semParcela = transcricao.replace(
+    SUFIXO_PARCELA,
+    (_casamento, prefixo: string, total: string) => `${prefixo}#/${Number(total)}`,
+  )
+  const afrouxadaPorParcela = semParcela !== transcricao
+  const chave = normalizarChave(semParcela)
+
+  if (chave === '') {
+    return { chave: transcricao, afrouxadaPorParcela: false }
+  }
+
+  return { chave, afrouxadaPorParcela }
 }
 
 /**

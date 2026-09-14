@@ -11,6 +11,7 @@
     "test:ui": "vitest --ui",
     "test:watch": "vitest",
     "typecheck": "tsc -b",
+    "typecheck:tests": "tsc -p tsconfig.test.json --noEmit",
     "lint": "echo 'lint: sem linter configurado'"
   },
   "dependencies": {

@@ -335,8 +335,8 @@ describe('gerarSheetDataDicionario via gerarXlsx — cabeçalho e colunas Vezes/
     expect(sheet2).toContain('<c r="G1" t="inlineStr"><is><t>Ambíguo</t></is></c>')
   })
 
-  // Test List T2-2: linha 1 é row r="1" com spans="1:7"
-  it('emite a linha de cabeçalho com r="1" e spans="1:7"', () => {
+  // Test List T2-2: linha 1 é row r="1" com spans="1:8" (coluna H, spec dicionario-chave-canonica)
+  it('emite a linha de cabeçalho com r="1" e spans="1:8"', () => {
     const dicEntries: DicEntry[] = [
       { chave: 'X', fonte: 'Itaú', natureza: 'Outros', descricao: '', iniciais: 'AB', vezes: 1, ambiguo: true },
     ]
@@ -344,11 +344,11 @@ describe('gerarSheetDataDicionario via gerarXlsx — cabeçalho e colunas Vezes/
     const parts = unzipSync(resultado)
     const sheet2 = new TextDecoder().decode(parts['xl/worksheets/sheet2.xml'])
 
-    expect(sheet2).toContain('<row r="1" spans="1:7">')
+    expect(sheet2).toContain('<row r="1" spans="1:8">')
   })
 
-  // Test List T2-3: linhas de dados têm spans="1:7"
-  it('emite linhas de dados com spans="1:7" (não mais "1:5")', () => {
+  // Test List T2-3: linhas de dados têm spans="1:8"
+  it('emite linhas de dados com spans="1:8" (não mais "1:7")', () => {
     const dicEntries: DicEntry[] = [
       { chave: 'Padaria', fonte: 'Nubank', natureza: 'Alimentação', descricao: 'Pão', iniciais: 'ES', vezes: 5, ambiguo: false },
     ]
@@ -357,7 +357,7 @@ describe('gerarSheetDataDicionario via gerarXlsx — cabeçalho e colunas Vezes/
     const sheet2 = new TextDecoder().decode(parts['xl/worksheets/sheet2.xml'])
 
     // Linha de dados começa em r="2" (após o cabeçalho em r="1")
-    expect(sheet2).toContain('<row r="2" spans="1:7">')
+    expect(sheet2).toContain('<row r="2" spans="1:8">')
     // Não deve haver spans="1:5"
     expect(sheet2).not.toContain('spans="1:5"')
   })
@@ -610,5 +610,66 @@ describe('sincronia public/Modelo.xlsx ↔ fixture de testes', () => {
     const publicBytes = new Uint8Array(readFileSync(publicPath))
     const fixtureBytes = new Uint8Array(readFileSync(FIXTURE_PATH))
     expect(hashSha256(publicBytes)).toBe(hashSha256(fixtureBytes))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// T07 (spec dicionario-chave-canonica, D17): coluna H (Valor) na aba Dicionario
+// ---------------------------------------------------------------------------
+
+describe('gerarSheetDataDicionario — coluna H (Valor)', () => {
+  let modeloBytes: Uint8Array
+
+  beforeAll(() => {
+    modeloBytes = new Uint8Array(readFileSync(FIXTURE_PATH))
+  })
+
+  it('H07-01: emite o título "Valor" em H1', () => {
+    const dicEntries: DicEntry[] = [
+      { chave: 'X', fonte: 'Nubank', natureza: 'CM', descricao: 'y', iniciais: 'ES', vezes: 1, ambiguo: false },
+    ]
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], dicEntries, '2026-07')
+    const sheet2 = new TextDecoder().decode(unzipSync(resultado)['xl/worksheets/sheet2.xml'])
+    expect(sheet2).toContain('<c r="H1" t="inlineStr"><is><t>Valor</t></is></c>')
+  })
+
+  it('H07-02: grava o valor como número em H, quando presente', () => {
+    const dicEntries: DicEntry[] = [
+      {
+        chave: 'Autohubservice - Parcela #/4',
+        fonte: 'fatura_nubank_cc',
+        natureza: 'VC',
+        descricao: 'Conserto City',
+        iniciais: 'ES',
+        vezes: 2,
+        ambiguo: false,
+        valor: -275,
+      },
+    ]
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], dicEntries, '2026-07')
+    const sheet2 = new TextDecoder().decode(unzipSync(resultado)['xl/worksheets/sheet2.xml'])
+    expect(sheet2).toContain('<c r="H2"><v>-275</v></c>')
+  })
+
+  it('H07-03: D17 — célula H é OMITIDA quando a entrada não tem valor', () => {
+    // Omitir (em vez de gravar vazio ou zero) é o que permite ao round-trip provar
+    // que ausência sobrevive como ausência, e não vira 0.
+    const dicEntries: DicEntry[] = [
+      { chave: 'Mercado', fonte: 'Nubank', natureza: 'CM', descricao: 'Compras', iniciais: 'ES', vezes: 3, ambiguo: false },
+    ]
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], dicEntries, '2026-07')
+    const sheet2 = new TextDecoder().decode(unzipSync(resultado)['xl/worksheets/sheet2.xml'])
+    expect(sheet2).not.toContain('r="H2"')
+    // e a linha continua íntegra até G
+    expect(sheet2).toContain('<c r="G2" t="inlineStr"><is><t>false</t></is></c>')
+  })
+
+  it('H07-04: valor zero é gravado, não confundido com ausência', () => {
+    const dicEntries: DicEntry[] = [
+      { chave: 'Y', fonte: 'Nubank', natureza: 'CM', descricao: 'z', iniciais: 'ES', vezes: 1, ambiguo: false, valor: 0 },
+    ]
+    const resultado = gerarXlsx(modeloBytes, 'ES', [], dicEntries, '2026-07')
+    const sheet2 = new TextDecoder().decode(unzipSync(resultado)['xl/worksheets/sheet2.xml'])
+    expect(sheet2).toContain('<c r="H2"><v>0</v></c>')
   })
 })

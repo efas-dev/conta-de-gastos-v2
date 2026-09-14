@@ -97,8 +97,11 @@ describe('avisosSlice', () => {
         avisos: [],
         removidos: {},
         adicionados: {},
+        // `classificados` entrou com o verbo `classificar` (spec dicionario-chave-canonica, T12).
+        classificados: {},
         avisoEmInspecao: null,
         focoInspecao: 0,
+        candidatoEmFoco: null,
       })
     })
   })
@@ -145,6 +148,50 @@ describe('avisosSlice', () => {
       acoes.sairInspecao()
       expect(get().avisosAcionaveis.focoInspecao).toBe(1)
       expect(get().avisosAcionaveis.avisoEmInspecao).toBeNull()
+    })
+  })
+
+  /**
+   * Foco num CANDIDATO listado por um aviso (dívida `candidatos-de-aviso-nunca-renderizados`).
+   * Diferente da inspeção: o aviso que lista candidatos é informativo e tem `alvo: []` — não há
+   * proposta a destacar, só uma linha para a qual levar o usuário.
+   *
+   * TL-CAND-1: focarCandidato guarda o id e incrementa o contador de foco
+   * TL-CAND-2: focar o MESMO candidato de novo volta a incrementar (rolar duas vezes)
+   * TL-CAND-3: sairInspecao limpa o candidato em foco
+   * TL-CAND-4: limparAvisos limpa o candidato em foco
+   */
+  describe('focarCandidato (candidatos listados por aviso)', () => {
+    it('TL-CAND-1: guarda o id do lançamento e incrementa o foco', () => {
+      const { get, acoes } = criarStoreDeTeste()
+      expect(get().avisosAcionaveis.candidatoEmFoco).toBeNull()
+
+      acoes.focarCandidato('19')
+
+      expect(get().avisosAcionaveis.candidatoEmFoco).toBe('19')
+      expect(get().avisosAcionaveis.focoInspecao).toBe(1)
+    })
+
+    it('TL-CAND-2: focar o mesmo candidato de novo incrementa o foco outra vez', () => {
+      const { get, acoes } = criarStoreDeTeste()
+      acoes.focarCandidato('19')
+      acoes.focarCandidato('19')
+      expect(get().avisosAcionaveis.focoInspecao).toBe(2)
+      expect(get().avisosAcionaveis.candidatoEmFoco).toBe('19')
+    })
+
+    it('TL-CAND-3: sairInspecao limpa o candidato em foco', () => {
+      const { get, acoes } = criarStoreDeTeste()
+      acoes.focarCandidato('19')
+      acoes.sairInspecao()
+      expect(get().avisosAcionaveis.candidatoEmFoco).toBeNull()
+    })
+
+    it('TL-CAND-4: limparAvisos limpa o candidato em foco', () => {
+      const { get, acoes } = criarStoreDeTeste()
+      acoes.focarCandidato('19')
+      acoes.limparAvisos()
+      expect(get().avisosAcionaveis.candidatoEmFoco).toBeNull()
     })
   })
 

@@ -297,3 +297,92 @@ describe('aprenderDicionario', () => {
     expect(dicAnterior).toEqual(dicAnteriorOriginal)
   })
 })
+
+// ---------------------------------------------------------------------------
+// T05 (spec dicionario-chave-canonica): chave canônica e valor aprendido
+// ---------------------------------------------------------------------------
+
+const parcelaClassificada: Lancamento = {
+  fonte: 'fatura_nubank_cc',
+  data: '2026-05-03',
+  transcricao: 'Autohubservice - Parcela 2/4',
+  valor: -275,
+  iniciais: 'ES',
+  natureza: 'VC',
+  descricao: 'Conserto City',
+}
+
+describe('aprenderDicionario — chave canônica e valor (T05)', () => {
+  it('AP-01: grava a chave canônica, não a transcrição literal', () => {
+    const [entrada] = aprenderDicionario([parcelaClassificada], [])
+    expect(entrada.chave).toBe('Autohubservice - Parcela #/4')
+  })
+
+  it('AP-02: grava o valor em chave afrouxada por parcela', () => {
+    const [entrada] = aprenderDicionario([parcelaClassificada], [])
+    expect(entrada.valor).toBe(-275)
+  })
+
+  it('AP-03: D16 — chave NÃO afrouxada não grava valor', () => {
+    const comum: Lancamento = {
+      ...parcelaClassificada,
+      transcricao: 'PAG BOLETO ENERGIA 12/03',
+      valor: -150,
+    }
+    const [entrada] = aprenderDicionario([comum], [])
+    expect(entrada.chave).toBe('PAG BOLETO ENERGIA')
+    expect(entrada.valor).toBeUndefined()
+  })
+
+  it('AP-04: parcela seguinte com mesmo valor incrementa vezes e preserva o valor original', () => {
+    const primeira = aprenderDicionario([parcelaClassificada], [])
+    const seguinte = { ...parcelaClassificada, transcricao: 'Autohubservice - Parcela 3/4' }
+    const dic = aprenderDicionario([seguinte], primeira)
+
+    expect(dic).toHaveLength(1)
+    expect(dic[0].vezes).toBe(2)
+    expect(dic[0].valor).toBe(-275)
+  })
+
+  it('AP-05: D16 — valor fora da tolerância cria entrada nova, não marca ambíguo', () => {
+    // Duas compras diferentes do mesmo lojista, ambas em 4x: precisam coexistir.
+    const primeira = aprenderDicionario([parcelaClassificada], [])
+    const outraCompra = {
+      ...parcelaClassificada,
+      transcricao: 'Autohubservice - Parcela 1/4',
+      valor: -27.12,
+      descricao: 'Outra compra',
+    }
+    const dic = aprenderDicionario([outraCompra], primeira)
+
+    expect(dic).toHaveLength(2)
+    expect(dic.some((e) => e.ambiguo)).toBe(false)
+    expect(dic.map((e) => e.valor).sort()).toEqual([-275, -27.12].sort())
+  })
+
+  it('AP-06: D1 — entrada herdada sem valor é PROMOVIDA, não duplicada', () => {
+    const herdada: DicEntry = {
+      chave: 'Autohubservice - Parcela #/4',
+      fonte: 'fatura_nubank_cc',
+      natureza: 'VC',
+      descricao: 'Conserto City',
+      iniciais: 'ES',
+      vezes: 2,
+      ambiguo: false,
+    }
+    const dic = aprenderDicionario([parcelaClassificada], [herdada])
+
+    expect(dic).toHaveLength(1)
+    expect(dic[0].valor).toBe(-275)
+    expect(dic[0].vezes).toBe(3)
+  })
+
+  it('AP-07: padrão divergente na mesma chave e valor continua marcando ambíguo', () => {
+    const primeira = aprenderDicionario([parcelaClassificada], [])
+    const divergente = { ...parcelaClassificada, descricao: 'Descrição diferente' }
+    const dic = aprenderDicionario([divergente], primeira)
+
+    expect(dic).toHaveLength(1)
+    expect(dic[0].ambiguo).toBe(true)
+  })
+})

@@ -1,0 +1,102 @@
+// ADR: see spec/dicionario-chave-canonica.adr.md
+
+import type { DicEntry } from '../types'
+import { canonizarChave } from './normalizacao'
+
+/**
+ * Migra um dicionário gravado antes desta spec para o formato de chave canônica.
+ *
+ * **Por que existe.** Sem ela a canonização não ajudaria ninguém no primeiro uso: as chaves antigas
+ * estão literais no `.xlsx` de cada usuário, poluídas pelos tokens que variam mês a mês. No
+ * dicionário real que motivou a spec, 42 das 129 entradas (33%) carregam data colada e nunca
+ * voltariam a casar, porque cada dia do mês produzia uma chave nova.
+ *
+ * **O que faz.** Canoniza cada chave, descarta entradas incompletas (mesma regra do aprendizado —
+ * natureza ou descrição em branco não classificam nada) e funde as que passam a colidir.
+ *
+ * **Como funde** (Decisão 4, revista): contagens somam e o padrão mais frequente vence — inclusive
+ * no empate, em que vence o primeiro na ordem do arquivo. A fusão NUNCA cria `ambiguo` novo.
+ *
+ * A revisão veio de uma regressão medida no app com dados reais: marcar empate como ambíguo
+ * transformava casamentos que já funcionavam em dúvidas, e a spec passava a classificar 2 linhas a
+ * MENOS que o código anterior na fatura Nubank. O caso era `Autohubservice`, com
+ * `"Consero City"(2x)` e `"Conserto City"(2x)` — a mesma descrição com um typo, empatadas.
+ *
+ * Dois riscos aceitos explicitamente pelo humano ao escolher esta regra:
+ * frequência não é correção (um erro repetido três vezes vence um acerto digitado uma vez), e no
+ * empate a escolha é arbitrária — pode ser o typo que vence, e isso se propaga sem aviso. O
+ * desempate é estável (ordem do arquivo), então ao menos o resultado é reproduzível, nunca
+ * aleatório entre execuções.
+ *
+ * **O que NÃO funde.** Entradas de mesma chave canônica com valores distintos são compras
+ * distintas (Decisão 1) e permanecem separadas — é o caso `Mercadolivre*10produt - Parcela #/4`,
+ * que abriga "Inceticidas" e "Fluido acendedor oratório".
+ *
+ * Puro por contrato (Decisão 11): recebe e devolve `DicEntry[]`, não conhece `.xlsx`, não muta a
+ * entrada. Roda em memória sobre o arquivo lido — o `.xlsx` de origem do usuário nunca é
+ * sobrescrito, então uma migração ruim não destrói dados.
+ */
+export function migrarDicionario(dicAnterior: DicEntry[]): DicEntry[] {
+  const grupos = new Map<string, DicEntry[]>()
+
+  for (const original of dicAnterior) {
+    if (original.natureza.trim() === '' || original.descricao.trim() === '') continue
+
+    const { chave } = canonizarChave(original.chave)
+    const migrada: DicEntry = { ...original, chave }
+
+    // O valor entra na identidade do grupo porque, em chave afrouxada, ele é o que separa duas
+    // compras distintas. Entradas herdadas (sem valor) caem todas no mesmo balde, que é o
+    // comportamento desejado: é exatamente entre elas que a fusão precisa acontecer.
+    //
+    // O separador é NUL escapado porque nenhum campo de dicionário pode contê-lo, então a
+    // concatenação nunca produz colisão entre grupos distintos. Escapado, e não literal: o byte
+    // cru faria o git tratar este arquivo como binário e some com ele de qualquer revisão.
+    const identidade = `${chave}\u0000${original.fonte}\u0000${migrada.valor ?? ''}`
+    const grupo = grupos.get(identidade)
+    if (grupo) {
+      grupo.push(migrada)
+    } else {
+      grupos.set(identidade, [migrada])
+    }
+  }
+
+  return Array.from(grupos.values(), fundirGrupo)
+}
+
+/**
+ * Funde as entradas que passaram a dividir a mesma identidade após a canonização.
+ *
+ * Grupo de uma entrada só passa direto. Com duas ou mais, as contagens somam e o padrão vencedor é
+ * o de maior contagem acumulada; no empate vence o primeiro da ordem do arquivo (`sort` estável),
+ * e NÃO se cria `ambiguo`.
+ *
+ * `ambiguo` herdado de qualquer entrada do grupo é preservado — uma ambiguidade registrada antes
+ * da migração não desaparece por fusão.
+ */
+function fundirGrupo(grupo: DicEntry[]): DicEntry {
+  if (grupo.length === 1) return grupo[0]
+
+  const porPadrao = new Map<string, { entrada: DicEntry; vezes: number }>()
+  for (const e of grupo) {
+    const padrao = `${e.natureza}\u0000${e.descricao}\u0000${e.iniciais}`
+    const acumulado = porPadrao.get(padrao)
+    if (acumulado) {
+      acumulado.vezes += e.vezes
+    } else {
+      porPadrao.set(padrao, { entrada: e, vezes: e.vezes })
+    }
+  }
+
+  // `Array.prototype.sort` é estável por especificação desde ES2019, então no empate o vencedor é
+  // sempre o primeiro na ordem de inserção — que é a ordem do arquivo. Arbitrário, mas
+  // reproduzível: a mesma planilha migra sempre para o mesmo resultado.
+  const ranking = Array.from(porPadrao.values()).sort((a, b) => b.vezes - a.vezes)
+  const vencedor = ranking[0]
+
+  return {
+    ...vencedor.entrada,
+    vezes: grupo.reduce((soma, e) => soma + e.vezes, 0),
+    ambiguo: grupo.some((e) => e.ambiguo),
+  }
+}

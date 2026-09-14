@@ -12,6 +12,7 @@ import { ratearSplit, type AlvoSplit } from '../../dominio/split'
 import { corrigirNatureza } from '../../dominio/natureza'
 import { interpretarValorMonetario } from '../../dominio/normalizacao'
 import { detectarReplicacao, type SugestaoReplicacao } from '../../dominio/replicacao'
+import { validarLinha } from '../../dominio/validacao'
 import { defaultMes, FONTE_MANUAL } from '../../dominio/mes'
 import { atribuirIds } from '../../parsers/idSerial'
 import {
@@ -134,7 +135,11 @@ export interface EstadoApp {
   filtroFontes: string[]
   /** Naturezas selecionadas para filtro; array vazio = sem filtro por natureza. */
   filtroNaturezas: string[]
-  /** Quando true, exibe apenas lançamentos com natureza ou iniciais vazios. */
+  /**
+   * Quando true, exibe apenas os lançamentos que `validarLinha`
+   * (`src/dominio/validacao.ts`) considera pendentes — exatamente os que a
+   * `ToolbarRevisao` conta em "X de Y classificados" (item 39.2 do TODO).
+   */
   filtroSoIncompletos: boolean
   /** Coluna usada para ordenação; null = ordem original dos parsers (D5). */
   ordenacaoColuna: ColunaOrdenavel | null
@@ -406,6 +411,22 @@ function escreverCampoNoDraft(
   }
 }
 
+/**
+ * Recalcula a visão derivada da grid (filtros + ordenação).
+ *
+ * `naturezasValidas` entra aqui por causa do filtro "só incompletos" (item 39.2 do TODO):
+ * ele é o **localizador** do contador "X de Y classificados" da `ToolbarRevisao`, então
+ * precisa responder à mesma pergunta que o contador — e o contador é `validarLinha`
+ * (`src/dominio/validacao.ts`), que depende da lista de naturezas do Modelo. O critério
+ * anterior era próprio deste filtro (`!natureza || !iniciais`) e divergia em três pontos:
+ * cobrava iniciais (que nenhum contador cobra, e que VR/rendimentos deixam vazias de
+ * propósito — `src/dominio/vr.ts`, `src/dominio/rendimentos.ts`), escondia natureza fora
+ * da lista válida (que o contador cobra) e mostrava a linha em branco recém-inserida
+ * (item 38), que `validarLinha` não cobra por não ter transcrição nem valor.
+ *
+ * Parâmetro **obrigatório** de propósito: um default silencioso (`[]`) faria toda natureza
+ * preenchida parecer inválida nos call-sites esquecidos, e o compilador não avisaria.
+ */
 function calcularVisao(
   lancamentos: Lancamento[],
   filtroFontes: string[],
@@ -413,6 +434,7 @@ function calcularVisao(
   filtroSoIncompletos: boolean,
   ordenacaoColuna: ColunaOrdenavel | null,
   ordenacaoDirecao: DirecaoOrdenacao,
+  naturezasValidas: string[],
 ): { lancamentosVisiveis: Lancamento[]; mapaIndiceVisualReal: number[] } {
   // Monta lista de (indiceReal, lancamento) para preservar o índice original
   let pares: Array<{ indice: number; lancamento: Lancamento }> = lancamentos.map(
@@ -428,9 +450,7 @@ function calcularVisao(
   }
 
   if (filtroSoIncompletos) {
-    pares = pares.filter(
-      ({ lancamento: l }) => !l.natureza || !l.iniciais,
-    )
+    pares = pares.filter(({ lancamento: l }) => validarLinha(l, naturezasValidas))
   }
 
   if (ordenacaoColuna !== null) {
@@ -589,6 +609,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
       filtroSoIncompletos,
       ordenacaoColuna,
       ordenacaoDirecao,
+      novoEstado.naturezasValidas,
     )
     set({
       ...novoEstado,
@@ -619,6 +640,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         s.filtroSoIncompletos,
         s.ordenacaoColuna,
         s.ordenacaoDirecao,
+        s.naturezasValidas,
       ) as Partial<AppStore>,
     )
   }
@@ -733,6 +755,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         filtroSoIncompletos,
         ordenacaoColuna,
         ordenacaoDirecao,
+        estadoRestaurado.naturezasValidas,
       )
       set({
         ...estadoRestaurado,
@@ -768,6 +791,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         filtroSoIncompletos,
         ordenacaoColuna,
         ordenacaoDirecao,
+        estadoRefeito.naturezasValidas,
       )
       set({
         ...estadoRefeito,
@@ -809,6 +833,7 @@ export const useAppStore = create<AppStore>()((set, get) => {
         s.filtroSoIncompletos,
         s.ordenacaoColuna,
         s.ordenacaoDirecao,
+        s.naturezasValidas,
       )
       set({ lancamentos, ...(lancamentos.length > 0 ? { sujo: true } : {}), sugestaoReplicacao: null, ...visao })
     },
@@ -828,25 +853,25 @@ export const useAppStore = create<AppStore>()((set, get) => {
 
     setFiltroFontes: (fontes) => {
       const s = get()
-      const visao = calcularVisao(s.lancamentos, fontes, s.filtroNaturezas, s.filtroSoIncompletos, s.ordenacaoColuna, s.ordenacaoDirecao)
+      const visao = calcularVisao(s.lancamentos, fontes, s.filtroNaturezas, s.filtroSoIncompletos, s.ordenacaoColuna, s.ordenacaoDirecao, s.naturezasValidas)
       set({ filtroFontes: fontes, ...visao })
     },
 
     setFiltroNaturezas: (naturezas) => {
       const s = get()
-      const visao = calcularVisao(s.lancamentos, s.filtroFontes, naturezas, s.filtroSoIncompletos, s.ordenacaoColuna, s.ordenacaoDirecao)
+      const visao = calcularVisao(s.lancamentos, s.filtroFontes, naturezas, s.filtroSoIncompletos, s.ordenacaoColuna, s.ordenacaoDirecao, s.naturezasValidas)
       set({ filtroNaturezas: naturezas, ...visao })
     },
 
     setFiltroSoIncompletos: (ativo) => {
       const s = get()
-      const visao = calcularVisao(s.lancamentos, s.filtroFontes, s.filtroNaturezas, ativo, s.ordenacaoColuna, s.ordenacaoDirecao)
+      const visao = calcularVisao(s.lancamentos, s.filtroFontes, s.filtroNaturezas, ativo, s.ordenacaoColuna, s.ordenacaoDirecao, s.naturezasValidas)
       set({ filtroSoIncompletos: ativo, ...visao })
     },
 
     setOrdenacao: (coluna, direcao) => {
       const s = get()
-      const visao = calcularVisao(s.lancamentos, s.filtroFontes, s.filtroNaturezas, s.filtroSoIncompletos, coluna, direcao)
+      const visao = calcularVisao(s.lancamentos, s.filtroFontes, s.filtroNaturezas, s.filtroSoIncompletos, coluna, direcao, s.naturezasValidas)
       set({ ordenacaoColuna: coluna, ordenacaoDirecao: direcao, ...visao })
     },
 
@@ -862,13 +887,13 @@ export const useAppStore = create<AppStore>()((set, get) => {
           novaColuna = null
         }
       }
-      const visao = calcularVisao(s.lancamentos, s.filtroFontes, s.filtroNaturezas, s.filtroSoIncompletos, novaColuna, novaDirecao)
+      const visao = calcularVisao(s.lancamentos, s.filtroFontes, s.filtroNaturezas, s.filtroSoIncompletos, novaColuna, novaDirecao, s.naturezasValidas)
       set({ ordenacaoColuna: novaColuna, ordenacaoDirecao: novaDirecao, ...visao })
     },
 
     limparFiltros: () => {
       const s = get()
-      const visao = calcularVisao(s.lancamentos, [], [], false, null, 'asc')
+      const visao = calcularVisao(s.lancamentos, [], [], false, null, 'asc', s.naturezasValidas)
       set({
         filtroFontes: [],
         filtroNaturezas: [],

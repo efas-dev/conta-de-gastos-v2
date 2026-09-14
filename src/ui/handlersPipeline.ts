@@ -1,5 +1,6 @@
 // ADR: see Docs/specs/fundacao-operacoes.adr.md
 // ADR: see Docs/specs/fatura-itau-xlsx.adr.md
+// ADR: see Docs/specs/dicionario-chave-canonica.adr.md
 import {
   produzirLancamentos,
   gerarAPartirDosRevisados,
@@ -190,6 +191,10 @@ export async function handleProduzir(deps: DepsHandleProduzir): Promise<void> {
     mesEscolhido,
     limparAvisos,
     adicionarAvisosAcionaveis,
+    // Spec `dicionario-chave-canonica`: o dicionário carregado alimenta o detector
+    // `classificacao-similaridade`, que propõe (nunca aplica) classificação para linhas que o
+    // casamento por chave não resolveu.
+    dicEntries,
   )
 
   // Parseia naturezas uma única vez e deriva ambos os campos (D2 do ADR colinha-naturezas).

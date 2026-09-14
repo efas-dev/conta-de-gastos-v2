@@ -1,7 +1,7 @@
 // ADR: see Docs/specs/redesign-frontend-claude-design.adr.md
 
-import { describe, it, expect, vi } from 'vitest'
-import { render } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, fireEvent } from '@testing-library/react'
 import { ToolbarRevisao } from '../ToolbarRevisao'
 import type { Lancamento } from '../../../types'
 
@@ -9,17 +9,28 @@ import type { Lancamento } from '../../../types'
 // Mock do store Zustand — mesmo padrão de FiltroBar.test (filtroRanking.test.tsx)
 // ---------------------------------------------------------------------------
 
+const setFiltroSoIncompletos = vi.fn()
+
 const mockStore: {
   lancamentos: Lancamento[]
   naturezasValidas: string[]
   sujo: boolean
   saldoAnterior: number | null
+  filtroSoIncompletos: boolean
+  setFiltroSoIncompletos: (ativo: boolean) => void
 } = {
   lancamentos: [],
   naturezasValidas: [],
   sujo: false,
   saldoAnterior: null,
+  filtroSoIncompletos: false,
+  setFiltroSoIncompletos,
 }
+
+beforeEach(() => {
+  setFiltroSoIncompletos.mockClear()
+  mockStore.filtroSoIncompletos = false
+})
 
 vi.mock('../../store/appStore', () => ({
   useAppStore: (selector: (state: typeof mockStore) => unknown) => selector(mockStore),
@@ -236,5 +247,85 @@ describe('ToolbarRevisao', () => {
     const grupo = container.querySelector('.saldos') as HTMLElement
     expect(grupo.getAttribute('title')).toBeTruthy()
     expect((grupo.getAttribute('title') as string).length).toBeGreaterThan(10)
+  })
+
+  // -------------------------------------------------------------------------
+  // TL-INC-5..9 — item 39.2 do TODO: o contador deixa de só informar e passa a
+  // levar. O filtro "só incompletos" já existia no store desde a spec
+  // `grid-ux-filtros`, mas perdeu a UI junto com a linha de filterchips
+  // (commit `034221f`) e ficou sem nenhum acionador.
+  // -------------------------------------------------------------------------
+
+  it('TL-INC-5: o contador é um switch desligado quando há pendentes', () => {
+    mockStore.lancamentos = [
+      lan({ natureza: 'Alimentação' }),
+      lan({ natureza: '', transcricao: 'Sem natureza', valor: -10 }),
+    ]
+    mockStore.naturezasValidas = ['Alimentação']
+    mockStore.saldoAnterior = null
+
+    const { container } = render(<ToolbarRevisao />)
+
+    const sw = container.querySelector('[role="switch"]') as HTMLButtonElement
+    expect(sw).toBeTruthy()
+    expect(sw.getAttribute('aria-checked')).toBe('false')
+    expect(sw.disabled).toBe(false)
+    expect(sw.textContent).toContain('1 de 2 classificados')
+  })
+
+  it('TL-INC-6: clicar no contador liga o filtro de pendentes no store', () => {
+    mockStore.lancamentos = [
+      lan({ natureza: '', transcricao: 'Sem natureza', valor: -10 }),
+    ]
+    mockStore.naturezasValidas = ['Alimentação']
+    mockStore.saldoAnterior = null
+
+    const { container } = render(<ToolbarRevisao />)
+    fireEvent.click(container.querySelector('[role="switch"]') as HTMLElement)
+
+    expect(setFiltroSoIncompletos).toHaveBeenCalledWith(true)
+  })
+
+  it('TL-INC-7: com o filtro ligado, clicar desliga (aria-checked reflete o store)', () => {
+    mockStore.lancamentos = [
+      lan({ natureza: '', transcricao: 'Sem natureza', valor: -10 }),
+    ]
+    mockStore.naturezasValidas = ['Alimentação']
+    mockStore.filtroSoIncompletos = true
+    mockStore.saldoAnterior = null
+
+    const { container } = render(<ToolbarRevisao />)
+    const sw = container.querySelector('[role="switch"]') as HTMLButtonElement
+    expect(sw.getAttribute('aria-checked')).toBe('true')
+
+    fireEvent.click(sw)
+    expect(setFiltroSoIncompletos).toHaveBeenCalledWith(false)
+  })
+
+  it('TL-INC-8: sem pendentes, o switch fica desabilitado em vez de sumir', () => {
+    mockStore.lancamentos = [lan({ natureza: 'Alimentação' })]
+    mockStore.naturezasValidas = ['Alimentação']
+    mockStore.saldoAnterior = null
+
+    const { container } = render(<ToolbarRevisao />)
+
+    const sw = container.querySelector('[role="switch"]') as HTMLButtonElement
+    expect(sw).toBeTruthy()
+    expect(sw.disabled).toBe(true)
+    expect(sw.textContent).toContain('1 de 1 classificados')
+  })
+
+  // Zerar a última pendente com o filtro ligado não pode trancar o usuário numa
+  // grid vazia — o switch continua clicável justamente para desligar.
+  it('TL-INC-9: zero pendentes com o filtro ligado mantém o switch habilitado', () => {
+    mockStore.lancamentos = [lan({ natureza: 'Alimentação' })]
+    mockStore.naturezasValidas = ['Alimentação']
+    mockStore.filtroSoIncompletos = true
+    mockStore.saldoAnterior = null
+
+    const { container } = render(<ToolbarRevisao />)
+
+    const sw = container.querySelector('[role="switch"]') as HTMLButtonElement
+    expect(sw.disabled).toBe(false)
   })
 })

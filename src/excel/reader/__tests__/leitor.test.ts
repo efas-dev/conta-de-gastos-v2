@@ -31,7 +31,7 @@ function criarXlsxDicionario(linhas: (string | number)[][]): Uint8Array {
     return result
   }
 
-  const COLUNAS_NUMERICAS = new Set(['vezes'])
+  const COLUNAS_NUMERICAS = new Set(['vezes', 'valor'])
   const COLUNAS_BOOLEANAS = new Set(['ambiguo'])
 
   const cabecalho = linhas[0] as string[]
@@ -50,9 +50,13 @@ function criarXlsxDicionario(linhas: (string | number)[][]): Uint8Array {
       return `<c r="${ref}" t="inlineStr"><is><t>${String(valor)}</t></is></c>`
     }
 
-    // Coluna numérica: valor numérico sem t
+    // Coluna numérica: valor numérico sem t. Quando o teste passa uma string (para exercitar
+    // célula corrompida), grava como inlineStr — é assim que um .xlsx real carrega lixo numa
+    // coluna que deveria ser numérica.
     if (COLUNAS_NUMERICAS.has(nomCol)) {
-      return `<c r="${ref}"><v>${String(valor)}</v></c>`
+      return typeof valor === 'number'
+        ? `<c r="${ref}"><v>${String(valor)}</v></c>`
+        : `<c r="${ref}" t="inlineStr"><is><t>${String(valor)}</t></is></c>`
     }
 
     // Strings: inline
@@ -817,5 +821,102 @@ describe('lerDicionario — normalização de acentos NFD no cabeçalho', () => 
     expect(resultado).toHaveLength(1)
     expect(resultado[0].descricao).toBe('Compras do mês')
     expect(resultado[0].ambiguo).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// T08 (spec dicionario-chave-canonica): coluna H tolerante + migração na leitura
+// ---------------------------------------------------------------------------
+
+const CAB8 = ['chave', 'fonte', 'natureza', 'descricao', 'iniciais', 'vezes', 'ambiguo', 'valor']
+const CAB7 = CAB8.slice(0, 7)
+
+describe('lerDicionario — coluna Valor (T08, D14/D18)', () => {
+  it('L08-01: lê o valor da coluna H', () => {
+    const bytes = criarXlsxDicionario([
+      CAB8,
+      ['Autohubservice - Parcela #/4', 'fatura_nubank_cc', 'VC', 'Conserto City', 'ES', 2, 'false', -275],
+    ])
+    expect(lerDicionario(bytes)[0].valor).toBe(-275)
+  })
+
+  it('L08-02: dicionário sem a coluna H continua legível, com valor ausente', () => {
+    const bytes = criarXlsxDicionario([
+      CAB7,
+      ['Mercado', 'Nubank', 'CM', 'Compras', 'ES', 3, 'false'],
+    ])
+    const dic = lerDicionario(bytes)
+    expect(dic).toHaveLength(1)
+    expect(dic[0].valor).toBeUndefined()
+  })
+
+  it('L08-03: D18 — conteúdo não numérico cai no fallback de ausente', () => {
+    const bytes = criarXlsxDicionario([
+      CAB8,
+      ['Mercado', 'Nubank', 'CM', 'Compras', 'ES', 3, 'false', 'lixo'],
+    ])
+    const dic = lerDicionario(bytes)
+    expect(dic[0].valor).toBeUndefined()
+    // A entrada NÃO se perde por causa de uma célula ruim
+    expect(dic[0].descricao).toBe('Compras')
+  })
+
+  it('L08-04: D18 — célula vazia é ausente', () => {
+    const bytes = criarXlsxDicionario([
+      CAB8,
+      ['Mercado', 'Nubank', 'CM', 'Compras', 'ES', 3, 'false', ''],
+    ])
+    expect(lerDicionario(bytes)[0].valor).toBeUndefined()
+  })
+
+  it('L08-05: D18 — valor negativo é legítimo, não ilegível (despesa)', () => {
+    const bytes = criarXlsxDicionario([
+      CAB8,
+      ['X - Parcela #/3', 'fatura_nubank_cc', 'DV', 'Curso', 'ES', 1, 'false', -375],
+    ])
+    expect(lerDicionario(bytes)[0].valor).toBe(-375)
+  })
+
+  it('L08-06: D18 — valor zero é legítimo', () => {
+    const bytes = criarXlsxDicionario([
+      CAB8,
+      ['X - Parcela #/3', 'fatura_nubank_cc', 'DV', 'Curso', 'ES', 1, 'false', 0],
+    ])
+    expect(lerDicionario(bytes)[0].valor).toBe(0)
+  })
+})
+
+describe('lerDicionario — migração na leitura (T08, F5/F7)', () => {
+  it('L08-07: canoniza chave poluída por data ao ler', () => {
+    const bytes = criarXlsxDicionario([
+      CAB7,
+      ['PIX TRANSF CESAR D28/02', 'extrato_itau', 'DL', 'Ajuda Familiar', 'ES', 1, 'false'],
+    ])
+    expect(lerDicionario(bytes)[0].chave).toBe('PIX TRANSF CESAR')
+  })
+
+  it('L08-08: funde na leitura entradas que colidem após a canonização', () => {
+    const bytes = criarXlsxDicionario([
+      CAB7,
+      ['PIX TRANSF CESAR D28/02', 'extrato_itau', 'DL', 'Ajuda Familiar', 'ES', 2, 'false'],
+      ['PIX TRANSF CESAR D13/06', 'extrato_itau', 'DL', 'Ajuda Familiar', 'ES', 3, 'false'],
+    ])
+    const dic = lerDicionario(bytes)
+    expect(dic).toHaveLength(1)
+    expect(dic[0].vezes).toBe(5)
+  })
+
+  it('L08-09: empate na fusão funde e classifica, sem virar ambíguo (D4 revista)', () => {
+    const bytes = criarXlsxDicionario([
+      CAB7,
+      ['PIX TRANSF Alexand06/03', 'extrato_itau', 'GO', 'Reembolso Spotify', 'ES', 1, 'false'],
+      ['PIX TRANSF Alexand06/05', 'extrato_itau', 'GO', 'Spotify', 'ES', 1, 'false'],
+    ])
+    const dic = lerDicionario(bytes)
+    expect(dic).toHaveLength(1)
+    // Marcar empate como ambíguo transformava casamentos exatos em dúvidas e fazia a spec
+    // classificar MENOS que o código anterior — regressão medida no app com dados reais.
+    expect(dic[0].ambiguo).toBe(false)
+    expect(dic[0].descricao).toBe('Reembolso Spotify')
   })
 })

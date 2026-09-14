@@ -8,6 +8,10 @@ CLAUDE.md
 
 # Build artifacts e dependências do app
 node_modules/
+# Sem barra também: a worktree de hotfix usa um SYMLINK para o node_modules do repo
+# principal (evita reinstalar), e `node_modules/` casa apenas diretório — o symlink é
+# um arquivo (mode 120000) e escapava para dentro do commit.
+node_modules
 dist/
 
 # Legado: versiona o código antigo, mas não o ambiente virtual nem caches

@@ -864,17 +864,82 @@ describe('lancamentosVisiveis', () => {
     expect(visiveis[0].transcricao).toBe('B')
   })
 
-  // TL-T1-09: filtroSoIncompletos mostra apenas lançamentos com natureza ou iniciais vazias
-  it('filtroSoIncompletos mostra apenas lançamentos com natureza ou iniciais vazios', () => {
+  // TL-T1-09: filtroSoIncompletos usa o MESMO critério do contador da toolbar
+  // (`validarLinha`). O critério anterior (`!natureza || !iniciais`) era próprio deste
+  // filtro e divergia do número que o usuário lê na tela — ver TL-INC-1..4 abaixo.
+  it('filtroSoIncompletos mostra apenas lançamentos que `validarLinha` considera pendentes', () => {
+    useAppStore.setState({ naturezasValidas: ['AL', 'MO'] })
     useAppStore.getState().setLancamentos([
-      lancamento({ transcricao: 'A', natureza: 'Alimentação', iniciais: 'ES' }),
+      lancamento({ transcricao: 'A', natureza: 'AL', iniciais: 'ES' }),
       lancamento({ transcricao: 'B', natureza: '', iniciais: 'ES' }),
-      lancamento({ transcricao: 'C', natureza: 'Moradia', iniciais: '' }),
+      lancamento({ transcricao: 'C', natureza: 'MO', iniciais: '' }),
     ])
     useAppStore.getState().setFiltroSoIncompletos(true)
     const visiveis = useAppStore.getState().lancamentosVisiveis
-    expect(visiveis).toHaveLength(2)
-    expect(visiveis.map((l) => l.transcricao)).toEqual(['B', 'C'])
+    expect(visiveis).toHaveLength(1)
+    expect(visiveis.map((l) => l.transcricao)).toEqual(['B'])
+  })
+
+  // -------------------------------------------------------------------------
+  // TL-INC-1..4 — item 39.2 do TODO: o filtro "só incompletos" é o localizador
+  // do contador "X de Y classificados". Os dois PRECISAM responder à mesma
+  // pergunta, senão o filtro entrega uma lista que não bate com o número.
+  // -------------------------------------------------------------------------
+
+  // TL-INC-1: iniciais vazias NÃO são incompletude — VR e rendimentos nascem com
+  // `iniciais: ''` de propósito (`src/dominio/vr.ts`, `src/dominio/rendimentos.ts`),
+  // e o contador nunca as cobrou.
+  it('TL-INC-1: linha classificada com iniciais vazias não conta como incompleta', () => {
+    useAppStore.setState({ naturezasValidas: ['AL'] })
+    useAppStore.getState().setLancamentos([
+      lancamento({ transcricao: 'VR do mês', natureza: 'AL', iniciais: '' }),
+    ])
+    useAppStore.getState().setFiltroSoIncompletos(true)
+    expect(useAppStore.getState().lancamentosVisiveis).toHaveLength(0)
+  })
+
+  // TL-INC-2: natureza fora de `naturezasValidas` É incompletude — o contador a
+  // cobra (`validarLinha`) e o filtro antigo a deixava escondida.
+  it('TL-INC-2: linha com natureza fora da lista válida aparece no filtro', () => {
+    useAppStore.setState({ naturezasValidas: ['AL', 'MO'] })
+    useAppStore.getState().setLancamentos([
+      lancamento({ transcricao: 'A', natureza: 'AL', iniciais: 'ES' }),
+      lancamento({ transcricao: 'B', natureza: 'XYZ', iniciais: 'ES' }),
+    ])
+    useAppStore.getState().setFiltroSoIncompletos(true)
+    const visiveis = useAppStore.getState().lancamentosVisiveis
+    expect(visiveis.map((l) => l.transcricao)).toEqual(['B'])
+  })
+
+  // TL-INC-3: a linha em branco inserida à mão (item 38) não tem transcrição nem
+  // valor — `validarLinha` não a cobra, e agora o filtro também não a mostra.
+  it('TL-INC-3: linha totalmente em branco não aparece no filtro', () => {
+    useAppStore.setState({ naturezasValidas: ['AL'] })
+    useAppStore.getState().setLancamentos([
+      lancamento({ transcricao: '', valor: 0, natureza: '', iniciais: '' }),
+    ])
+    useAppStore.getState().setFiltroSoIncompletos(true)
+    expect(useAppStore.getState().lancamentosVisiveis).toHaveLength(0)
+  })
+
+  // TL-INC-4: o invariante que amarra os dois — sobre um conjunto misto, o número
+  // de linhas visíveis com o filtro ligado é exatamente o número de pendentes que
+  // a toolbar anuncia.
+  it('TL-INC-4: visíveis sob o filtro == pendentes contados por validarLinha', () => {
+    const naturezasValidas = ['AL', 'MO']
+    useAppStore.setState({ naturezasValidas })
+    const lista = [
+      lancamento({ transcricao: 'ok', natureza: 'AL', iniciais: 'ES' }),
+      lancamento({ transcricao: 'sem natureza', natureza: '', iniciais: 'ES' }),
+      lancamento({ transcricao: 'natureza inválida', natureza: 'ZZ', iniciais: 'ES' }),
+      lancamento({ transcricao: 'sem iniciais', natureza: 'MO', iniciais: '' }),
+      lancamento({ transcricao: '', valor: 0, natureza: '', iniciais: '' }),
+    ]
+    useAppStore.getState().setLancamentos(lista)
+    useAppStore.getState().setFiltroSoIncompletos(true)
+
+    const pendentes = lista.filter((l) => validarLinha(l, naturezasValidas)).length
+    expect(useAppStore.getState().lancamentosVisiveis).toHaveLength(pendentes)
   })
 
   // TL-T1-10: ordenação asc/desc por coluna

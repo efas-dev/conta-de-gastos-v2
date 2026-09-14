@@ -2,6 +2,7 @@
 // ADR: see Docs/specs/grid-ux-filtros.adr.md
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 // ADR: see Docs/specs/motor-de-pares.adr.md
+// ADR: see Docs/specs/dicionario-chave-canonica.adr.md
 
 import { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import {
@@ -377,6 +378,11 @@ function criarTemaGrid() {
  * O critério para entrar aqui é ter alvo que aponta para linha existente no grid. `'vr'` e
  * `'rendimentos'` ficam de fora porque *criam* lançamentos em vez de apontar para os existentes,
  * e `'desalinhamento-mes'` é informativo, sem alvo.
+ *
+ * `'classificacao-similaridade'` (spec `dicionario-chave-canonica`) entra por satisfazer esse
+ * mesmo critério — o alvo é uma linha que está na grid. Note que "efeito na grid" aqui significa
+ * "a inspeção destaca esta linha", não "a linha será removida": é a primeira origem cujo alvo
+ * sobrevive à aplicação, apenas com os campos de classificação preenchidos.
  */
 const ORIGENS_COM_EFEITO_GRID = new Set([
   'conciliacao',
@@ -385,6 +391,7 @@ const ORIGENS_COM_EFEITO_GRID = new Set([
   'transferencia-interna',
   'investimento',
   'reembolso',
+  'classificacao-similaridade',
 ])
 
 /**
@@ -401,7 +408,12 @@ const ORIGENS_COM_EFEITO_GRID = new Set([
  * coincidisse com a posição de outra linha, destacando a linha errada. Por isso a comparação é
  * decidida pela origem, não por heurística.
  */
-const ORIGENS_ALVO_POR_ID = new Set(['transferencia-interna', 'investimento', 'reembolso'])
+const ORIGENS_ALVO_POR_ID = new Set([
+  'transferencia-interna',
+  'investimento',
+  'reembolso',
+  'classificacao-similaridade',
+])
 
 /**
  * Conjuntos de identidade para os papéis "sai"/"fica" da inspeção.
@@ -520,12 +532,35 @@ export function derivarTooltipCelula(
  * traduzidos para posição via `lancamentos`, porque quem consome isto (`aplicarRevelacaoInspecao`)
  * trabalha com índice. Um id sem lançamento correspondente é descartado em vez de virar `NaN`.
  */
-export function indicesEnvolvidos(aviso: Aviso | undefined, lancamentos: Lancamento[] = []): number[] {
-  if (!aviso || !ORIGENS_COM_EFEITO_GRID.has(aviso.origem)) return []
+export function indicesEnvolvidos(
+  aviso: Aviso | undefined,
+  lancamentos: Lancamento[] = [],
+  candidatoEmFoco?: string | null,
+): number[] {
+  // O candidato em foco entra independentemente do aviso em inspeção: o aviso que lista
+  // candidatos é informativo e não participa da inspeção, mas a linha precisa ser revelada
+  // quando o filtro ativo a esconde — senão não há para onde rolar.
+  const doCandidato = posicaoRealPorId(lancamentos, candidatoEmFoco)
+  const extra = doCandidato === undefined ? [] : [doCandidato]
+
+  if (!aviso || !ORIGENS_COM_EFEITO_GRID.has(aviso.origem)) return extra
   const bruto = [...aviso.alvo, ...aviso.permanece]
-  if (!ORIGENS_ALVO_POR_ID.has(aviso.origem)) return bruto.map(Number)
+  if (!ORIGENS_ALVO_POR_ID.has(aviso.origem)) return [...bruto.map(Number), ...extra]
   const posicaoPorId = new Map(lancamentos.map((l, i) => [String(l.id), i]))
-  return bruto.map((id) => posicaoPorId.get(id)).filter((i): i is number => i !== undefined)
+  return [
+    ...bruto.map((id) => posicaoPorId.get(id)).filter((i): i is number => i !== undefined),
+    ...extra,
+  ]
+}
+
+/** Posição real de um lançamento pelo seu `id`; `undefined` quando o id não existe (mais). */
+function posicaoRealPorId(
+  lancamentos: Lancamento[],
+  id: string | null | undefined,
+): number | undefined {
+  if (id === null || id === undefined) return undefined
+  const posicao = lancamentos.findIndex((l) => String(l.id) === id)
+  return posicao >= 0 ? posicao : undefined
 }
 
 /**
@@ -574,7 +609,16 @@ export function calcularLinhaAncoraVisual(
   mapaIndiceVisualReal: number[],
   aviso: Aviso | undefined,
   lancamentos: Lancamento[] = [],
+  candidatoEmFoco?: string | null,
 ): number | undefined {
+  // Candidato clicado vence o alvo do aviso: é um pedido explícito e recente do usuário, e o
+  // aviso que lista candidatos nem tem alvo para ancorar (`alvo: []`).
+  const posicaoCandidato = posicaoRealPorId(lancamentos, candidatoEmFoco)
+  if (posicaoCandidato !== undefined) {
+    const visualCandidato = mapaIndiceVisualReal.indexOf(posicaoCandidato)
+    if (visualCandidato >= 0) return visualCandidato
+  }
+
   if (!aviso || !ORIGENS_COM_EFEITO_GRID.has(aviso.origem) || aviso.alvo.length === 0) {
     return undefined
   }
@@ -697,6 +741,7 @@ export function ReviewGrid({ onSplitDetectado, mesRef }: ReviewGridProps) {
   const avisos = useAppStore((s) => s.avisosAcionaveis.avisos)
   const avisoEmInspecaoId = useAppStore((s) => s.avisosAcionaveis.avisoEmInspecao)
   const focoInspecao = useAppStore((s) => s.avisosAcionaveis.focoInspecao)
+  const candidatoEmFoco = useAppStore((s) => s.avisosAcionaveis.candidatoEmFoco)
 
   // Tema base do Glide — montado uma vez, após o mount (T2: lê variáveis CSS de :root).
   const temaGrid = useMemo(() => criarTemaGrid(), [])
@@ -718,8 +763,8 @@ export function ReviewGrid({ onSplitDetectado, mesRef }: ReviewGridProps) {
     [avisoEmInspecao],
   )
   const envolvidosInspecao = useMemo(
-    () => indicesEnvolvidos(avisoEmInspecao, lancamentos),
-    [avisoEmInspecao, lancamentos],
+    () => indicesEnvolvidos(avisoEmInspecao, lancamentos, candidatoEmFoco),
+    [avisoEmInspecao, lancamentos, candidatoEmFoco],
   )
   const { linhas: lancamentosExibidos, mapa: mapaExibidoReal } = useMemo(
     () =>
@@ -739,10 +784,29 @@ export function ReviewGrid({ onSplitDetectado, mesRef }: ReviewGridProps) {
   // a rodar. O contador dá identidade nova a cada pedido (botão "Ir para a linha").
   const dataEditorRef = useRef<DataEditorRef | null>(null)
   useEffect(() => {
-    const linhaAncora = calcularLinhaAncoraVisual(mapaExibidoReal, avisoEmInspecao, lancamentos)
+    const linhaAncora = calcularLinhaAncoraVisual(
+      mapaExibidoReal,
+      avisoEmInspecao,
+      lancamentos,
+      candidatoEmFoco,
+    )
     if (linhaAncora === undefined) return
     dataEditorRef.current?.scrollTo(0, linhaAncora, 'vertical')
-  }, [mapaExibidoReal, avisoEmInspecao, lancamentos, focoInspecao])
+    // Candidato em foco também SELECIONA a linha. A inspeção de uma proposta pinta as linhas
+    // envolvidas (sai/fica) e não precisa disto; o candidato não é pintado de propósito —
+    // nenhum detector afirmou que ele sai, o usuário é que vai decidir — então sem a seleção
+    // ele chegaria à região certa sem saber qual das linhas visíveis é a dele.
+    if (candidatoEmFoco === null) return
+    setGridSelection({
+      columns: CompactSelection.empty(),
+      rows: CompactSelection.fromSingleSelection(linhaAncora),
+      current: undefined,
+    })
+    // Seleção programática não dispara `onGridSelectionChange` (mesma armadilha documentada em
+    // `navegarParaRef` acima): sem isto o rodapé continuaria exibindo a soma da seleção
+    // ANTERIOR, que já não é a que está realçada na grid.
+    setSomaSelecao(calcularSomaSelecionados(lancamentosRef.current, [linhaAncora]))
+  }, [mapaExibidoReal, avisoEmInspecao, lancamentos, focoInspecao, candidatoEmFoco])
 
   // -----------------------------------------------------------------
   // Estado local de larguras de coluna — D16/D17/D18 do ADR grid-ux-filtros

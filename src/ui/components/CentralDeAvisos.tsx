@@ -58,6 +58,8 @@ export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
   const entrarInspecao = useAppStore((s) => s.entrarInspecao)
   const sairInspecao = useAppStore((s) => s.sairInspecao)
   const focarInspecao = useAppStore((s) => s.focarInspecao)
+  const candidatoEmFoco = useAppStore((s) => s.avisosAcionaveis.candidatoEmFoco)
+  const focarCandidato = useAppStore((s) => s.focarCandidato)
 
   // Estado local do painel — `formVRAberto` (Task 7): abre/fecha o `FormVR` no clique do card do
   // aviso `origem==='vr'`. Deliberadamente NÃO vai para o store (invariante "etapa da jornada é
@@ -128,6 +130,11 @@ export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
                   <span className="icone-aviso info" />
                   <div style={{ flex: 1, fontSize: 13, lineHeight: 1.5 }}>{aviso.mensagem}</div>
                 </div>
+                <ListaCandidatos
+                  aviso={aviso}
+                  candidatoEmFoco={candidatoEmFoco}
+                  focarCandidato={focarCandidato}
+                />
                 <div className="acoes-aviso" style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 8 }}>
                   <button type="button" className="btn sec mini" onClick={() => dispensar(aviso.id)}>
                     OK, entendi
@@ -139,6 +146,48 @@ export function CentralDeAvisos({ mesRef }: CentralDeAvisosProps = {}) {
         </section>
       )}
     </>
+  )
+}
+
+/**
+ * Lista os candidatos que o aviso carrega em `Aviso.candidatos` (ver ADR `conciliacao-robusta`,
+ * Decisões 2 e 3) — a conciliação lista candidatos quando não consegue casar sozinha, e a
+ * mensagem manda o usuário escolher qual remover.
+ *
+ * Até aqui esse campo não tinha leitor nenhum na UI (dívida
+ * `candidatos-de-aviso-nunca-renderizados`): a tela pedia uma escolha sem mostrar as opções.
+ * Cada item leva à linha correspondente na grid — listar ≠ casar, então nada é removido daqui;
+ * a remoção continua sendo ação manual do usuário na própria grid.
+ */
+function ListaCandidatos({
+  aviso,
+  candidatoEmFoco,
+  focarCandidato,
+}: {
+  aviso: Aviso
+  candidatoEmFoco: string | null
+  focarCandidato: (idLancamento: string) => void
+}) {
+  if (!aviso.candidatos || aviso.candidatos.length === 0) return null
+
+  return (
+    <ul className="lista-candidatos" aria-label="Candidatos deste aviso">
+      {aviso.candidatos.map((candidato) => (
+        <li key={candidato.alvo}>
+          <button
+            type="button"
+            className="btn sec mini"
+            // `aria-current` e não `aria-pressed`: o foco não é um estado ligado/desligado do
+            // botão, é "este é o item da lista para onde a grid está olhando agora".
+            aria-current={candidatoEmFoco === candidato.alvo ? true : undefined}
+            title="Ir para esta linha na grid"
+            onClick={() => focarCandidato(candidato.alvo)}
+          >
+            {candidato.resumo}
+          </button>
+        </li>
+      ))}
+    </ul>
   )
 }
 

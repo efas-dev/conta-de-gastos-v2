@@ -103,8 +103,11 @@ describe('registry — lista de detectores', () => {
     expect(Array.isArray(detectores)).toBe(true)
   })
 
-  it('T06/T07/T07-bis/T4(vr-despesas)/T9(rendimentos)/T4(motor-de-pares) migram/acrescentam 8 detectores (valor-pendente, pagamento-recebido, conciliação, investimento, transferência interna, reembolso, vr, rendimentos)', () => {
-    expect(detectores).toHaveLength(8)
+  it('T06/T07/T07-bis/T4(vr-despesas)/T9(rendimentos)/T4(motor-de-pares)/T11(dicionario-chave-canonica) migram/acrescentam 9 detectores', () => {
+    // 9 desde a spec `dicionario-chave-canonica` (Decisão 19), que inseriu
+    // `classificacao-similaridade` entre `reembolso` e `vr`.
+    expect(detectores).toHaveLength(9)
+    expect(detectores.map((d) => d.origem)).toContain('classificacao-similaridade')
     expect(detectores.map((d) => d.origem)).toContain('investimento')
     expect(detectores.map((d) => d.origem)).toContain('transferencia-interna')
     expect(detectores.map((d) => d.origem)).toContain('reembolso')
@@ -480,7 +483,7 @@ describe('orquestrarDeteccao — dedup por precedência de alvo (Task 4)', () =>
 // ---------------------------------------------------------------------------
 
 describe('detectores — T06 (migração dos 3 detectores legados)', () => {
-  it('contém, nesta ordem, valor-pendente, pagamento-recebido, conciliacao, investimento, transferencia-interna, reembolso, vr, rendimentos (T07/T07-bis, T4 vr-despesas, T9 rendimentos, T4 motor-de-pares/D16)', () => {
+  it('contém a ordem completa de precedência, com classificacao-similaridade entre reembolso e vr (D19 de dicionario-chave-canonica)', () => {
     expect(detectores.map((d) => d.origem)).toEqual([
       'valor-pendente',
       'pagamento-recebido',
@@ -488,6 +491,7 @@ describe('detectores — T06 (migração dos 3 detectores legados)', () => {
       'investimento',
       'transferencia-interna',
       'reembolso',
+      'classificacao-similaridade',
       'vr',
       'rendimentos',
     ])
@@ -500,11 +504,15 @@ describe('detectores — T06 (migração dos 3 detectores legados)', () => {
     expect(indiceReembolso).toBe(indiceTransferencia + 1)
   })
 
-  it('vr fica posicionado imediatamente após reembolso — antepenúltimo deixa de ser penúltimo com a inserção de reembolso (ADR motor-de-pares, Decisão 16 — TL4-8)', () => {
+  it('vr vem depois de reembolso e continua penúltimo (ADR motor-de-pares D16; adjacência revista pela D19 de dicionario-chave-canonica)', () => {
+    // A D16 de `motor-de-pares` pedia que `reembolso` viesse ANTES de `vr` — a adjacência literal
+    // era consequência de não haver nada entre os dois, não a intenção da decisão. A D19 de
+    // `dicionario-chave-canonica` inseriu `classificacao-similaridade` nesse intervalo, o que
+    // preserva a precedência que a D16 protegia e mantém `vr` penúltimo.
     const origens = detectores.map((d) => d.origem)
     const indiceReembolso = origens.indexOf('reembolso')
     const indiceVR = origens.indexOf('vr')
-    expect(indiceVR).toBe(indiceReembolso + 1)
+    expect(indiceVR).toBeGreaterThan(indiceReembolso)
     expect(indiceVR).toBe(origens.length - 2)
   })
 
@@ -729,11 +737,25 @@ describe('detectores — Task 6 (classificação de conciliação por prefixo, n
     expect(avisoConciliacao?.candidatos?.[0]?.alvo).toBe('3') // id do lançamento candidato
   })
 
-  it('TL-F: fonte com prefixo desconhecido propaga o Error de classificarFontePorPrefixo sem mascarar', () => {
+  // TL-F (revisto — achado lateral do item 47 do TODO). A Task 6 da spec `conciliacao-robusta`
+  // fixou aqui que o Error de `classificarFontePorPrefixo` sobe "sem mascarar". A intenção era
+  // não engolir erro de contrato, e ela continua valendo — mas o efeito real era outro:
+  // `orquestrarDeteccao` roda ANTES de `setLancamentos` (`handlersPipeline.ts`), então a exceção
+  // matava a importação inteira e o usuário não via erro nenhum, só uma tela que não reagia.
+  // O ruído virava silêncio no lugar que importa. Agora a falha é DECLARADA: não sobe, mas vira
+  // um aviso informativo que carrega o motivo original — este teste continua sendo o alarme
+  // contra engolir o erro, só mudou onde ele espera encontrá-lo.
+  it('TL-F: fonte com prefixo desconhecido vira aviso declarado, sem derrubar a detecção inteira', () => {
     const lancamentoInvalido = lancamento({ id: 1, fonte: 'xyz_desconhecido', data: '2026-06-05', valor: -100 })
-    expect(() => orquestrarDeteccao([lancamentoInvalido], detectores, undefined, '2026-06')).toThrow(
-      /prefixo de fonte desconhecido/,
-    )
+
+    let avisos: Aviso[] = []
+    expect(() => {
+      avisos = orquestrarDeteccao([lancamentoInvalido], detectores, undefined, '2026-06')
+    }).not.toThrow()
+
+    const falha = avisos.find((a) => a.origem === 'deteccao-falhou')
+    expect(falha).toBeDefined()
+    expect(falha?.mensagem).toMatch(/prefixo de fonte desconhecido/)
   })
 })
 
@@ -1108,6 +1130,9 @@ describe('orquestrarDeteccao — Task 5: precedência do registry com detectores
       'investimento',
       'transferencia-interna',
       'reembolso',
+      // Inserido pela D19 de `dicionario-chave-canonica`, preservando a precedência que a D16
+      // protegia (reembolso antes de vr) e mantendo vr penúltimo, rendimentos último.
+      'classificacao-similaridade',
       'vr',
       'rendimentos',
     ])
@@ -1186,5 +1211,215 @@ describe('detectores — rendimentos (Task 9, spec rendimentos)', () => {
       estado: 'pendente',
     })
     expect(avisosRendimentos[0].mutacaoProposta).toBeUndefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// TL-ROB-1..4 — robustez do contrato de extensão (achado lateral do item 47)
+//
+// Parsers são o único ponto de extensão do projeto, e a convenção de prefixo de
+// `fonte` (`fatura_*`/`extrato_*`) é contrato: `classificarFontePorPrefixo` lança
+// para quem a viola. Como `orquestrarDeteccao` roda ANTES de `setLancamentos`
+// (`handlersPipeline.ts`), uma exceção aqui derrubava a importação inteira —
+// nenhum lançamento chegava à grid, por causa de UM detector.
+// ---------------------------------------------------------------------------
+
+describe('orquestrarDeteccao — um detector que falha não derruba os outros', () => {
+  const explosivo: Detector = {
+    origem: 'explosivo',
+    escopo: 'global',
+    detectar: () => {
+      throw new Error('fonte fora da convenção: nubank_extrato')
+    },
+  }
+
+  const pacifico: Detector = {
+    origem: 'pacifico',
+    escopo: 'global',
+    detectar: () => [
+      {
+        id: 'ok-1',
+        tipo: 'informativo' as const,
+        origem: 'pacifico',
+        mensagem: 'Detectei alguma coisa.',
+        alvo: [],
+        permanece: [],
+        estado: 'pendente' as const,
+      },
+    ],
+  }
+
+  it('TL-ROB-1: não propaga a exceção e preserva os avisos dos demais detectores', () => {
+    const lancamentos = [lancamento()]
+    let avisos: Aviso[] = []
+
+    expect(() => {
+      avisos = orquestrarDeteccao(lancamentos, [explosivo, pacifico])
+    }).not.toThrow()
+
+    expect(avisos.some((a) => a.id === 'ok-1')).toBe(true)
+  })
+
+  it('TL-ROB-2: declara a falha em vez de engolir — aviso informativo nomeando a origem', () => {
+    const avisos = orquestrarDeteccao([lancamento()], [explosivo])
+
+    const falha = avisos.find((a) => a.origem === 'deteccao-falhou')
+    expect(falha).toBeDefined()
+    expect(falha?.tipo).toBe('informativo')
+    expect(falha?.mensagem).toContain('explosivo')
+    // Nunca propõe mutação: uma detecção que não rodou não pode sugerir nada.
+    expect(falha?.mutacaoProposta).toBeUndefined()
+  })
+
+  it('TL-ROB-3: o id do aviso de falha é determinístico (a reprodução não duplica cards)', () => {
+    const a = orquestrarDeteccao([lancamento()], [explosivo]).find((x) => x.origem === 'deteccao-falhou')
+    const b = orquestrarDeteccao([lancamento()], [explosivo]).find((x) => x.origem === 'deteccao-falhou')
+    expect(a?.id).toBe(b?.id)
+  })
+
+  it('TL-ROB-4: detector por-fonte que falha numa fonte segue rodando nas demais', () => {
+    const porFonte: Detector = {
+      origem: 'por-fonte-parcial',
+      escopo: 'por-fonte',
+      detectar: (fatia) => {
+        if (fatia[0]?.fonte === 'fonte_ruim') throw new Error('boom')
+        return [
+          {
+            id: `ok-${fatia[0]?.fonte}`,
+            tipo: 'informativo' as const,
+            origem: 'por-fonte-parcial',
+            mensagem: 'ok',
+            alvo: [],
+            permanece: [],
+            estado: 'pendente' as const,
+          },
+        ]
+      },
+    }
+
+    const avisos = orquestrarDeteccao(
+      [lancamento({ fonte: 'fonte_ruim' }), lancamento({ fonte: 'extrato_nubank' })],
+      [porFonte],
+    )
+
+    expect(avisos.some((a) => a.id === 'ok-extrato_nubank')).toBe(true)
+    expect(avisos.some((a) => a.origem === 'deteccao-falhou')).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// T11 (spec dicionario-chave-canonica, D19/D20)
+// ---------------------------------------------------------------------------
+
+describe('registry — detector de classificação por similaridade (T11)', () => {
+  it('RG-01: D19 — entra após `reembolso` e antes de `vr`', () => {
+    const ordem = detectores.map((d) => d.origem)
+    const iReembolso = ordem.indexOf('reembolso')
+    const iNovo = ordem.indexOf('classificacao-similaridade')
+    const iVr = ordem.indexOf('vr')
+
+    expect(iNovo).toBeGreaterThan(iReembolso)
+    expect(iNovo).toBeLessThan(iVr)
+  })
+
+  it('RG-02: D19 — a invariante das specs anteriores é preservada: vr penúltimo, rendimentos último', () => {
+    const ordem = detectores.map((d) => d.origem)
+    expect(ordem[ordem.length - 1]).toBe('rendimentos')
+    expect(ordem[ordem.length - 2]).toBe('vr')
+  })
+})
+
+describe('deduplicarPorPrecedenciaDeAlvo — verbo `classificar` (T11, D20)', () => {
+  const lancamento = {
+    id: 1,
+    fonte: 'extrato_itau',
+    data: '2026-06-10',
+    transcricao: 'X',
+    valor: -10,
+    natureza: '',
+    descricao: '',
+    iniciais: 'ES',
+  }
+
+  const avisoRemover = {
+    id: 'a-remover',
+    tipo: 'proposta' as const,
+    origem: 'investimento',
+    mensagem: 'remove',
+    alvo: ['1'],
+    permanece: [],
+    estado: 'pendente' as const,
+    mutacaoProposta: { verbo: 'remover' as const, alvo: [1] },
+  }
+
+  const avisoClassificar = {
+    id: 'a-classificar',
+    tipo: 'proposta' as const,
+    origem: 'classificacao-similaridade',
+    mensagem: 'classifica',
+    alvo: ['1'],
+    permanece: [],
+    estado: 'pendente' as const,
+    mutacaoProposta: {
+      verbo: 'classificar' as const,
+      alvo: [1],
+      natureza: 'GO',
+      descricao: 'Spotify',
+      iniciais: 'ES',
+    },
+  }
+
+  it('RG-03: linha já reivindicada para remoção não recebe proposta de classificação', () => {
+    // Aplicar as duas seria incoerente: a linha some e ao mesmo tempo é classificada.
+    const detectoresFake = [
+      { origem: 'investimento', escopo: 'global' as const, detectar: () => [avisoRemover] },
+      {
+        origem: 'classificacao-similaridade',
+        escopo: 'global' as const,
+        detectar: () => [avisoClassificar],
+      },
+    ]
+    const avisos = orquestrarDeteccao([lancamento], detectoresFake)
+    expect(avisos.map((a) => a.id)).toEqual(['a-remover'])
+  })
+
+  it('RG-04: a recíproca vale — classificar reivindica e quem vem depois cede', () => {
+    const detectoresFake = [
+      {
+        origem: 'classificacao-similaridade',
+        escopo: 'global' as const,
+        detectar: () => [avisoClassificar],
+      },
+      { origem: 'investimento', escopo: 'global' as const, detectar: () => [avisoRemover] },
+    ]
+    const avisos = orquestrarDeteccao([lancamento], detectoresFake)
+    expect(avisos.map((a) => a.id)).toEqual(['a-classificar'])
+  })
+
+  it('RG-05: alvos disjuntos coexistem', () => {
+    const outroAlvo = { ...avisoClassificar, id: 'outro', mutacaoProposta: { ...avisoClassificar.mutacaoProposta, alvo: [2] } }
+    const detectoresFake = [
+      { origem: 'investimento', escopo: 'global' as const, detectar: () => [avisoRemover] },
+      { origem: 'classificacao-similaridade', escopo: 'global' as const, detectar: () => [outroAlvo] },
+    ]
+    const avisos = orquestrarDeteccao([lancamento], detectoresFake)
+    expect(avisos).toHaveLength(2)
+  })
+
+  it('RG-06: o dicionário do contexto chega ao detector', () => {
+    let recebido: unknown = 'nao-chamou'
+    const espiao = {
+      origem: 'espiao',
+      escopo: 'global' as const,
+      detectar: (_l: unknown, ctx: { dicEntries?: unknown }) => {
+        recebido = ctx.dicEntries
+        return []
+      },
+    }
+    const dic = [
+      { chave: 'X', fonte: 'extrato_itau', natureza: 'GO', descricao: 'y', iniciais: 'ES', vezes: 1, ambiguo: false },
+    ]
+    orquestrarDeteccao([lancamento], [espiao], undefined, undefined, dic)
+    expect(recebido).toEqual(dic)
   })
 })

@@ -3,14 +3,16 @@
 // ADR: see Docs/specs/vr-despesas.adr.md
 // ADR: see Docs/specs/rendimentos.adr.md
 // ADR: see Docs/specs/motor-de-pares.adr.md
+// ADR: see Docs/specs/dicionario-chave-canonica.adr.md
 
-import type { Aviso, Lancamento } from '../types'
+import type { Aviso, DicEntry, Lancamento } from '../types'
 import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from './deteccoes'
 import { detectarInvestimentoAvisos } from './investimento'
 import { detectarTransferenciaInternaAvisos } from './transferencia'
 import { detectarReembolsoAvisos } from './pares'
 import { detectarVR } from './vr'
 import { detectarRendimentos } from './rendimentos'
+import { detectarClassificacaoPorSimilaridade } from './similaridadeClassificacao'
 import { classificarFontePorPrefixo } from './mes'
 
 /**
@@ -44,6 +46,14 @@ export interface ContextoDeteccao {
    * `conciliacao-robusta`), quando alimentava a heurística por data `classificarFonte`.
    */
   mesRef?: string
+  /**
+   * Dicionário de classificações já carregado, quando disponível — habilita detectores que
+   * comparam o lançamento contra o que já foi aprendido (hoje, `classificacao-similaridade`).
+   *
+   * Opcional por compatibilidade: os detectores anteriores a esta spec não o consultam, e um
+   * contexto sem dicionário simplesmente não produz propostas de classificação.
+   */
+  dicEntries?: DicEntry[]
 }
 
 /**
@@ -227,6 +237,18 @@ export const detectores: Detector[] = [
     detectar: (lancamentos, contexto) => detectarReembolsoAvisos(lancamentos, contexto),
   },
   {
+    // Posição deliberada (ADR `dicionario-chave-canonica`, Decisão 19): APÓS `reembolso` e ANTES
+    // de `vr`, preservando a invariante das ADRs `vr-despesas` (Decisão 5) e `rendimentos`
+    // (Decisão 2) de que `vr` é penúltimo e `rendimentos` é último. Como `vr` e `rendimentos` não
+    // emitem `mutacaoProposta`, eles não disputam alvo; esta posição dá ao detector a precedência
+    // mais baixa entre os que efetivamente reivindicam, que é o adequado a uma proposta
+    // especulativa — ela cede para toda proposta de remoção anterior.
+    origem: 'classificacao-similaridade',
+    escopo: 'global',
+    detectar: (lancamentos, contexto) =>
+      detectarClassificacaoPorSimilaridade(lancamentos, contexto),
+  },
+  {
     origem: 'vr',
     escopo: 'global',
     detectar: (lancamentos, contexto) => detectarVR(lancamentos, contexto),
@@ -262,13 +284,19 @@ export function orquestrarDeteccao(
   detectoresLista: Detector[],
   nomeUsuario?: string,
   mesRef?: string,
+  dicEntries?: DicEntry[],
 ): Aviso[] {
-  const contexto: ContextoDeteccao = { todosLancamentos: lancamentos, nomeUsuario, mesRef }
+  const contexto: ContextoDeteccao = {
+    todosLancamentos: lancamentos,
+    nomeUsuario,
+    mesRef,
+    dicEntries,
+  }
   const avisos: Aviso[] = []
 
   for (const detector of detectoresLista) {
     if (detector.escopo === 'global') {
-      avisos.push(...detector.detectar(lancamentos, contexto))
+      avisos.push(...executarDetector(detector, lancamentos, contexto))
       continue
     }
 
@@ -283,11 +311,55 @@ export function orquestrarDeteccao(
       }
     }
     for (const fatia of fatias.values()) {
-      avisos.push(...detector.detectar(fatia, contexto))
+      avisos.push(...executarDetector(detector, fatia, contexto, fatia[0]?.fonte))
     }
   }
 
   return deduplicarPorPrecedenciaDeAlvo(avisos)
+}
+
+/**
+ * Roda UM detector protegido: uma detecção que falha não pode derrubar as outras nem a
+ * importação inteira (achado lateral do item 47 do TODO).
+ *
+ * O contrato de extensão do projeto é o prefixo de `fonte` declarado pelo parser, e
+ * `classificarFontePorPrefixo` (`src/dominio/mes.ts`) lança para quem o viola — comportamento
+ * correto na fronteira, porque um prefixo desconhecido não tem classificação honesta. Só que
+ * `orquestrarDeteccao` roda dentro de `reproduzirAvisos`, ANTES de `setLancamentos`
+ * (`src/ui/handlersPipeline.ts`): sem esta proteção, um parser da comunidade com fonte fora da
+ * convenção fazia a importação inteira morrer — nenhum lançamento chegava à grid.
+ *
+ * A falha é DECLARADA, nunca engolida: vira um aviso informativo nomeando a origem que falhou,
+ * porque uma detecção que não rodou é exatamente o tipo de silêncio que a spec
+ * `conciliacao-robusta` existiu para matar. Id determinístico por origem (mais a fonte, no
+ * escopo `'por-fonte'`) — `reproduzirAvisos` re-roda a cada mudança de lançamentos, e um id
+ * aleatório encheria o painel de cards repetidos.
+ */
+function executarDetector(
+  detector: Detector,
+  lancamentos: Lancamento[],
+  contexto: ContextoDeteccao,
+  fonte?: string,
+): Aviso[] {
+  try {
+    return detector.detectar(lancamentos, contexto)
+  } catch (erro) {
+    const ondeaFalha = fonte === undefined ? detector.origem : `${detector.origem}/${fonte}`
+    const motivo = erro instanceof Error ? erro.message : String(erro)
+    return [
+      {
+        id: `deteccao-falhou-${ondeaFalha}`,
+        tipo: 'informativo',
+        origem: 'deteccao-falhou',
+        mensagem:
+          `A detecção "${ondeaFalha}" não pôde rodar e foi ignorada — os lançamentos estão na ` +
+          `grid, mas esta verificação não foi feita. Motivo: ${motivo}`,
+        alvo: [],
+        permanece: [],
+        estado: 'pendente',
+      },
+    ]
+  }
 }
 
 /**
@@ -312,12 +384,19 @@ function deduplicarPorPrecedenciaDeAlvo(avisos: Aviso[]): Aviso[] {
   const resultado: Aviso[] = []
 
   for (const aviso of avisos) {
-    if (!aviso.mutacaoProposta || aviso.mutacaoProposta.verbo !== 'remover') {
+    // Desde a spec `dicionario-chave-canonica` (Decisão 20), `classificar` também reivindica:
+    // aplicar um `remover` e um `classificar` sobre o mesmo id é contraditório — a linha sumiria e
+    // ao mesmo tempo seria classificada — e dois `classificar` concorrentes também conflitam.
+    // `adicionar` segue fora da regra, por não ter `alvo` na união.
+    // A checagem fica inline (em vez de num booleano auxiliar) para o TypeScript conseguir
+    // estreitar a união e enxergar o campo `alvo`, que só existe nos dois verbos reivindicantes.
+    const mutacao = aviso.mutacaoProposta
+    if (!mutacao || (mutacao.verbo !== 'remover' && mutacao.verbo !== 'classificar')) {
       resultado.push(aviso)
       continue
     }
 
-    const alvoDoAviso = aviso.mutacaoProposta.alvo
+    const alvoDoAviso = mutacao.alvo
     const intersecta = alvoDoAviso.some((id) => alvosReivindicados.has(id))
     if (intersecta) continue
 

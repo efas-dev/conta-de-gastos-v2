@@ -5,6 +5,7 @@
 // ADR: see Docs/specs/fundacao-operacoes.adr.md
 // ADR: see Docs/specs/conciliacao-robusta.adr.md
 // ADR: see Docs/specs/vr-despesas.adr.md
+// ADR: see Docs/specs/dicionario-chave-canonica.adr.md
 
 /**
  * Representa um lançamento financeiro normalizado, independente da fonte de origem.
@@ -87,6 +88,20 @@ export interface DicEntry {
   vezes: number
   /** `true` quando a chave apresentou classificações conflitantes — não auto-preenche */
   ambiguo: boolean
+  /**
+   * Valor aprendido do lançamento, gravado **apenas** em entradas cuja chave foi afrouxada pelo
+   * mascaramento de parcela (ADR `dicionario-chave-canonica`, Decisões 1 e 16). É o que distingue
+   * duas compras diferentes do mesmo lojista que colapsaram na mesma chave canônica — o caso real
+   * `Mercadolivre*10produt - Parcela #/4`, que abriga "Inceticidas" e "Fluido acendedor oratório".
+   *
+   * Ausente significa uma de duas coisas, tratadas pela mesma regra (Decisões 5 e 14): entrada
+   * herdada de um dicionário anterior à coluna H, ou valor ilegível na leitura. Em ambos os casos a
+   * entrada auto-preenche se sua chave canônica for única, e fica ambígua se houver colisão.
+   *
+   * Em chave NÃO afrouxada este campo fica ausente por desenho: ali o valor não discrimina nada
+   * (mercado e posto têm valor diferente toda vez) e gravá-lo sugeriria um significado que não tem.
+   */
+  valor?: number
 }
 
 /**
@@ -139,6 +154,29 @@ export type Mutacao =
        * quem propõe.
        */
       lancamentos: Omit<Lancamento, 'id'>[]
+    }
+  | {
+      /**
+       * Preenche a classificação dos lançamentos referenciados por `alvo`, sem removê-los nem
+       * criar linhas novas (ADR `dicionario-chave-canonica`, Decisão 8).
+       *
+       * Existe porque o detector de similaridade nunca auto-preenche: ele propõe, e a proposta
+       * trafega pelo mesmo sheet lateral e pelos mesmos botões Aplicar/Reverter dos demais avisos.
+       */
+      verbo: 'classificar'
+      /** Ids (`Lancamento.id`) dos lançamentos a classificar. */
+      alvo: number[]
+      /**
+       * Os três campos abaixo são exatamente os que `enriquecerLancamento` preenche, de modo que
+       * quem aplica a mutação não precisa recalcular nada — mesma disciplina de `adicionar`, que
+       * também carrega o dado pronto.
+       *
+       * Não há campo de confiança aqui por desenho: `Mutacao` descreve o que fazer, não o quão
+       * certo o detector está. Score, quando existir, vive no texto do `Aviso`.
+       */
+      natureza: string
+      descricao: string
+      iniciais: string
     }
 
 /**

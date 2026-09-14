@@ -13,7 +13,7 @@ import {
   handleProduzir as handleProduzirPipeline,
 } from '../handlersPipeline'
 import { lerDicionario, ehDicionario, lerIniciais, lerSaldoAnterior } from '../../excel/reader/leitor'
-import { detectarMesSugerido, classificarFontePorPrefixo } from '../../dominio/mes'
+import { detectarMesSugerido, classificarFontePorPrefixoParaExibicao } from '../../dominio/mes'
 import { detectar } from '../../parsers/index'
 import { parsersBinarios } from '../../parsers/binario'
 import type { Lancamento, ResultadoParse } from '../../types'
@@ -445,13 +445,17 @@ export function TelaImportacao({
                       <div className="rotulo" style={{ marginTop: 4 }}>
                         {fontesArquivo.length > 0 ? (
                           <span style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-                            {fontesArquivo.map((fonte) => (
-                              <FonteRotulo
-                                key={fonte}
-                                fonte={fonte}
-                                tipo={classificarFontePorPrefixo(fonte)}
-                              />
-                            ))}
+                            {fontesArquivo.map((fonte) => {
+                              // Fonte fora da convenção de prefixo não tem classificação honesta
+                              // — mostra o identificador cru, sem badge, em vez de derrubar a
+                              // tela no render (achado lateral do item 47 do TODO).
+                              const tipo = classificarFontePorPrefixoParaExibicao(fonte)
+                              return tipo === null ? (
+                                <span key={fonte}>{fonte}</span>
+                              ) : (
+                                <FonteRotulo key={fonte} fonte={fonte} tipo={tipo} />
+                              )
+                            })}
                           </span>
                         ) : (
                           'Pronto para revisar'

@@ -38,11 +38,19 @@ export function ToolbarRevisao({ children }: ToolbarRevisaoProps) {
   const naturezasValidas = useAppStore((s) => s.naturezasValidas)
   const sujo = useAppStore((s) => s.sujo)
   const saldoAnterior = useAppStore((s) => s.saldoAnterior)
+  const filtroSoIncompletos = useAppStore((s) => s.filtroSoIncompletos)
+  const setFiltroSoIncompletos = useAppStore((s) => s.setFiltroSoIncompletos)
 
   const total = lancamentos.length
   const pendentes = lancamentos.filter((l) => validarLinha(l, naturezasValidas)).length
   const classificados = total - pendentes
   const percentual = total > 0 ? (classificados / total) * 100 : 0
+
+  // Sem nenhuma pendente não há para onde levar — o switch fica desabilitado em vez de
+  // sumir (a posição do contador é estável, e sumir esconderia a própria existência do
+  // atalho). Exceção: com o filtro LIGADO ele continua clicável mesmo em zero pendentes,
+  // senão classificar a última linha trancaria o usuário numa grid vazia.
+  const podeFiltrar = pendentes > 0 || filtroSoIncompletos
 
   return (
     <div className="toolbar compacta">
@@ -50,14 +58,34 @@ export function ToolbarRevisao({ children }: ToolbarRevisaoProps) {
         <span className="logo mini">
           <IconeLogo />
         </span>
-        <span className="progresso" title={`${pendentes} ainda sem natureza`}>
+        {/* O contador deixou de só informar e passou a levar (item 39.2 do TODO): clicar
+            liga o filtro "só as pendentes", que já existia no store desde a spec
+            `grid-ux-filtros` mas tinha perdido a UI junto com a linha de filterchips
+            (commit `034221f`). `role="switch"` porque o efeito é um estado ligado/desligado
+            sobre a grid, não uma navegação — mesmo padrão do recorte por iniciais da
+            colinha (`PainelNaturezas.tsx`, item 41). */}
+        <button
+          type="button"
+          className={'progresso' + (filtroSoIncompletos ? ' filtrando' : '')}
+          role="switch"
+          aria-checked={filtroSoIncompletos}
+          disabled={!podeFiltrar}
+          title={
+            pendentes === 0
+              ? 'Nenhuma linha pendente'
+              : filtroSoIncompletos
+                ? `Mostrando só as ${pendentes} pendentes — clique para ver todas as linhas`
+                : `${pendentes} ainda sem natureza — clique para ver só elas`
+          }
+          onClick={() => setFiltroSoIncompletos(!filtroSoIncompletos)}
+        >
           {/* Texto antes da barra: mantém "X de Y classificados" colado ao
               ícone (pedido do usuário), à esquerda; a barra vem logo depois. */}
           <span style={{ whiteSpace: 'nowrap' }}>{classificados} de {total} classificados</span>
           <span className="prog-barra">
             <span className="prog-fill" style={{ width: `${percentual}%` }} />
           </span>
-        </span>
+        </button>
         {sujo && (
           <span
             className="chip-sujo"

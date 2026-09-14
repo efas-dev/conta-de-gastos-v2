@@ -4,6 +4,7 @@
 // ADR: see Docs/specs/inspecao-proposta-conciliacao.adr.md
 // ADR: see Docs/specs/fundacao-operacoes.adr.md
 // ADR: see Docs/specs/fatura-itau-xlsx.adr.md
+// ADR: see Docs/specs/dicionario-chave-canonica.adr.md
 
 import type { Lancamento, DicEntry, Aviso, ResultadoParse } from '../types'
 import { detectar } from '../parsers/index'
@@ -223,9 +224,15 @@ export function reproduzirAvisos(
   mesRef: string | undefined,
   limparAvisos: () => void,
   adicionarAvisos: (avisos: Aviso[]) => void,
+  dicEntries?: DicEntry[],
 ): void {
   limparAvisos()
-  adicionarAvisos(orquestrarDeteccao(todosLancamentos, detectores, nomeUsuario, mesRef))
+  // `dicEntries` alimenta o detector `classificacao-similaridade` (spec
+  // `dicionario-chave-canonica`). Opcional: sem ele, aquele detector simplesmente não propõe nada,
+  // e os demais seguem indiferentes.
+  adicionarAvisos(
+    orquestrarDeteccao(todosLancamentos, detectores, nomeUsuario, mesRef, dicEntries),
+  )
 }
 
 // ---------------------------------------------------------------------------
