@@ -1,4 +1,4 @@
-// ADR: see spec/dicionario-chave-canonica.adr.md
+// ADR: see Docs/specs/dicionario-chave-canonica.adr.md
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useAppStore } from '../appStore'

@@ -1,4 +1,5 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
+// ADR: see Docs/specs/dicionario-chave-canonica.adr.md
 
 /**
  * Sufixo de data no final da transcrição, em paridade com o regex do sistema

@@ -1,4 +1,4 @@
-// ADR: see spec/dicionario-chave-canonica.adr.md
+// ADR: see Docs/specs/dicionario-chave-canonica.adr.md
 
 import type { Aviso, DicEntry, Lancamento } from '../types'
 import type { ContextoDeteccao } from './registry'

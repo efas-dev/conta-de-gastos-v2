@@ -1,4 +1,4 @@
-// ADR: see spec/dicionario-chave-canonica.adr.md
+// ADR: see Docs/specs/dicionario-chave-canonica.adr.md
 
 /**
  * Prova E2E — T14 da spec `dicionario-chave-canonica` (F9/F10, Decisão 10, frente 4).

@@ -1,5 +1,6 @@
 // ADR: see Docs/specs/fundacao-operacoes.adr.md
 // ADR: see Docs/specs/fatura-itau-xlsx.adr.md
+// ADR: see Docs/specs/dicionario-chave-canonica.adr.md
 import {
   produzirLancamentos,
   gerarAPartirDosRevisados,

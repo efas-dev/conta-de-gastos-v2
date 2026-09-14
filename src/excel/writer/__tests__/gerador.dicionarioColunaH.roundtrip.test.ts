@@ -1,4 +1,4 @@
-// ADR: see spec/dicionario-chave-canonica.adr.md
+// ADR: see Docs/specs/dicionario-chave-canonica.adr.md
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync } from 'node:fs'

@@ -1,5 +1,5 @@
 // ADR: see Docs/specs/mvp-vertical-nubank.adr.md
-// ADR: see spec/dicionario-chave-canonica.adr.md
+// ADR: see Docs/specs/dicionario-chave-canonica.adr.md
 
 import type { Lancamento, DicEntry } from '../types'
 import { canonizarChave } from './normalizacao'

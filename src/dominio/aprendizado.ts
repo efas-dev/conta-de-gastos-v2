@@ -1,4 +1,5 @@
 // ADR: see Docs/specs/dominio-transferencia-investimento-iniciais.adr.md
+// ADR: see Docs/specs/dicionario-chave-canonica.adr.md
 
 import type { Lancamento, DicEntry } from '../types'
 import { canonizarChave } from './normalizacao'

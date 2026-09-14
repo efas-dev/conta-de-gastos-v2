@@ -5,6 +5,7 @@
 // ADR: see Docs/specs/fundacao-operacoes.adr.md
 // ADR: see Docs/specs/conciliacao-robusta.adr.md
 // ADR: see Docs/specs/vr-despesas.adr.md
+// ADR: see Docs/specs/dicionario-chave-canonica.adr.md
 
 /**
  * Representa um lançamento financeiro normalizado, independente da fonte de origem.

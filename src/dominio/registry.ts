@@ -3,6 +3,7 @@
 // ADR: see Docs/specs/vr-despesas.adr.md
 // ADR: see Docs/specs/rendimentos.adr.md
 // ADR: see Docs/specs/motor-de-pares.adr.md
+// ADR: see Docs/specs/dicionario-chave-canonica.adr.md
 
 import type { Aviso, DicEntry, Lancamento } from '../types'
 import { detectarValorPendente, detectarPagamentoRecebido, detectarConciliacao } from './deteccoes'

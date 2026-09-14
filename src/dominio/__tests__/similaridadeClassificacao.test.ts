@@ -1,4 +1,4 @@
-// ADR: see spec/dicionario-chave-canonica.adr.md
+// ADR: see Docs/specs/dicionario-chave-canonica.adr.md
 
 import { describe, it, expect } from 'vitest'
 import type { DicEntry, Lancamento } from '../../types'
