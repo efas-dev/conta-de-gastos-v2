@@ -5,6 +5,7 @@
 
 import { unzipSync } from 'fflate'
 import type { DicEntry, NaturezaRica } from '../../types'
+import { migrarDicionario } from '../../dominio/migracaoDicionario'
 
 /**
  * Lê a aba "Dicionario" de um arquivo .xlsx (OOXML) e retorna as entradas do
@@ -204,6 +205,7 @@ export function lerDicionario(
 
     const vezesStr = get('vezes')
     const ambiguoStr = get('ambiguo')
+    const valor = interpretarValorDicionario(get('valor'))
 
     result.push({
       chave,
@@ -213,10 +215,37 @@ export function lerDicionario(
       iniciais: get('iniciais'),
       vezes: vezesStr ? (parseInt(vezesStr, 10) || 0) : 0,
       ambiguo: ambiguoStr === 'true' || ambiguoStr === '1',
+      ...(valor !== undefined ? { valor } : {}),
     })
   }
 
-  return result
+  // Migração em memória (spec `dicionario-chave-canonica`, F5/F7): as chaves gravadas antes desta
+  // spec estão literais, poluídas pelos tokens que variam mês a mês. O arquivo de origem NUNCA é
+  // reescrito aqui — o app só grava um `.xlsx` novo na exportação, então uma migração ruim não
+  // destrói dados do usuário.
+  return migrarDicionario(result)
+}
+
+/**
+ * Converte o conteúdo da coluna `Valor` do dicionário, devolvendo `undefined` quando a célula não
+ * carrega um número utilizável (ADR `dicionario-chave-canonica`, Decisão 18).
+ *
+ * Cai no `undefined` a célula ausente, vazia ou só com espaços, o texto que não converte
+ * (`NaN`) e o número não finito. Valor **negativo é legítimo** — despesa é negativa neste domínio
+ * — e **zero também**, então nenhum dos dois pode ser confundido com ausência.
+ *
+ * Tratar ilegível como ausente (em vez de invalidar a entrada) mantém um caminho de código só para
+ * as duas situações e não perde uma classificação boa por causa de uma célula ruim. O custo aceito
+ * na Decisão 14 é que corrupção sistemática se comporta como arquivo antigo normal.
+ */
+function interpretarValorDicionario(texto: string): number | undefined {
+  const limpo = texto.trim()
+  if (limpo === '') return undefined
+
+  const numero = Number(limpo)
+  if (!Number.isFinite(numero)) return undefined
+
+  return numero
 }
 
 /**

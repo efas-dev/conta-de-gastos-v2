@@ -171,14 +171,28 @@ function injetarSheet1(
 
 /**
  * Títulos amigáveis da aba Dicionario, escritos na linha 1.
- * Ordem: Chave, Fonte, Natureza, Descrição, Iniciais, Vezes, Ambíguo
+ * Ordem: Chave, Fonte, Natureza, Descrição, Iniciais, Vezes, Ambíguo, Valor
+ *
+ * `Valor` (coluna H) entrou com a spec `dicionario-chave-canonica` (Decisão 17). Acrescentar a
+ * coluna é seguro: a aba `Dicionario` do `Modelo.xlsx` não tem tabela definida nem `_rels`, e não
+ * é referenciada por fórmula em `Extrato` nem `Naturezas` — a `Tabela1` (`A8:H504`) pertence à aba
+ * `Extrato`.
  */
-const TITULOS_DICIONARIO = ['Chave', 'Fonte', 'Natureza', 'Descrição', 'Iniciais', 'Vezes', 'Ambíguo']
+const TITULOS_DICIONARIO = [
+  'Chave',
+  'Fonte',
+  'Natureza',
+  'Descrição',
+  'Iniciais',
+  'Vezes',
+  'Ambíguo',
+  'Valor',
+]
 
 /**
- * Letras de coluna para as 7 colunas da aba Dicionario.
+ * Letras de coluna para as 8 colunas da aba Dicionario.
  */
-const COLUNAS_DICIONARIO = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+const COLUNAS_DICIONARIO = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
 
 /**
  * Gera o bloco <sheetData> completo para a aba Dicionario com as entradas passadas.
@@ -192,11 +206,11 @@ function gerarSheetDataDicionario(dicEntries: DicEntry[]): string {
     return '<sheetData/>'
   }
 
-  // Linha 1: cabeçalho com os 7 títulos amigáveis
+  // Linha 1: cabeçalho com os 8 títulos amigáveis
   const cabecalhoCells = TITULOS_DICIONARIO.map((titulo, i) =>
     celulaStr(`${COLUNAS_DICIONARIO[i]}1`, null, titulo),
   ).join('')
-  const cabecalho = `<row r="1" spans="1:7">${cabecalhoCells}</row>`
+  const cabecalho = `<row r="1" spans="1:8">${cabecalhoCells}</row>`
 
   // Linhas de dados a partir de n=2
   const rows = dicEntries.map((entry, i) => {
@@ -209,8 +223,12 @@ function gerarSheetDataDicionario(dicEntries: DicEntry[]): string {
       celulaStr(`E${n}`, null, entry.iniciais),
       celulaNum(`F${n}`, null, entry.vezes),
       celulaStr(`G${n}`, null, entry.ambiguo ? 'true' : 'false'),
+      // Decisão 17: a célula H é OMITIDA quando não há valor, em vez de gravada vazia ou zerada.
+      // É o que faz ausência sobreviver ao round-trip como ausência — zero é um valor legítimo
+      // neste domínio e não pode ser confundido com "não sei".
+      entry.valor === undefined ? '' : celulaNum(`H${n}`, null, entry.valor),
     ].join('')
-    return `<row r="${n}" spans="1:7">${cells}</row>`
+    return `<row r="${n}" spans="1:8">${cells}</row>`
   })
 
   return `<sheetData>${cabecalho}${rows.join('')}</sheetData>`
