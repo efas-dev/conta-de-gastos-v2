@@ -103,8 +103,11 @@ describe('registry — lista de detectores', () => {
     expect(Array.isArray(detectores)).toBe(true)
   })
 
-  it('T06/T07/T07-bis/T4(vr-despesas)/T9(rendimentos)/T4(motor-de-pares) migram/acrescentam 8 detectores (valor-pendente, pagamento-recebido, conciliação, investimento, transferência interna, reembolso, vr, rendimentos)', () => {
-    expect(detectores).toHaveLength(8)
+  it('T06/T07/T07-bis/T4(vr-despesas)/T9(rendimentos)/T4(motor-de-pares)/T11(dicionario-chave-canonica) migram/acrescentam 9 detectores', () => {
+    // 9 desde a spec `dicionario-chave-canonica` (Decisão 19), que inseriu
+    // `classificacao-similaridade` entre `reembolso` e `vr`.
+    expect(detectores).toHaveLength(9)
+    expect(detectores.map((d) => d.origem)).toContain('classificacao-similaridade')
     expect(detectores.map((d) => d.origem)).toContain('investimento')
     expect(detectores.map((d) => d.origem)).toContain('transferencia-interna')
     expect(detectores.map((d) => d.origem)).toContain('reembolso')
@@ -480,7 +483,7 @@ describe('orquestrarDeteccao — dedup por precedência de alvo (Task 4)', () =>
 // ---------------------------------------------------------------------------
 
 describe('detectores — T06 (migração dos 3 detectores legados)', () => {
-  it('contém, nesta ordem, valor-pendente, pagamento-recebido, conciliacao, investimento, transferencia-interna, reembolso, vr, rendimentos (T07/T07-bis, T4 vr-despesas, T9 rendimentos, T4 motor-de-pares/D16)', () => {
+  it('contém a ordem completa de precedência, com classificacao-similaridade entre reembolso e vr (D19 de dicionario-chave-canonica)', () => {
     expect(detectores.map((d) => d.origem)).toEqual([
       'valor-pendente',
       'pagamento-recebido',
@@ -488,6 +491,7 @@ describe('detectores — T06 (migração dos 3 detectores legados)', () => {
       'investimento',
       'transferencia-interna',
       'reembolso',
+      'classificacao-similaridade',
       'vr',
       'rendimentos',
     ])
@@ -500,11 +504,15 @@ describe('detectores — T06 (migração dos 3 detectores legados)', () => {
     expect(indiceReembolso).toBe(indiceTransferencia + 1)
   })
 
-  it('vr fica posicionado imediatamente após reembolso — antepenúltimo deixa de ser penúltimo com a inserção de reembolso (ADR motor-de-pares, Decisão 16 — TL4-8)', () => {
+  it('vr vem depois de reembolso e continua penúltimo (ADR motor-de-pares D16; adjacência revista pela D19 de dicionario-chave-canonica)', () => {
+    // A D16 de `motor-de-pares` pedia que `reembolso` viesse ANTES de `vr` — a adjacência literal
+    // era consequência de não haver nada entre os dois, não a intenção da decisão. A D19 de
+    // `dicionario-chave-canonica` inseriu `classificacao-similaridade` nesse intervalo, o que
+    // preserva a precedência que a D16 protegia e mantém `vr` penúltimo.
     const origens = detectores.map((d) => d.origem)
     const indiceReembolso = origens.indexOf('reembolso')
     const indiceVR = origens.indexOf('vr')
-    expect(indiceVR).toBe(indiceReembolso + 1)
+    expect(indiceVR).toBeGreaterThan(indiceReembolso)
     expect(indiceVR).toBe(origens.length - 2)
   })
 
@@ -1122,6 +1130,9 @@ describe('orquestrarDeteccao — Task 5: precedência do registry com detectores
       'investimento',
       'transferencia-interna',
       'reembolso',
+      // Inserido pela D19 de `dicionario-chave-canonica`, preservando a precedência que a D16
+      // protegia (reembolso antes de vr) e mantendo vr penúltimo, rendimentos último.
+      'classificacao-similaridade',
       'vr',
       'rendimentos',
     ])
@@ -1293,5 +1304,122 @@ describe('orquestrarDeteccao — um detector que falha não derruba os outros', 
 
     expect(avisos.some((a) => a.id === 'ok-extrato_nubank')).toBe(true)
     expect(avisos.some((a) => a.origem === 'deteccao-falhou')).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// T11 (spec dicionario-chave-canonica, D19/D20)
+// ---------------------------------------------------------------------------
+
+describe('registry — detector de classificação por similaridade (T11)', () => {
+  it('RG-01: D19 — entra após `reembolso` e antes de `vr`', () => {
+    const ordem = detectores.map((d) => d.origem)
+    const iReembolso = ordem.indexOf('reembolso')
+    const iNovo = ordem.indexOf('classificacao-similaridade')
+    const iVr = ordem.indexOf('vr')
+
+    expect(iNovo).toBeGreaterThan(iReembolso)
+    expect(iNovo).toBeLessThan(iVr)
+  })
+
+  it('RG-02: D19 — a invariante das specs anteriores é preservada: vr penúltimo, rendimentos último', () => {
+    const ordem = detectores.map((d) => d.origem)
+    expect(ordem[ordem.length - 1]).toBe('rendimentos')
+    expect(ordem[ordem.length - 2]).toBe('vr')
+  })
+})
+
+describe('deduplicarPorPrecedenciaDeAlvo — verbo `classificar` (T11, D20)', () => {
+  const lancamento = {
+    id: 1,
+    fonte: 'extrato_itau',
+    data: '2026-06-10',
+    transcricao: 'X',
+    valor: -10,
+    natureza: '',
+    descricao: '',
+    iniciais: 'ES',
+  }
+
+  const avisoRemover = {
+    id: 'a-remover',
+    tipo: 'proposta' as const,
+    origem: 'investimento',
+    mensagem: 'remove',
+    alvo: ['1'],
+    permanece: [],
+    estado: 'pendente' as const,
+    mutacaoProposta: { verbo: 'remover' as const, alvo: [1] },
+  }
+
+  const avisoClassificar = {
+    id: 'a-classificar',
+    tipo: 'proposta' as const,
+    origem: 'classificacao-similaridade',
+    mensagem: 'classifica',
+    alvo: ['1'],
+    permanece: [],
+    estado: 'pendente' as const,
+    mutacaoProposta: {
+      verbo: 'classificar' as const,
+      alvo: [1],
+      natureza: 'GO',
+      descricao: 'Spotify',
+      iniciais: 'ES',
+    },
+  }
+
+  it('RG-03: linha já reivindicada para remoção não recebe proposta de classificação', () => {
+    // Aplicar as duas seria incoerente: a linha some e ao mesmo tempo é classificada.
+    const detectoresFake = [
+      { origem: 'investimento', escopo: 'global' as const, detectar: () => [avisoRemover] },
+      {
+        origem: 'classificacao-similaridade',
+        escopo: 'global' as const,
+        detectar: () => [avisoClassificar],
+      },
+    ]
+    const avisos = orquestrarDeteccao([lancamento], detectoresFake)
+    expect(avisos.map((a) => a.id)).toEqual(['a-remover'])
+  })
+
+  it('RG-04: a recíproca vale — classificar reivindica e quem vem depois cede', () => {
+    const detectoresFake = [
+      {
+        origem: 'classificacao-similaridade',
+        escopo: 'global' as const,
+        detectar: () => [avisoClassificar],
+      },
+      { origem: 'investimento', escopo: 'global' as const, detectar: () => [avisoRemover] },
+    ]
+    const avisos = orquestrarDeteccao([lancamento], detectoresFake)
+    expect(avisos.map((a) => a.id)).toEqual(['a-classificar'])
+  })
+
+  it('RG-05: alvos disjuntos coexistem', () => {
+    const outroAlvo = { ...avisoClassificar, id: 'outro', mutacaoProposta: { ...avisoClassificar.mutacaoProposta, alvo: [2] } }
+    const detectoresFake = [
+      { origem: 'investimento', escopo: 'global' as const, detectar: () => [avisoRemover] },
+      { origem: 'classificacao-similaridade', escopo: 'global' as const, detectar: () => [outroAlvo] },
+    ]
+    const avisos = orquestrarDeteccao([lancamento], detectoresFake)
+    expect(avisos).toHaveLength(2)
+  })
+
+  it('RG-06: o dicionário do contexto chega ao detector', () => {
+    let recebido: unknown = 'nao-chamou'
+    const espiao = {
+      origem: 'espiao',
+      escopo: 'global' as const,
+      detectar: (_l: unknown, ctx: { dicEntries?: unknown }) => {
+        recebido = ctx.dicEntries
+        return []
+      },
+    }
+    const dic = [
+      { chave: 'X', fonte: 'extrato_itau', natureza: 'GO', descricao: 'y', iniciais: 'ES', vezes: 1, ambiguo: false },
+    ]
+    orquestrarDeteccao([lancamento], [espiao], undefined, undefined, dic)
+    expect(recebido).toEqual(dic)
   })
 })
