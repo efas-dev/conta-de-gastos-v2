@@ -689,6 +689,71 @@ describe('gerarXlsx — bytes estáveis no tempo (TL-MTIME)', () => {
 })
 
 /**
+ * O `replace` da injeção é global — percorre TODAS as células do sheet1, não só as que recebem
+ * dados (foi o que derrubou o custo de ~1,2 s para ~20 ms no limite da tabela). O preço é que uma
+ * célula fora do alvo passa pelo mesmo caminho de reescrita, então "não tocar no que não foi
+ * pedido" deixou de ser garantido pela construção e precisa ser garantido por teste.
+ *
+ * O SHA256 das partes não tocadas não cobre isto: `sheet1.xml` É uma das partes modificadas.
+ */
+describe('gerarXlsx — nenhuma célula fora do alvo é alterada (TL-INTACTO)', () => {
+  let modeloBytes: Uint8Array
+  let modeloParts: Record<string, Uint8Array>
+
+  beforeAll(() => {
+    modeloBytes = new Uint8Array(readFileSync(FIXTURE_PATH))
+    modeloParts = unzipSync(modeloBytes)
+  })
+
+  /** Mapa `referência da célula` → XML da célula, para todas as células da planilha. */
+  function celulas(xml: string): Map<string, string> {
+    const mapa = new Map<string, string>()
+    for (const m of xml.matchAll(/<c r="([A-Z]+\d+)"(?:[^>]*?\/>|[^>]*?>[\s\S]*?<\/c>)/g)) {
+      mapa.set(m[1], m[0])
+    }
+    return mapa
+  }
+
+  it('TL-INTACTO-1: com lançamentos, só as células do alvo diferem do Modelo', () => {
+    const lancamentos: Lancamento[] = [
+      { id: 1, fonte: 'Nubank', data: '2026-06-01', transcricao: 'L1', valor: -10, iniciais: 'ES', natureza: 'CM', descricao: 'a' },
+      { id: 2, fonte: 'Itaú', data: '2026-06-02', transcricao: 'L2', valor: 20, iniciais: 'RM', natureza: 'RR', descricao: 'b' },
+    ]
+    const gerado = decodePart(
+      unzipSync(gerarXlsx(modeloBytes, 'ES', lancamentos, [], '2026-06', 500)),
+      'xl/worksheets/sheet1.xml',
+    )
+
+    const doModelo = celulas(decodePart(modeloParts, 'xl/worksheets/sheet1.xml'))
+    const doGerado = celulas(gerado)
+
+    // B2/B3/B4 + as 9 colunas das linhas 9 e 10 — e mais nada.
+    const alvo = new Set(['B2', 'B3', 'B4'])
+    for (const linha of [9, 10]) {
+      for (const col of 'ABCDEFGHI') alvo.add(`${col}${linha}`)
+    }
+
+    expect([...doGerado.keys()].sort()).toEqual([...doModelo.keys()].sort())
+
+    const divergentes = [...doModelo.keys()].filter((ref) => doModelo.get(ref) !== doGerado.get(ref))
+    expect(divergentes.sort()).toEqual([...alvo].sort())
+  })
+
+  it('TL-INTACTO-2: as fórmulas do Modelo atravessam a injeção intactas', () => {
+    const gerado = decodePart(
+      unzipSync(gerarXlsx(modeloBytes, 'ES', [], [], '2026-06')),
+      'xl/worksheets/sheet1.xml',
+    )
+    const original = decodePart(modeloParts, 'xl/worksheets/sheet1.xml')
+
+    const formulas = (xml: string) => [...xml.matchAll(/<f[^>]*>([\s\S]*?)<\/f>/g)].map((m) => m[0])
+
+    expect(formulas(gerado)).toEqual(formulas(original))
+    expect(formulas(gerado).length).toBeGreaterThan(100) // a planilha tem muitas; guarda contra "0 === 0"
+  })
+})
+
+/**
  * Imunidade ao re-save do Modelo (TL-ESTILO).
  *
  * A injeção casava a string literal `<c r="A9" s="42"/>`. O índice de estilo é posição na tabela
