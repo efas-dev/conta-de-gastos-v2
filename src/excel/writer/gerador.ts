@@ -81,8 +81,15 @@ const LINHA_FINAL = 504
 const CAPACIDADE = LINHA_FINAL - LINHA_INICIAL + 1 // 496 lançamentos
 
 /**
- * Substitui a célula `ref` na planilha, PRESERVANDO o índice de estilo que o arquivo declara
- * para ela, e falha alto quando a célula não existe.
+ * Casa UMA célula do XML da planilha: `<c r="REF" …/>` (vazia) ou `<c r="REF" …>…</c>` (com
+ * conteúdo). `[\s\S]` em vez de `.` porque o sheet1.xml do Modelo tem quebras de linha, e o
+ * quantificador é preguiçoso para parar no primeiro `</c>`.
+ */
+const CELULA = /<c r="([A-Z]+\d+)"(?:([^>]*?)\/>|([^>]*?)>[\s\S]*?<\/c>)/g
+
+/**
+ * Aplica todas as substituições de célula numa ÚNICA varredura do XML, PRESERVANDO o índice de
+ * estilo que o arquivo declara para cada uma, e falha alto se alguma célula pedida não existir.
  *
  * Por que não casar a string literal `<c r="A9" s="42"/>`, como era antes: o `s` é a posição do
  * formato na tabela `cellXfs` do `styles.xml`, e o Excel reescreve essa tabela a cada salvamento.
@@ -92,27 +99,41 @@ const CAPACIDADE = LINHA_FINAL - LINHA_INICIAL + 1 // 496 lançamentos
  * descobria conferindo a planilha. Ler o estilo do próprio arquivo torna a injeção imune ao
  * re-save; lançar no que falta troca o silêncio por uma mensagem.
  *
- * @param construir  Recebe o `s` lido da célula (ou `null` se ela não tiver estilo) e devolve o
- *                   XML completo da célula nova.
+ * Por que TODAS de uma vez, e não uma chamada por célula: o sheet1.xml tem ~900 KB, e uma busca
+ * por célula custava duas varreduras completas dela. Com 9 colunas × 496 linhas isso é ~8 GB de
+ * texto percorrido — crescimento quadrático que levava 1,2 s no limite da tabela aqui e estourava
+ * o timeout de 5 s do Vitest no CI. Uma passada só devolve o custo para linear.
+ *
+ * Células ausentes do mapa são reemitidas **exatamente como vieram**, então este `replace` global
+ * não pode alterar nada que não tenha sido pedido explicitamente.
+ *
+ * @param substituicoes  Referência da célula → função que recebe o `s` lido dela (ou `null` se não
+ *                       tiver estilo) e devolve o XML completo da célula nova.
  */
-function substituirCelula(
+function substituirCelulas(
   xml: string,
-  ref: string,
-  construir: (estilo: string | null) => string,
+  substituicoes: Map<string, (estilo: string | null) => string>,
 ): string {
-  // `[\s\S]` em vez de `.`: sheet1.xml do Modelo tem quebras de linha.
-  const padrao = new RegExp(`<c r="${ref}"(?:([^>]*?)/>|([^>]*?)>[\\s\\S]*?</c>)`)
-  const achado = xml.match(padrao)
-  if (!achado) {
+  const pendentes = new Set(substituicoes.keys())
+
+  const resultado = xml.replace(CELULA, (original, ref: string, vazia?: string, comConteudo?: string) => {
+    const construir = substituicoes.get(ref)
+    if (!construir) return original
+
+    pendentes.delete(ref)
+    const estilo = (vazia ?? comConteudo ?? '').match(/\bs="(\d+)"/)?.[1] ?? null
+    return construir(estilo)
+  })
+
+  if (pendentes.size > 0) {
+    const faltando = [...pendentes].sort().join(', ')
     throw new Error(
-      `Célula ${ref} não encontrada na aba Extrato do Modelo.xlsx. ` +
-        'O .xlsx não foi gerado (gerar sem ela produziria uma planilha incompleta em silêncio).',
+      `Células não encontradas na aba Extrato do Modelo.xlsx: ${faltando}. ` +
+        'O .xlsx não foi gerado (gerar sem elas produziria uma planilha incompleta em silêncio).',
     )
   }
 
-  const atributos = achado[1] ?? achado[2] ?? ''
-  const estilo = atributos.match(/\bs="(\d+)"/)?.[1] ?? null
-  return xml.replace(padrao, () => construir(estilo))
+  return resultado
 }
 
 /**
@@ -163,20 +184,20 @@ function injetarSheet1(
   }
 
   const mes = mesDaReferencia(mesReferencia)
-  let result = xml
+  const substituicoes = new Map<string, (estilo: string | null) => string>()
 
   // B2: iniciais do usuário
-  result = substituirCelula(result, 'B2', (s) => celulaStr('B2', s, iniciais))
+  substituicoes.set('B2', (s) => celulaStr('B2', s, iniciais))
 
   // B3: mês de referência. A célula pode vir vazia ou como shared string, conforme o re-save —
-  // `substituirCelula` cobre as duas formas.
-  result = substituirCelula(result, 'B3', (s) => celulaStr('B3', s, mesReferencia))
+  // `substituirCelulas` cobre as duas formas.
+  substituicoes.set('B3', (s) => celulaStr('B3', s, mesReferencia))
 
   // B4: saldo inicial (item 49). Sem saldo lido do .xlsx do mês anterior a célula fica em branco,
   // exatamente como no Modelo virgem — e B5 (fórmula) resolve o saldo final como se o mês
   // começasse do zero.
   if (saldoAnterior !== null) {
-    result = substituirCelula(result, 'B4', (s) => celulaNum('B4', s, saldoAnterior))
+    substituicoes.set('B4', (s) => celulaNum('B4', s, saldoAnterior))
   }
 
   // Uma linha da Tabela1 por lançamento, a partir da linha 9
@@ -184,18 +205,18 @@ function injetarSheet1(
     const n = i + LINHA_INICIAL
     const l = lancamentos[i]
 
-    result = substituirCelula(result, `A${n}`, (s) => celulaStr(`A${n}`, s, l.fonte))
-    result = substituirCelula(result, `B${n}`, (s) => celulaStr(`B${n}`, s, l.data))
-    result = substituirCelula(result, `C${n}`, (s) => celulaStr(`C${n}`, s, l.transcricao))
-    result = substituirCelula(result, `D${n}`, (s) => celulaStr(`D${n}`, s, mesReferencia))
-    result = substituirCelula(result, `E${n}`, (s) => celulaNum(`E${n}`, s, mes))
-    result = substituirCelula(result, `F${n}`, (s) => celulaStr(`F${n}`, s, l.descricao))
-    result = substituirCelula(result, `G${n}`, (s) => celulaNum(`G${n}`, s, l.valor))
-    result = substituirCelula(result, `H${n}`, (s) => celulaStr(`H${n}`, s, l.natureza))
-    result = substituirCelula(result, `I${n}`, (s) => celulaStr(`I${n}`, s, l.iniciais))
+    substituicoes.set(`A${n}`, (s) => celulaStr(`A${n}`, s, l.fonte))
+    substituicoes.set(`B${n}`, (s) => celulaStr(`B${n}`, s, l.data))
+    substituicoes.set(`C${n}`, (s) => celulaStr(`C${n}`, s, l.transcricao))
+    substituicoes.set(`D${n}`, (s) => celulaStr(`D${n}`, s, mesReferencia))
+    substituicoes.set(`E${n}`, (s) => celulaNum(`E${n}`, s, mes))
+    substituicoes.set(`F${n}`, (s) => celulaStr(`F${n}`, s, l.descricao))
+    substituicoes.set(`G${n}`, (s) => celulaNum(`G${n}`, s, l.valor))
+    substituicoes.set(`H${n}`, (s) => celulaStr(`H${n}`, s, l.natureza))
+    substituicoes.set(`I${n}`, (s) => celulaStr(`I${n}`, s, l.iniciais))
   }
 
-  return result
+  return substituirCelulas(xml, substituicoes)
 }
 
 /**
