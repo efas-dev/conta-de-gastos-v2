@@ -48,6 +48,29 @@ function semTabSelected(data: Uint8Array): Uint8Array {
 
 const ehWorksheet = (parte: string) => /^xl\/worksheets\/sheet\d+\.xml$/.test(parte)
 
+/**
+ * Extrai o XML de UMA célula pela referência, qualquer que seja o índice de estilo.
+ *
+ * As asserções deste arquivo NÃO podem casar `s="35"` literal: o índice de estilo é posição na
+ * tabela `cellXfs` do `styles.xml`, e o Excel reescreve essa tabela a cada salvamento do Modelo —
+ * a coluna Fonte já foi `s="42"`, `s="44"` e `s="35"` em três versões. Testes ancorados no número
+ * viravam vermelho a cada re-save legítimo do Modelo, escondendo o que realmente importa: qual
+ * valor foi gravado em qual coluna, com o estilo que o Modelo declara (seja ele qual for).
+ */
+function celula(xml: string, ref: string): string {
+  const achado = xml.match(new RegExp(`<c r="${ref}"(?:[^>]*?/>|[^>]*?>[\\s\\S]*?</c>)`))
+  if (!achado) throw new Error(`Célula ${ref} não encontrada no XML`)
+  return achado[0]
+}
+
+/** Índice de estilo que o Modelo declara para a célula — o gerado precisa preservá-lo. */
+function estiloNoModelo(modeloParts: Record<string, Uint8Array>, ref: string): string {
+  const sheet1 = new TextDecoder().decode(modeloParts['xl/worksheets/sheet1.xml'])
+  const s = celula(sheet1, ref).match(/\bs="(\d+)"/)
+  if (!s) throw new Error(`Célula ${ref} do Modelo não tem atributo s`)
+  return s[1]
+}
+
 describe('gerarXlsx', () => {
   let modeloBytes: Uint8Array
   let modeloParts: Record<string, Uint8Array>
@@ -66,7 +89,8 @@ describe('gerarXlsx', () => {
     const parts = unzipSync(resultado)
     const sheet1 = decodePart(parts, 'xl/worksheets/sheet1.xml')
 
-    expect(sheet1).toContain('<c r="B2" s="40" t="inlineStr"><is><t>ES</t></is></c>')
+    const s = estiloNoModelo(modeloParts, 'B2')
+    expect(celula(sheet1, 'B2')).toBe(`<c r="B2" s="${s}" t="inlineStr"><is><t>ES</t></is></c>`)
   })
 
   // Test List item 2: B3 recebe mês de referência como inlineStr
@@ -75,11 +99,16 @@ describe('gerarXlsx', () => {
     const parts = unzipSync(resultado)
     const sheet1 = decodePart(parts, 'xl/worksheets/sheet1.xml')
 
-    expect(sheet1).toContain('<c r="B3" s="45" t="inlineStr"><is><t>2026-06</t></is></c>')
+    const s = estiloNoModelo(modeloParts, 'B3')
+    expect(celula(sheet1, 'B3')).toBe(
+      `<c r="B3" s="${s}" t="inlineStr"><is><t>2026-06</t></is></c>`,
+    )
   })
 
-  // Test List item 3: lançamento injetado em linha 9 (layout novo A9:H9)
-  it('injeta lançamento em A9:H9 com colunas corretas (Fonte/Data/Transcrição/Ref./Iniciais/Natureza/Descrição/Valor)', () => {
+  // Test List item 3: lançamento injetado em linha 9 — layout Modelo 2026-09-28,
+  // Tabela1 = A8:I504: Fonte | Data | Transcrição | Ref. | Mês | Descrição | Valor |
+  // Natureza | Iniciais.
+  it('injeta lançamento em A9:I9 com as colunas na ordem do Modelo', () => {
     const lancamentos: Lancamento[] = [
       {
         fonte: 'Nubank',
@@ -96,27 +125,64 @@ describe('gerarXlsx', () => {
     const resultado = gerarXlsx(modeloBytes, 'ES', lancamentos, dicEntries, '2026-06')
     const parts = unzipSync(resultado)
     const sheet1 = decodePart(parts, 'xl/worksheets/sheet1.xml')
+    const s = (ref: string) => estiloNoModelo(modeloParts, ref)
 
     // A9: Fonte
-    expect(sheet1).toContain('<c r="A9" s="42" t="inlineStr"><is><t>Nubank</t></is></c>')
+    expect(celula(sheet1, 'A9')).toBe(`<c r="A9" s="${s('A9')}" t="inlineStr"><is><t>Nubank</t></is></c>`)
     // B9: Data
-    expect(sheet1).toContain('<c r="B9" s="44" t="inlineStr"><is><t>2024-01-15</t></is></c>')
+    expect(celula(sheet1, 'B9')).toBe(`<c r="B9" s="${s('B9')}" t="inlineStr"><is><t>2024-01-15</t></is></c>`)
     // C9: Transcrição
-    expect(sheet1).toContain('<c r="C9" s="41" t="inlineStr"><is><t>Compra no Mercado</t></is></c>')
+    expect(celula(sheet1, 'C9')).toBe(`<c r="C9" s="${s('C9')}" t="inlineStr"><is><t>Compra no Mercado</t></is></c>`)
     // D9: Ref. (mês de referência literal)
-    expect(sheet1).toContain('<c r="D9" s="41" t="inlineStr"><is><t>2026-06</t></is></c>')
-    // E9: Iniciais
-    expect(sheet1).toContain('<c r="E9" s="41" t="inlineStr"><is><t>ES</t></is></c>')
-    // F9: Natureza
-    expect(sheet1).toContain('<c r="F9" s="11" t="inlineStr"><is><t>Alimentação</t></is></c>')
-    // G9: Descrição
-    expect(sheet1).toContain('<c r="G9" s="11" t="inlineStr"><is><t>Supermercado</t></is></c>')
-    // H9: Valor numérico
-    expect(sheet1).toContain('<c r="H9" s="43"><v>-123.45</v></c>')
+    expect(celula(sheet1, 'D9')).toBe(`<c r="D9" s="${s('D9')}" t="inlineStr"><is><t>2026-06</t></is></c>`)
+    // E9: Mês — número do mês de referência, não texto
+    expect(celula(sheet1, 'E9')).toBe(`<c r="E9" s="${s('E9')}"><v>6</v></c>`)
+    // F9: Descrição
+    expect(celula(sheet1, 'F9')).toBe(`<c r="F9" s="${s('F9')}" t="inlineStr"><is><t>Supermercado</t></is></c>`)
+    // G9: Valor numérico
+    expect(celula(sheet1, 'G9')).toBe(`<c r="G9" s="${s('G9')}"><v>-123.45</v></c>`)
+    // H9: Natureza
+    expect(celula(sheet1, 'H9')).toBe(`<c r="H9" s="${s('H9')}" t="inlineStr"><is><t>Alimentação</t></is></c>`)
+    // I9: Iniciais
+    expect(celula(sheet1, 'I9')).toBe(`<c r="I9" s="${s('I9')}" t="inlineStr"><is><t>ES</t></is></c>`)
   })
 
-  // Test List item 4: ref da Tabela1 ajustado para A8:H{8+n} com n lançamentos
-  it('ajusta ref da Tabela1 e autoFilter para A8:H{8+n} com n lançamentos', () => {
+  // A coluna Mês (E) vem do mês de REFERÊNCIA, não da data da linha: uma compra de abril que
+  // entra na fatura de maio pertence ao fechamento de maio, igual à coluna Ref. (decisão do
+  // usuário em 2026-09-28).
+  it('TL-MES-1: Mês vem da referência, mesmo quando a data do lançamento é de outro mês', () => {
+    const lancamentos: Lancamento[] = [
+      { id: 1, fonte: 'Nubank', data: '2026-04-28', transcricao: 'Compra de abril', valor: -10, iniciais: 'ES', natureza: 'CM', descricao: '' },
+    ]
+    const sheet1 = decodePart(
+      unzipSync(gerarXlsx(modeloBytes, 'ES', lancamentos, [], '2026-05')),
+      'xl/worksheets/sheet1.xml',
+    )
+
+    expect(celula(sheet1, 'E9')).toContain('<v>5</v>')
+    expect(celula(sheet1, 'D9')).toContain('2026-05')
+  })
+
+  it('TL-MES-2: mês sem zero à esquerda sai como número (janeiro = 1, não "01")', () => {
+    const lancamentos: Lancamento[] = [
+      { id: 1, fonte: 'Nubank', data: '2026-01-05', transcricao: 'L1', valor: -10, iniciais: 'ES', natureza: 'CM', descricao: '' },
+    ]
+    const sheet1 = decodePart(
+      unzipSync(gerarXlsx(modeloBytes, 'ES', lancamentos, [], '2026-01')),
+      'xl/worksheets/sheet1.xml',
+    )
+
+    expect(celula(sheet1, 'E9')).toContain('<v>1</v>')
+    expect(celula(sheet1, 'E9')).not.toContain('inlineStr')
+  })
+
+  it('TL-MES-3: mês de referência fora de 1–12 faz a geração falhar em vez de gravar lixo', () => {
+    expect(() => gerarXlsx(modeloBytes, 'ES', [], [], '2026-13')).toThrow(/mês de referência/i)
+    expect(() => gerarXlsx(modeloBytes, 'ES', [], [], 'junho/2026')).toThrow(/mês de referência/i)
+  })
+
+  // Test List item 4: ref da Tabela1 ajustado para A8:I{8+n} com n lançamentos
+  it('ajusta ref da Tabela1 e autoFilter para A8:I{8+n} com n lançamentos', () => {
     const lancamentos: Lancamento[] = [
       { fonte: 'Nubank', data: '2024-01-01', transcricao: 'L1', valor: -10, iniciais: 'ES', natureza: '', descricao: '' },
       { fonte: 'Nubank', data: '2024-01-02', transcricao: 'L2', valor: -20, iniciais: 'ES', natureza: '', descricao: '' },
@@ -129,9 +195,9 @@ describe('gerarXlsx', () => {
     const table1 = decodePart(parts, 'xl/tables/table1.xml')
 
     // 8 (header) + 3 (dados) = linha 11
-    expect(table1).toContain('ref="A8:H11"')
+    expect(table1).toContain('ref="A8:I11"')
     // autoFilter também deve ter ref atualizado
-    expect(table1.match(/ref="A8:H11"/g)?.length).toBeGreaterThanOrEqual(2)
+    expect(table1.match(/ref="A8:I11"/g)?.length).toBeGreaterThanOrEqual(2)
   })
 
   // Test List item 5: fullCalcOnLoad="1" em workbook.xml
@@ -271,13 +337,29 @@ describe('gerarXlsx', () => {
     expect(sheet1).not.toContain('Compra & Venda <Mercado>')
   })
 
-  // Test List item 9: lista vazia de lançamentos — ref A8:H8
-  it('com zero lançamentos, ref da Tabela1 é A8:H8 (apenas cabeçalho)', () => {
+  // Test List item 9: lista vazia de lançamentos — ref A8:I8
+  it('com zero lançamentos, ref da Tabela1 é A8:I8 (apenas cabeçalho)', () => {
     const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06')
     const parts = unzipSync(resultado)
     const table1 = decodePart(parts, 'xl/tables/table1.xml')
 
-    expect(table1).toContain('ref="A8:H8"')
+    expect(table1).toContain('ref="A8:I8"')
+  })
+
+  /**
+   * O corpo da Tabela1 tem 496 linhas (9–504). Acima disso o Modelo ainda TEM linhas no XML,
+   * mas elas estão fora da tabela e sem as células das colunas de dados — o lançamento excedente
+   * era descartado em silêncio, e o usuário só descobriria conferindo o .xlsx linha por linha.
+   */
+  it('TL-CAPACIDADE: mais lançamentos que as 496 linhas da Tabela1 faz a geração falhar', () => {
+    const umLancamento = (i: number): Lancamento => ({
+      id: i + 1, fonte: 'Nubank', data: '2026-06-01', transcricao: `L${i}`, valor: -1, iniciais: 'ES', natureza: 'CM', descricao: '',
+    })
+    const noLimite = Array.from({ length: 496 }, (_, i) => umLancamento(i))
+    const umAMais = Array.from({ length: 497 }, (_, i) => umLancamento(i))
+
+    expect(() => gerarXlsx(modeloBytes, 'ES', noLimite, [], '2026-06')).not.toThrow()
+    expect(() => gerarXlsx(modeloBytes, 'ES', umAMais, [], '2026-06')).toThrow(/496/)
   })
 
   // Test List item 10: mesReferencia vazio lança Error com "obrigatório"
@@ -436,37 +518,41 @@ describe('gerarSheetDataDicionario via gerarXlsx — cabeçalho e colunas Vezes/
 // ---------------------------------------------------------------------------
 // Item 49 do TODO — saldo inicial em B4
 //
-// B4 é o saldo INICIAL do mês (célula livre, `<c r="B4" s="38"/>` no Modelo).
-// B5 é o saldo FINAL e é FÓRMULA (`B4+SUM(H9:H1004)`) — B4 é o único ponto que o
-// writer pode tocar, e tocar B5 quebraria o Modelo.
+// B4 é o saldo INICIAL do mês (célula livre e vazia no Modelo).
+// B5 é o saldo FINAL e é FÓRMULA (`B4+SUM(G9:G1004)` no Modelo 2026-09-28, quando Valor passou
+// de H para G) — B4 é o único ponto que o writer pode tocar, e tocar B5 quebraria o Modelo.
 // O valor vem de `lerSaldoAnterior` (B5 do .xlsx do mês anterior).
 // ---------------------------------------------------------------------------
 describe('gerarXlsx — saldo inicial em B4 (item 49)', () => {
   let modeloBytes: Uint8Array
+  let modeloParts: Record<string, Uint8Array>
+  let sB4: string
 
   beforeAll(() => {
     modeloBytes = new Uint8Array(readFileSync(FIXTURE_PATH))
+    modeloParts = unzipSync(modeloBytes)
+    sB4 = estiloNoModelo(modeloParts, 'B4')
   })
 
   it('TL-49-1: grava o saldo inicial em B4 como célula numérica com o estilo do Modelo', () => {
     const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', 1234.56)
     const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
 
-    expect(sheet1).toContain('<c r="B4" s="38"><v>1234.56</v></c>')
+    expect(celula(sheet1, 'B4')).toBe(`<c r="B4" s="${sB4}"><v>1234.56</v></c>`)
   })
 
   it('TL-49-2: saldo negativo é gravado com o sinal preservado', () => {
     const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', -87.9)
     const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
 
-    expect(sheet1).toContain('<c r="B4" s="38"><v>-87.9</v></c>')
+    expect(celula(sheet1, 'B4')).toBe(`<c r="B4" s="${sB4}"><v>-87.9</v></c>`)
   })
 
   it('TL-49-3: saldo zero é gravado (0 é valor legítimo, não "ausente")', () => {
     const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', 0)
     const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
 
-    expect(sheet1).toContain('<c r="B4" s="38"><v>0</v></c>')
+    expect(celula(sheet1, 'B4')).toBe(`<c r="B4" s="${sB4}"><v>0</v></c>`)
   })
 
   it('TL-49-4: sem saldo (null/omitido) B4 fica em branco, como no Modelo virgem', () => {
@@ -474,35 +560,38 @@ describe('gerarXlsx — saldo inicial em B4 (item 49)', () => {
       const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', saldo)
       const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
 
-      expect(sheet1).toContain('<c r="B4" s="38"/>')
-      expect(sheet1).not.toMatch(/<c r="B4"[^>]*>\s*<v>/)
+      expect(celula(sheet1, 'B4')).toBe(`<c r="B4" s="${sB4}"/>`)
     }
   })
 
   it('TL-49-5: substitui B4 mesmo quando o re-save do Modelo a deixou preenchida', () => {
-    // Um re-save do Modelo com valor em B4 vira `<c r="B4" s="38"><v>10</v></c>`;
+    // Um re-save do Modelo com valor em B4 vira `<c r="B4" s="…"><v>10</v></c>`;
     // o mesmo endurecimento por regex já aplicado a B3 precisa valer aqui.
     const parts = unzipSync(modeloBytes)
     const sheet1Original = new TextDecoder().decode(parts['xl/worksheets/sheet1.xml'])
     parts['xl/worksheets/sheet1.xml'] = new TextEncoder().encode(
-      sheet1Original.replace('<c r="B4" s="38"/>', '<c r="B4" s="38"><v>10</v></c>'),
+      sheet1Original.replace(`<c r="B4" s="${sB4}"/>`, `<c r="B4" s="${sB4}"><v>10</v></c>`),
     )
     const modeloComB4 = zipSync(parts)
 
     const resultado = gerarXlsx(modeloComB4, 'ES', [], [], '2026-06', 500)
     const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
 
-    expect(sheet1).toContain('<c r="B4" s="38"><v>500</v></c>')
-    // O valor antigo não pode sobreviver *na célula B4* (outras células da planilha
-    // legitimamente têm <v>10</v> — a asserção precisa ser ancorada em B4).
-    expect(sheet1.match(/<c r="B4"[^>]*(?:\/>|>.*?<\/c>)/)?.[0]).not.toContain('<v>10</v>')
+    expect(celula(sheet1, 'B4')).toBe(`<c r="B4" s="${sB4}"><v>500</v></c>`)
   })
 
-  it('TL-49-6: a fórmula de B5 (saldo final) permanece intacta', () => {
+  it('TL-49-6: a fórmula de B5 (saldo final) permanece intacta e soma a coluna Valor', () => {
     const resultado = gerarXlsx(modeloBytes, 'ES', [], [], '2026-06', 1234.56)
     const sheet1 = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
+    const modeloSheet1 = new TextDecoder().decode(modeloParts['xl/worksheets/sheet1.xml'])
 
-    expect(sheet1).toContain('<f>B4+SUM(H9:H1004)</f>')
+    // A fórmula sai igual à do Modelo, seja qual for a coluna que ele soma…
+    const formulaDoModelo = celula(modeloSheet1, 'B5').match(/<f>([^<]*)<\/f>/)?.[1]
+    expect(celula(sheet1, 'B5')).toContain(`<f>${formulaDoModelo}</f>`)
+    // …e o Modelo precisa somar a coluna Valor (G), não outra: somar a coluna errada
+    // deixaria o saldo final sempre igual ao inicial, e `lerSaldoAnterior` propagaria o erro
+    // para o mês seguinte.
+    expect(formulaDoModelo).toBe('B4+SUM(G9:G1004)')
   })
 })
 
@@ -596,6 +685,63 @@ describe('gerarXlsx — bytes estáveis no tempo (TL-MTIME)', () => {
     const segunda = gerarXlsx(modeloBytes, 'ES', LANCAMENTOS, [], '2026-06')
 
     expect(hashSha256(segunda)).toBe(hashSha256(primeira))
+  })
+})
+
+/**
+ * Imunidade ao re-save do Modelo (TL-ESTILO).
+ *
+ * A injeção casava a string literal `<c r="A9" s="42"/>`. O índice de estilo é posição na tabela
+ * `cellXfs` do `styles.xml`, e o Excel reescreve essa tabela a cada salvamento: a coluna Fonte foi
+ * `s="42"`, depois `s="44"`, depois `s="35"` — três versões do mesmo Modelo. Quando o literal não
+ * casa, `String.replace` devolve o XML intacto e NÃO reclama: o .xlsx sai com a grid em branco e
+ * ninguém é avisado. Estes dois testes cobrem as duas metades do conserto — preservar o estilo que
+ * o arquivo declara, e gritar quando a célula não existe mesmo.
+ */
+describe('gerarXlsx — imune a renumeração de estilos, alto no que falta (TL-ESTILO)', () => {
+  let modeloBytes: Uint8Array
+  let modeloParts: Record<string, Uint8Array>
+
+  beforeAll(() => {
+    modeloBytes = new Uint8Array(readFileSync(FIXTURE_PATH))
+    modeloParts = unzipSync(modeloBytes)
+  })
+
+  const LANCAMENTO: Lancamento = {
+    id: 1, fonte: 'Nubank', data: '2026-06-01', transcricao: 'Mercado', valor: -42.5,
+    iniciais: 'ES', natureza: 'CM', descricao: 'Compras',
+  }
+
+  it('TL-ESTILO-1: Modelo salvo com outros índices de estilo continua recebendo os dados', () => {
+    // Simula o que o Excel faz num re-save: os mesmos estilos, com outros números.
+    const DESLOCAMENTO = 100
+    const parts = unzipSync(modeloBytes)
+    const sheet1 = new TextDecoder().decode(parts['xl/worksheets/sheet1.xml'])
+    const renumerado = sheet1.replace(/<c r="([A-I])(\d+)" s="(\d+)"/g, (_m, col, lin, s) =>
+      `<c r="${col}${lin}" s="${Number(s) + DESLOCAMENTO}"`)
+    parts['xl/worksheets/sheet1.xml'] = new TextEncoder().encode(renumerado)
+
+    const resultado = gerarXlsx(zipSync(parts), 'ES', [LANCAMENTO], [], '2026-06')
+    const gerado = decodePart(unzipSync(resultado), 'xl/worksheets/sheet1.xml')
+
+    // Os dados entraram, e cada célula saiu com o estilo que o arquivo de entrada declarava —
+    // o esperado é DERIVADO do Modelo, nunca escrito à mão (seria o mesmo erro que este teste cobre).
+    const s = (ref: string) => Number(estiloNoModelo(modeloParts, ref)) + DESLOCAMENTO
+    expect(celula(gerado, 'A9')).toBe(`<c r="A9" s="${s('A9')}" t="inlineStr"><is><t>Nubank</t></is></c>`)
+    expect(celula(gerado, 'E9')).toBe(`<c r="E9" s="${s('E9')}"><v>6</v></c>`)
+    expect(celula(gerado, 'G9')).toBe(`<c r="G9" s="${s('G9')}"><v>-42.5</v></c>`)
+    expect(celula(gerado, 'H9')).toBe(`<c r="H9" s="${s('H9')}" t="inlineStr"><is><t>CM</t></is></c>`)
+  })
+
+  it('TL-ESTILO-2: célula ausente no Modelo faz a geração falhar em vez de gerar planilha vazia', () => {
+    const parts = unzipSync(modeloBytes)
+    const sheet1 = new TextDecoder().decode(parts['xl/worksheets/sheet1.xml'])
+    // Remove a célula G9 (Valor) — o estrago que passava calado.
+    const mutilado = sheet1.replace(/<c r="G9" s="\d+"\/>/, '')
+    expect(mutilado).not.toBe(sheet1) // a mutilação precisa ter acontecido
+    parts['xl/worksheets/sheet1.xml'] = new TextEncoder().encode(mutilado)
+
+    expect(() => gerarXlsx(zipSync(parts), 'ES', [LANCAMENTO], [], '2026-06')).toThrow(/G9/)
   })
 })
 

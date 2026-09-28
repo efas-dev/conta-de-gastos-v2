@@ -71,30 +71,82 @@ function celulaNum(ref: string, style: string | null, value: number): string {
 }
 
 /**
- * Injeta iniciais em B2, mês de referência em B3, saldo inicial em B4 e dados
- * dos lançamentos nas linhas A9:H{8+n} de sheet1.xml — layout Modelo 483f420.
+ * Primeira e última linha do corpo da `Tabela1` na aba Extrato (cabeçalho na linha 8).
  *
- * Células do Modelo.xlsx virgem (483f420) nas linhas de dados (9–504):
- *   A (Fonte):        s="42"  — empty: <c r="An" s="42"/>
- *   B (Data):         s="44"  — empty: <c r="Bn" s="44"/>
- *   C (Transcrição):  s="41"  — empty: <c r="Cn" s="41"/>
- *   D (Ref.):         s="41"  — empty: <c r="Dn" s="41"/> — recebe mesReferencia literal
- *   E (Iniciais):     s="41"  — empty: <c r="En" s="41"/>
- *   F (Natureza):     s="11"  — empty: <c r="Fn" s="11"/>
- *   G (Descrição):    s="11"  — empty: <c r="Gn" s="11"/>
- *   H (Valor):        s="43"  — empty: <c r="Hn" s="43"/>
+ * Acima de `LINHA_FINAL` o Modelo ainda tem linhas no XML, mas elas estão fora da tabela e sem as
+ * células das colunas de dados — escrever lá não alimenta nenhuma fórmula.
+ */
+const LINHA_INICIAL = 9
+const LINHA_FINAL = 504
+const CAPACIDADE = LINHA_FINAL - LINHA_INICIAL + 1 // 496 lançamentos
+
+/**
+ * Substitui a célula `ref` na planilha, PRESERVANDO o índice de estilo que o arquivo declara
+ * para ela, e falha alto quando a célula não existe.
  *
- * B2 no Modelo.xlsx virgem: <c r="B2" s="40"/>
- * B3 no Modelo.xlsx virgem: <c r="B3" s="45"/> — mas re-saves do Modelo já
- * variaram entre vazia e shared string (<c r="B3" s="45" t="s"><v>89</v></c>),
- * por isso a substituição é por regex que aceita ambas as formas.
- * B4 no Modelo.xlsx virgem: <c r="B4" s="38"/> — saldo INICIAL do mês, célula
- * livre (item 49 do TODO). Mesmo endurecimento por regex de B3, porque um
- * re-save do Modelo com valor deixaria `<c r="B4" s="38"><v>…</v></c>`.
- * B5 é o saldo FINAL e é FÓRMULA (`B4+SUM(H9:H1004)`) — intocável.
+ * Por que não casar a string literal `<c r="A9" s="42"/>`, como era antes: o `s` é a posição do
+ * formato na tabela `cellXfs` do `styles.xml`, e o Excel reescreve essa tabela a cada salvamento.
+ * A coluna Fonte já foi `s="42"`, `s="44"` e `s="35"` em três versões do mesmo Modelo. E o modo de
+ * falha é traiçoeiro: `String.replace` com um literal que não casa devolve o XML intacto **sem
+ * erro nenhum** — o .xlsx saía com a grid em branco, o Excel abria sem reclamar, e o usuário só
+ * descobria conferindo a planilha. Ler o estilo do próprio arquivo torna a injeção imune ao
+ * re-save; lançar no que falta troca o silêncio por uma mensagem.
  *
- * Estilos derivados empiricamente do Modelo 483f420 via inspeção de
- * xl/worksheets/sheet1.xml no ZIP da fixture.
+ * @param construir  Recebe o `s` lido da célula (ou `null` se ela não tiver estilo) e devolve o
+ *                   XML completo da célula nova.
+ */
+function substituirCelula(
+  xml: string,
+  ref: string,
+  construir: (estilo: string | null) => string,
+): string {
+  // `[\s\S]` em vez de `.`: sheet1.xml do Modelo tem quebras de linha.
+  const padrao = new RegExp(`<c r="${ref}"(?:([^>]*?)/>|([^>]*?)>[\\s\\S]*?</c>)`)
+  const achado = xml.match(padrao)
+  if (!achado) {
+    throw new Error(
+      `Célula ${ref} não encontrada na aba Extrato do Modelo.xlsx. ` +
+        'O .xlsx não foi gerado (gerar sem ela produziria uma planilha incompleta em silêncio).',
+    )
+  }
+
+  const atributos = achado[1] ?? achado[2] ?? ''
+  const estilo = atributos.match(/\bs="(\d+)"/)?.[1] ?? null
+  return xml.replace(padrao, () => construir(estilo))
+}
+
+/**
+ * Número do mês (1–12) a gravar na coluna `Mês`, derivado do mês de REFERÊNCIA.
+ *
+ * Não é o mês da data da linha: uma compra de abril que cai na fatura de maio pertence ao
+ * fechamento de maio, exatamente como já acontece na coluna `Ref.`. As fórmulas de apoio do Modelo
+ * fazem a mesma leitura (`RIGHT(Tabela1[Ref.];2)`), então a coluna nova concorda com elas.
+ *
+ * Formato fora de `YYYY-MM` (ou mês fora de 1–12) é erro: a coluna faz parte do corpo da tabela e
+ * um valor não derivável sairia como célula vazia no meio de lançamentos preenchidos.
+ */
+function mesDaReferencia(mesReferencia: string): number {
+  const casado = mesReferencia.trim().match(/^\d{4}-(\d{2})$/)
+  const mes = casado ? Number(casado[1]) : NaN
+  if (!Number.isInteger(mes) || mes < 1 || mes > 12) {
+    throw new Error(
+      `Mês de referência inválido: "${mesReferencia}". Esperado YYYY-MM com mês entre 01 e 12.`,
+    )
+  }
+  return mes
+}
+
+/**
+ * Injeta iniciais em B2, mês de referência em B3, saldo inicial em B4 e os lançamentos nas linhas
+ * A9:I{8+n} de sheet1.xml — layout do Modelo de 2026-09-28 (`Tabela1` = `A8:I504`).
+ *
+ * Colunas do corpo da tabela, na ordem do Modelo:
+ *   A Fonte · B Data · C Transcrição · D Ref. (mesReferencia literal) · E Mês (número 1–12) ·
+ *   F Descrição · G Valor (número) · H Natureza · I Iniciais
+ *
+ * B5 é o saldo FINAL e é FÓRMULA (`B4+SUM(G9:G1004)`) — intocável. Nenhum endereço de estilo
+ * aparece aqui de propósito: cada célula é reescrita com o `s` que o próprio Modelo declara (ver
+ * `substituirCelula`).
  */
 function injetarSheet1(
   xml: string,
@@ -103,68 +155,44 @@ function injetarSheet1(
   mesReferencia: string,
   saldoAnterior: number | null,
 ): string {
-  let result = xml
-
-  // Injeta iniciais em B2
-  result = result.replace(
-    '<c r="B2" s="40"/>',
-    () => celulaStr('B2', '40', iniciais),
-  )
-
-  // Injeta mês de referência em B3 como inlineStr (a célula do Modelo pode
-  // vir vazia ou com shared string, conforme o re-save — regex cobre ambas)
-  result = result.replace(
-    /<c r="B3" s="45"(?:\/>|[^>]*>.*?<\/c>)/,
-    () => celulaStr('B3', '45', mesReferencia),
-  )
-
-  // Injeta o saldo inicial em B4 como número (item 49). Sem saldo lido do .xlsx
-  // do mês anterior a célula fica em branco, exatamente como no Modelo virgem —
-  // e B5 (fórmula) resolve o saldo final como se o mês começasse do zero.
-  if (saldoAnterior !== null) {
-    result = result.replace(
-      /<c r="B4" s="38"(?:\/>|[^>]*>.*?<\/c>)/,
-      () => celulaNum('B4', '38', saldoAnterior),
+  if (lancamentos.length > CAPACIDADE) {
+    throw new Error(
+      `${lancamentos.length} lançamentos excedem as ${CAPACIDADE} linhas da Tabela1 ` +
+        `(${LINHA_INICIAL}–${LINHA_FINAL}). O .xlsx não foi gerado.`,
     )
   }
 
-  // Injeta cada lançamento nas linhas 9, 10, 11, ... (n = i + 9)
+  const mes = mesDaReferencia(mesReferencia)
+  let result = xml
+
+  // B2: iniciais do usuário
+  result = substituirCelula(result, 'B2', (s) => celulaStr('B2', s, iniciais))
+
+  // B3: mês de referência. A célula pode vir vazia ou como shared string, conforme o re-save —
+  // `substituirCelula` cobre as duas formas.
+  result = substituirCelula(result, 'B3', (s) => celulaStr('B3', s, mesReferencia))
+
+  // B4: saldo inicial (item 49). Sem saldo lido do .xlsx do mês anterior a célula fica em branco,
+  // exatamente como no Modelo virgem — e B5 (fórmula) resolve o saldo final como se o mês
+  // começasse do zero.
+  if (saldoAnterior !== null) {
+    result = substituirCelula(result, 'B4', (s) => celulaNum('B4', s, saldoAnterior))
+  }
+
+  // Uma linha da Tabela1 por lançamento, a partir da linha 9
   for (let i = 0; i < lancamentos.length; i++) {
-    const n = i + 9
+    const n = i + LINHA_INICIAL
     const l = lancamentos[i]
 
-    result = result.replace(
-      `<c r="A${n}" s="42"/>`,
-      () => celulaStr(`A${n}`, '42', l.fonte),
-    )
-    result = result.replace(
-      `<c r="B${n}" s="44"/>`,
-      () => celulaStr(`B${n}`, '44', l.data),
-    )
-    result = result.replace(
-      `<c r="C${n}" s="41"/>`,
-      () => celulaStr(`C${n}`, '41', l.transcricao),
-    )
-    result = result.replace(
-      `<c r="D${n}" s="41"/>`,
-      () => celulaStr(`D${n}`, '41', mesReferencia),
-    )
-    result = result.replace(
-      `<c r="E${n}" s="41"/>`,
-      () => celulaStr(`E${n}`, '41', l.iniciais),
-    )
-    result = result.replace(
-      `<c r="F${n}" s="11"/>`,
-      () => celulaStr(`F${n}`, '11', l.natureza),
-    )
-    result = result.replace(
-      `<c r="G${n}" s="11"/>`,
-      () => celulaStr(`G${n}`, '11', l.descricao),
-    )
-    result = result.replace(
-      `<c r="H${n}" s="43"/>`,
-      () => celulaNum(`H${n}`, '43', l.valor),
-    )
+    result = substituirCelula(result, `A${n}`, (s) => celulaStr(`A${n}`, s, l.fonte))
+    result = substituirCelula(result, `B${n}`, (s) => celulaStr(`B${n}`, s, l.data))
+    result = substituirCelula(result, `C${n}`, (s) => celulaStr(`C${n}`, s, l.transcricao))
+    result = substituirCelula(result, `D${n}`, (s) => celulaStr(`D${n}`, s, mesReferencia))
+    result = substituirCelula(result, `E${n}`, (s) => celulaNum(`E${n}`, s, mes))
+    result = substituirCelula(result, `F${n}`, (s) => celulaStr(`F${n}`, s, l.descricao))
+    result = substituirCelula(result, `G${n}`, (s) => celulaNum(`G${n}`, s, l.valor))
+    result = substituirCelula(result, `H${n}`, (s) => celulaStr(`H${n}`, s, l.natureza))
+    result = substituirCelula(result, `I${n}`, (s) => celulaStr(`I${n}`, s, l.iniciais))
   }
 
   return result
@@ -176,7 +204,7 @@ function injetarSheet1(
  *
  * `Valor` (coluna H) entrou com a spec `dicionario-chave-canonica` (Decisão 17). Acrescentar a
  * coluna é seguro: a aba `Dicionario` do `Modelo.xlsx` não tem tabela definida nem `_rels`, e não
- * é referenciada por fórmula em `Extrato` nem `Naturezas` — a `Tabela1` (`A8:H504`) pertence à aba
+ * é referenciada por fórmula em `Extrato` nem `Naturezas` — a `Tabela1` (`A8:I504`) pertence à aba
  * `Extrato`.
  */
 const TITULOS_DICIONARIO = [
@@ -244,14 +272,15 @@ function injetarDicionario(xml: string, dicEntries: DicEntry[]): string {
 
 /**
  * Atualiza o atributo ref em table1.xml para o range correto com n linhas de dados.
- * A tabela tem cabeçalho em linha 8, dados a partir de linha 9 — layout Modelo 483f420:
- * - ref = A8:H{8+n} (mínimo A8:H8 quando n=0, apenas cabeçalho)
+ * A tabela tem cabeçalho na linha 8 e dados a partir da 9 — layout do Modelo de 2026-09-28,
+ * com 9 colunas (A..I, desde que `Mês` entrou):
+ * - ref = A8:I{8+n} (mínimo A8:I8 quando n=0, apenas cabeçalho)
  *
  * Substitui TODOS os atributos ref="..." (tabela e autoFilter).
  */
 function atualizarRefTabela1(xml: string, n: number): string {
   const ultimaLinha = 8 + n
-  return xml.replace(/\bref="[^"]*"/g, () => `ref="A8:H${ultimaLinha}"`)
+  return xml.replace(/\bref="[^"]*"/g, () => `ref="A8:I${ultimaLinha}"`)
 }
 
 /**
@@ -303,7 +332,8 @@ function definirTabSelected(xml: string, selecionada: boolean): string {
  * @param iniciais - Iniciais do usuário, gravadas em B2 da aba Extrato
  * @param lancamentos - Lançamentos a injetar a partir da linha A9
  * @param dicEntries - Entradas do dicionário a injetar na aba Dicionario
- * @param mesReferencia - Mês de referência no formato YYYY-MM, gravado em B3 (obrigatório)
+ * @param mesReferencia - Mês de referência no formato YYYY-MM, gravado em B3 e na coluna `Ref.`
+ *                        de cada linha; seu número de mês alimenta a coluna `Mês` (obrigatório)
  * @param saldoAnterior - Saldo final do mês anterior (`lerSaldoAnterior`/B5 do .xlsx
  *                        importado), gravado em B4 como saldo inicial. `null`/omitido
  *                        deixa B4 em branco, como no Modelo virgem (item 49 do TODO).
@@ -323,7 +353,7 @@ export function gerarXlsx(
 
   const parts = unzipSync(modelo)
 
-  // 1. Modificar sheet1.xml (aba Extrato): B2, B3, B4, linhas de dados A9:H{8+n}
+  // 1. Modificar sheet1.xml (aba Extrato): B2, B3, B4, linhas de dados A9:I{8+n}
   //    e seleção de aba (item 19 — o gerado abre na Extrato)
   const sheet1Xml = decoder.decode(parts['xl/worksheets/sheet1.xml'])
   parts['xl/worksheets/sheet1.xml'] = encoder.encode(
