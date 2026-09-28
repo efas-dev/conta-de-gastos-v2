@@ -69,6 +69,27 @@ function semTabSelected(data: Uint8Array): Uint8Array {
 const ehWorksheet = (parte: string) => /^xl\/worksheets\/sheet\d+\.xml$/.test(parte)
 
 /**
+ * Extrai o XML de UMA célula pela referência, qualquer que seja o índice de estilo.
+ *
+ * Espelha o helper de mesmo nome em `src/excel/writer/__tests__/gerador.test.ts` — ver lá o
+ * racional completo. Em resumo: o `s="…"` é posição na tabela `cellXfs` do `styles.xml`, que o
+ * Excel renumera a cada salvamento do Modelo, então asserção ancorada no número vira vermelho a
+ * cada re-save legítimo.
+ */
+function celula(xml: string, ref: string): string {
+  const achado = xml.match(new RegExp(`<c r="${ref}"(?:[^>]*?/>|[^>]*?>[\\s\\S]*?</c>)`))
+  if (!achado) throw new Error(`Célula ${ref} não encontrada no XML`)
+  return achado[0]
+}
+
+/** Índice de estilo que o Modelo declara para a célula — o gerado precisa preservá-lo. */
+function estiloNoModelo(modeloParts: Record<string, Uint8Array>, ref: string): string {
+  const s = celula(decodePart(modeloParts, 'xl/worksheets/sheet1.xml'), ref).match(/\bs="(\d+)"/)
+  if (!s) throw new Error(`Célula ${ref} do Modelo não tem atributo s`)
+  return s[1]
+}
+
+/**
  * Constrói um ZIP OOXML mínimo com aba "Dicionario" para uso como dicionário
  * em testes de aceitação.
  *
@@ -203,64 +224,52 @@ describe('E2E — Caso 1: pipeline completo sem dicionário', () => {
     expect(resultadoBytes.length).toBeGreaterThan(0)
   })
 
-  // TL-03a: lançamento 1 presente em A9 (Fonte/Data/Transcrição/Ref/Valor — layout novo)
-  it('lançamento 1 (Transferência Pix enviada) presente em linha 9 da Tabela1', () => {
-    const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    expect(sheet1).toContain('<c r="A9" s="42" t="inlineStr"><is><t>extrato_nubank</t></is></c>')
-    expect(sheet1).toContain('<c r="B9" s="44" t="inlineStr"><is><t>2026-03-01</t></is></c>')
-    expect(sheet1).toContain(
-      '<c r="C9" s="41" t="inlineStr"><is><t>Transferência enviada pelo Pix - João</t></is></c>',
-    )
-    expect(sheet1).toContain('<c r="D9" s="41" t="inlineStr"><is><t>2026-03</t></is></c>')
-    expect(sheet1).toContain('<c r="H9" s="43"><v>-150</v></c>')
-  })
+  /**
+   * TL-03: cada lançamento na sua linha, coluna por coluna — layout do Modelo de 2026-09-28
+   * (`Tabela1` = `A8:I504`): A Fonte · B Data · C Transcrição · D Ref. · E Mês · F Descrição ·
+   * G Valor · H Natureza · I Iniciais. Sem dicionário, Natureza e Descrição saem em branco.
+   */
+  const ESPERADOS = [
+    { linha: 9, data: '2026-03-01', transcricao: 'Transferência enviada pelo Pix - João', valor: -150 },
+    { linha: 10, data: '2026-03-05', transcricao: 'Transferência recebida pelo Pix - Salário', valor: 3500 },
+    { linha: 11, data: '2026-03-10', transcricao: 'PAG BOLETO ENERGIA', valor: -22.5 },
+    { linha: 12, data: '2026-03-15', transcricao: 'Pagamento de fatura', valor: -1200 },
+  ]
 
-  // TL-03b: lançamento 2 presente em A10
-  it('lançamento 2 (Transferência Pix recebida) presente em linha 10 da Tabela1', () => {
-    const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    expect(sheet1).toContain('<c r="A10" s="42" t="inlineStr"><is><t>extrato_nubank</t></is></c>')
-    expect(sheet1).toContain('<c r="B10" s="44" t="inlineStr"><is><t>2026-03-05</t></is></c>')
-    expect(sheet1).toContain(
-      '<c r="C10" s="41" t="inlineStr"><is><t>Transferência recebida pelo Pix - Salário</t></is></c>',
-    )
-    expect(sheet1).toContain('<c r="D10" s="41" t="inlineStr"><is><t>2026-03</t></is></c>')
-    expect(sheet1).toContain('<c r="H10" s="43"><v>3500</v></c>')
-  })
+  for (const { linha, data, transcricao, valor } of ESPERADOS) {
+    it(`lançamento de "${transcricao}" ocupa a linha ${linha} da Tabela1 com as 9 colunas certas`, () => {
+      const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
+      const s = (ref: string) => estiloNoModelo(modeloParts, ref)
+      const em = (col: string) => celula(sheet1, `${col}${linha}`)
 
-  // TL-03c: lançamento 3 presente em A11
-  it('lançamento 3 (PAG BOLETO ENERGIA) presente em linha 11 da Tabela1', () => {
-    const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    expect(sheet1).toContain('<c r="A11" s="42" t="inlineStr"><is><t>extrato_nubank</t></is></c>')
-    expect(sheet1).toContain('<c r="B11" s="44" t="inlineStr"><is><t>2026-03-10</t></is></c>')
-    expect(sheet1).toContain(
-      '<c r="C11" s="41" t="inlineStr"><is><t>PAG BOLETO ENERGIA</t></is></c>',
-    )
-    expect(sheet1).toContain('<c r="D11" s="41" t="inlineStr"><is><t>2026-03</t></is></c>')
-    expect(sheet1).toContain('<c r="H11" s="43"><v>-22.5</v></c>')
-  })
+      expect(em('A')).toBe(`<c r="A${linha}" s="${s(`A${linha}`)}" t="inlineStr"><is><t>extrato_nubank</t></is></c>`)
+      expect(em('B')).toBe(`<c r="B${linha}" s="${s(`B${linha}`)}" t="inlineStr"><is><t>${data}</t></is></c>`)
+      expect(em('C')).toBe(`<c r="C${linha}" s="${s(`C${linha}`)}" t="inlineStr"><is><t>${transcricao}</t></is></c>`)
+      expect(em('D')).toBe(`<c r="D${linha}" s="${s(`D${linha}`)}" t="inlineStr"><is><t>2026-03</t></is></c>`)
+      // E = Mês: número 3, derivado da referência 2026-03
+      expect(em('E')).toBe(`<c r="E${linha}" s="${s(`E${linha}`)}"><v>3</v></c>`)
+      expect(em('G')).toBe(`<c r="G${linha}" s="${s(`G${linha}`)}"><v>${valor}</v></c>`)
+      // I = Iniciais (default do usuário, sem dicionário)
+      expect(em('I')).toBe(`<c r="I${linha}" s="${s(`I${linha}`)}" t="inlineStr"><is><t>${INICIAIS}</t></is></c>`)
+      // Sem dicionário: Natureza (H) e Descrição (F) ficam GENUINAMENTE vazias — é isso que
+      // faz a formatação condicional "Natureza vazia com dados na linha" incidir.
+      expect(em('F')).toBe(`<c r="F${linha}" s="${s(`F${linha}`)}"/>`)
+      expect(em('H')).toBe(`<c r="H${linha}" s="${s(`H${linha}`)}"/>`)
+    })
+  }
 
-  // TL-03d: lançamento 4 presente em A12
-  it('lançamento 4 (Pagamento de fatura) presente em linha 12 da Tabela1', () => {
-    const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    expect(sheet1).toContain('<c r="A12" s="42" t="inlineStr"><is><t>extrato_nubank</t></is></c>')
-    expect(sheet1).toContain('<c r="B12" s="44" t="inlineStr"><is><t>2026-03-15</t></is></c>')
-    expect(sheet1).toContain(
-      '<c r="C12" s="41" t="inlineStr"><is><t>Pagamento de fatura</t></is></c>',
-    )
-    expect(sheet1).toContain('<c r="D12" s="41" t="inlineStr"><is><t>2026-03</t></is></c>')
-    expect(sheet1).toContain('<c r="H12" s="43"><v>-1200</v></c>')
-  })
-
-  // TL-04: ref da Tabela1 ajustado para A8:H12 (4 lançamentos, cabeçalho linha 8)
-  it('ref da Tabela1 em table1.xml é A8:H12 para 4 lançamentos', () => {
+  // TL-04: ref da Tabela1 ajustado para A8:I12 (4 lançamentos, cabeçalho linha 8)
+  it('ref da Tabela1 em table1.xml é A8:I12 para 4 lançamentos', () => {
     const table1 = decodePart(resultadoParts, 'xl/tables/table1.xml')
-    expect(table1).toContain('ref="A8:H12"')
+    expect(table1).toContain('ref="A8:I12"')
   })
 
   // TL-04b: B3 contém o mês de referência como inlineStr
   it('B3 contém o mês de referência "2026-03" como inlineStr', () => {
     const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    expect(sheet1).toContain('<c r="B3" s="45" t="inlineStr"><is><t>2026-03</t></is></c>')
+    expect(celula(sheet1, 'B3')).toBe(
+      `<c r="B3" s="${estiloNoModelo(modeloParts, 'B3')}" t="inlineStr"><is><t>2026-03</t></is></c>`,
+    )
   })
 
   // TL-05: fullCalcOnLoad presente em workbook.xml
@@ -293,6 +302,7 @@ describe('E2E — Caso 1: pipeline completo sem dicionário', () => {
 
 describe('E2E — Caso 2: pipeline com dicionário', () => {
   let modeloBytes: Uint8Array
+  let modeloParts: Record<string, Uint8Array>
   let lancamentos: Lancamento[]
   let dicEntries: DicEntry[]
   let resultadoParts: Record<string, Uint8Array>
@@ -314,6 +324,7 @@ describe('E2E — Caso 2: pipeline com dicionário', () => {
 
   beforeAll(() => {
     modeloBytes = new Uint8Array(readFileSync(MODELO_XLSX_PATH))
+    modeloParts = unzipSync(modeloBytes)
 
     const csvConteudo = readFileSync(FIXTURE_CSV_PATH, 'utf-8')
     lancamentos = extratoNubank.parsear(csvConteudo).lancamentos
@@ -331,38 +342,44 @@ describe('E2E — Caso 2: pipeline com dicionário', () => {
     resultadoParts = unzipSync(resultadoBytes)
   })
 
-  // TL-07: chave não-ambígua → Natureza/Descrição/Iniciais preenchidas (layout novo — linha 11)
+  // TL-07: chave não-ambígua → Natureza/Descrição/Iniciais preenchidas (linha 11)
   it('lançamento com chave não-ambígua (PAG BOLETO ENERGIA) tem Natureza/Descrição/Iniciais preenchidas na linha 11', () => {
     const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    // E11 = Iniciais (vem do dicionário = 'ES') — coluna E no layout novo
-    expect(sheet1).toContain('<c r="E11" s="41" t="inlineStr"><is><t>ES</t></is></c>')
-    // F11 = Natureza — coluna F no layout novo (caixa alta na grid — item 28)
-    expect(sheet1).toContain('<c r="F11" s="11" t="inlineStr"><is><t>MORADIA</t></is></c>')
-    // G11 = Descrição — coluna G no layout novo
-    expect(sheet1).toContain('<c r="G11" s="11" t="inlineStr"><is><t>Conta de luz</t></is></c>')
+    const s = (ref: string) => estiloNoModelo(modeloParts, ref)
+
+    // I11 = Iniciais (vem do dicionário = 'ES')
+    expect(celula(sheet1, 'I11')).toBe(`<c r="I11" s="${s('I11')}" t="inlineStr"><is><t>ES</t></is></c>`)
+    // H11 = Natureza (caixa alta na grid — item 28)
+    expect(celula(sheet1, 'H11')).toBe(`<c r="H11" s="${s('H11')}" t="inlineStr"><is><t>MORADIA</t></is></c>`)
+    // F11 = Descrição
+    expect(celula(sheet1, 'F11')).toBe(`<c r="F11" s="${s('F11')}" t="inlineStr"><is><t>Conta de luz</t></is></c>`)
   })
 
   // TL-08: chave ambígua → Natureza e Descrição em branco, Iniciais = usuário (linha 12)
   it('lançamento com chave ambígua (Pagamento de fatura) tem Natureza/Descrição em branco na linha 12', () => {
     const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    // E12 = Iniciais = INICIAIS (default do usuário) — coluna E no layout novo
-    expect(sheet1).toContain('<c r="E12" s="41" t="inlineStr"><is><t>ES</t></is></c>')
-    // F12 = Natureza em branco → célula genuinamente vazia (não inlineStr vazio),
+    const s = (ref: string) => estiloNoModelo(modeloParts, ref)
+
+    // I12 = Iniciais = INICIAIS (default do usuário)
+    expect(celula(sheet1, 'I12')).toBe(`<c r="I12" s="${s('I12')}" t="inlineStr"><is><t>ES</t></is></c>`)
+    // H12 = Natureza em branco → célula genuinamente vazia (não inlineStr vazio),
     // para que a formatação condicional "Natureza vazia com dados" incida.
-    expect(sheet1).toContain('<c r="F12" s="11"/>')
-    // G12 = Descrição em branco
-    expect(sheet1).toContain('<c r="G12" s="11"/>')
+    expect(celula(sheet1, 'H12')).toBe(`<c r="H12" s="${s('H12')}"/>`)
+    // F12 = Descrição em branco
+    expect(celula(sheet1, 'F12')).toBe(`<c r="F12" s="${s('F12')}"/>`)
   })
 
   // TL-09: chave ausente → Natureza e Descrição em branco, Iniciais = usuário (linha 9)
   it('lançamento com chave ausente (Transferência Pix enviada) tem Natureza/Descrição em branco na linha 9', () => {
     const sheet1 = decodePart(resultadoParts, 'xl/worksheets/sheet1.xml')
-    // E9 = Iniciais = INICIAIS (default) — coluna E no layout novo
-    expect(sheet1).toContain('<c r="E9" s="41" t="inlineStr"><is><t>ES</t></is></c>')
-    // F9 = Natureza em branco → célula genuinamente vazia (não inlineStr vazio).
-    expect(sheet1).toContain('<c r="F9" s="11"/>')
-    // G9 = Descrição em branco
-    expect(sheet1).toContain('<c r="G9" s="11"/>')
+    const s = (ref: string) => estiloNoModelo(modeloParts, ref)
+
+    // I9 = Iniciais = INICIAIS (default)
+    expect(celula(sheet1, 'I9')).toBe(`<c r="I9" s="${s('I9')}" t="inlineStr"><is><t>ES</t></is></c>`)
+    // H9 = Natureza em branco → célula genuinamente vazia (não inlineStr vazio).
+    expect(celula(sheet1, 'H9')).toBe(`<c r="H9" s="${s('H9')}"/>`)
+    // F9 = Descrição em branco
+    expect(celula(sheet1, 'F9')).toBe(`<c r="F9" s="${s('F9')}"/>`)
   })
 
   // TL-10: aba Dicionario do ZIP contém as entradas do dicionário fornecido

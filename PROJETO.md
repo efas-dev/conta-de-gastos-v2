@@ -97,8 +97,14 @@ estado guardado — é sempre derivada do estado existente (ex.: há lançamento
 ## Injeção no Excel
 
 - `Modelo.xlsx` é **imutável**. O sistema escreve **somente**: `B2` (Iniciais da Configuração),
-  `B3` (mês de referência), o corpo da `Tabela1` em **`A9:H504`**, e a aba `Dicionario`. Ajusta o `ref` da `Tabela1` ao nº de
+  `B3` (mês de referência), o corpo da `Tabela1` em **`A9:I504`**, e a aba `Dicionario`. Ajusta o `ref` da `Tabela1` ao nº de
   linhas. Tudo o mais (fórmulas `LET/REDUCE/LAMBDA/XLOOKUP`, totais, CF, estilos, tabelas) fica intacto.
+- **Colunas da `Tabela1`** (layout de 2026-09-28): `A=Fonte`, `B=Data`, `C=Transcrição`, `D=Ref.`,
+  `E=Mês`, `F=Descrição`, `G=Valor`, `H=Natureza`, `I=Iniciais`. `Mês` é o número (1–12) do **mês de
+  referência**, o mesmo que `D`/`B3` — não o mês da data da linha.
+- **Índices de estilo (`s="…"`) nunca são hardcoded.** O Excel renumera a tabela `cellXfs` a cada
+  salvamento do Modelo; o writer lê o `s` da própria célula que vai substituir e falha alto se ela
+  não existir (ver `substituirCelula` em `src/excel/writer/gerador.ts`).
 - A aba `Dicionario` já existe vazia no template → injeção é só escrever valores, sem cirurgia de OPC.
 - A aba `Naturezas` é **referência intocada** — alimenta fórmulas internas em células que o sistema nunca escreve.
 
